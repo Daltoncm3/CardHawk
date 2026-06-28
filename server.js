@@ -5,7 +5,7 @@ const PORT = process.env.PORT || 3000;
 
 async function getEbayToken() {
   const credentials = Buffer.from(
-    `${process.env.EBAY_APP_ID}:${process.env.EBAY_CERT_ID}`
+    `${process.env.EBAY_APP_ID.trim()}:${process.env.EBAY_CERT_ID.trim()}`
   ).toString("base64");
 
   const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
@@ -45,7 +45,21 @@ app.get("/test-ebay", async (req, res) => {
     );
 
     const data = await response.json();
-    res.json(data);
+
+    const cleaned = data.itemSummaries?.map((item) => ({
+      title: item.title,
+      price: item.price,
+      shipping: item.shippingOptions?.[0]?.shippingCost || "Unknown",
+      condition: item.condition,
+      url: item.itemWebUrl,
+      image: item.image?.imageUrl
+    }));
+
+    res.json({
+      search: "baseball card",
+      total: data.total,
+      results: cleaned
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
