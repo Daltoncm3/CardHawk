@@ -24,6 +24,41 @@ function timeoutMs() {
   return Number(env("RESEND_TIMEOUT_MS", "15000"));
 }
 
+function threshold(name, fallback) {
+  const value = Number(env(name, String(fallback)));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function getAlertThresholds() {
+  return {
+    minProfit: threshold("CARDHAWK_ALERT_MIN_PROFIT", 75),
+    minRoi: threshold("CARDHAWK_ALERT_MIN_ROI", 0.35),
+    minScore: threshold("CARDHAWK_ALERT_MIN_SCORE", 90),
+    minConfidence: threshold("CARDHAWK_ALERT_MIN_CONFIDENCE", 70)
+  };
+}
+
+function evaluateAlertRules(listing) {
+  const rules = getAlertThresholds();
+  const profit = Number(listing.estimatedProfit || 0);
+  const roi = Number(listing.roi || 0);
+  const score = Number(listing.score || 0);
+  const confidence = Number(listing.marketConfidence || listing.compData?.confidence || 0);
+
+  const failures = [];
+  if (profit < rules.minProfit) failures.push(`profit ${money(profit)} below ${money(rules.minProfit)}`);
+  if (roi < rules.minRoi) failures.push(`ROI ${percent(roi)}% below ${percent(rules.minRoi)}%`);
+  if (score < rules.minScore) failures.push(`score ${Math.round(score)} below ${rules.minScore}`);
+  if (confidence < rules.minConfidence) failures.push(`confidence ${Math.round(confidence)} below ${rules.minConfidence}`);
+
+  return {
+    passed: failures.length === 0,
+    failures,
+    rules,
+    metrics: { profit, roi, score, confidence }
+  };
+}
+
 function getResendApiKey() {
   return env("RESEND_API_KEY");
 }
@@ -124,6 +159,17 @@ async function sendDealAlert(listing, options = {}) {
     return { sent: false, reason: "missing ALERT_TO" };
   }
 
+  const ruleCheck = evaluateAlertRules(listing);
+  if (!options.force && !ruleCheck.passed) {
+    return {
+      sent: false,
+      reason: "alert thresholds not met",
+      failures: ruleCheck.failures,
+      rules: ruleCheck.rules,
+      metrics: ruleCheck.metrics
+    };
+  }
+
   const key = buildAlertKey(listing);
   if (!options.force && sentAlertKeys.has(key)) {
     return { sent: false, reason: "duplicate alert skipped", key };
@@ -178,7 +224,8 @@ function getStatus() {
     hasAlertTo: Boolean(getAlertTo()),
     alertTo: getAlertTo() || null,
     from: getFromAddress(),
-    timeoutMs: timeoutMs()
+    timeoutMs: timeoutMs(),
+    thresholds: getAlertThresholds()
   };
 }
 
@@ -187,5 +234,7 @@ module.exports = {
   sendTestAlert,
   getStatus,
   buildSmsBody,
-  buildEmailBody
+  buildEmailBody,
+  evaluateAlertRules,
+  getAlertThresholds
 };
