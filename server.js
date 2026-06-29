@@ -649,6 +649,13 @@ function layout(title, content) {
           th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: left; font-size: 14px; }
           th { color: #94a3b8; }
           .empty { background: #1e293b; padding: 28px; border-radius: 16px; color: #cbd5e1; }
+          .subnav { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 22px 0; }
+          .subnav a { padding: 10px 13px; border-radius: 10px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; text-decoration: none; }
+          .subnav a.active { background: #22c55e; color: #052e16; }
+          .small { color: #94a3b8; font-size: 13px; }
+          .good { color: #22c55e; font-weight: bold; }
+          .bad { color: #f87171; font-weight: bold; }
+          .table-title { margin-top: 28px; }
         </style>
       </head>
       <body>
@@ -660,6 +667,7 @@ function layout(title, content) {
             <a href="/">Dashboard</a>
             <a href="/alerts">Deal Alerts</a>
             <a href="/rejections">Rejected</a>
+            <a href="/history">History</a>
             <a href="/scans">Scan History</a>
             <a href="/search">Manual Search</a>
             <form method="POST" action="/scan-now" style="margin:0;">
@@ -684,11 +692,69 @@ function filterByLane(items, lane) {
   return items.filter(item => item.lane === lane);
 }
 
+
+function historyTabs(activePage) {
+  const tabs = [
+    ["/history", "Summary"],
+    ["/history/price-drops", "Price Drops"],
+    ["/history/disappeared", "Disappeared"],
+    ["/history/active", "Active"]
+  ];
+
+  return `
+    <div class="subnav">
+      ${tabs.map(([href, label]) => `
+        <a class="${activePage === href ? "active" : ""}" href="${href}">${label}</a>
+      `).join("")}
+    </div>
+  `;
+}
+
+function shortDate(value) {
+  if (!value) return "";
+  try {
+    return new Date(value).toLocaleString();
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function historyListingRow(item) {
+  return `
+    <tr>
+      <td>${escapeHtml(LANES[item.lane]?.label || item.lane || "Unknown")}</td>
+      <td>${escapeHtml(item.title || "")}</td>
+      <td>$${money(item.currentPrice || item.totalCost || item.price)}</td>
+      <td>${item.seenCount || 0}</td>
+      <td>${escapeHtml(item.status || "")}</td>
+      <td>${escapeHtml(shortDate(item.firstSeenAt))}</td>
+      <td>${escapeHtml(shortDate(item.lastSeenAt))}</td>
+      <td><a href="${escapeHtml(item.url || "#")}" target="_blank">eBay</a></td>
+    </tr>
+  `;
+}
+
+function priceDropRow(drop) {
+  return `
+    <tr>
+      <td>${escapeHtml(LANES[drop.lane]?.label || drop.lane || "Unknown")}</td>
+      <td>${escapeHtml(drop.title || "")}</td>
+      <td>$${money(drop.fromPrice)}</td>
+      <td>$${money(drop.toPrice)}</td>
+      <td class="good">$${money(drop.amountDropped)}</td>
+      <td class="good">${Math.round(Number(drop.percentDropped || 0))}%</td>
+      <td>${escapeHtml(shortDate(drop.detectedAt))}</td>
+      <td><a href="${escapeHtml(drop.url || "#")}" target="_blank">eBay</a></td>
+    </tr>
+  `;
+}
+
 app.get("/", (req, res) => {
   const lane = getLane(req);
   const listings = filterByLane(Object.values(store.listings), lane);
   const alerts = filterByLane(store.alerts, lane);
   const latestListings = listings.sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt)).slice(0, 12);
+  const historySummary = historyEngine.summarizeHistory();
 
   res.send(layout("CardHawk Dashboard", `
     ${laneTabs(lane, "")}
@@ -698,6 +764,8 @@ app.get("/", (req, res) => {
       <div class="stat"><div class="number">${alerts.length}</div><div>Real Deal Alerts</div></div>
       <div class="stat"><div class="number">${store.scans.length}</div><div>Total Scout Scans</div></div>
       <div class="stat"><div class="number">${SCOUT_ENABLED ? "ON" : "OFF"}</div><div>Scout Engine</div></div>
+      <div class="stat"><div class="number">${historySummary.stats.totalPriceDrops || 0}</div><div>Tracked Price Drops</div></div>
+      <div class="stat"><div class="number">${historySummary.stats.disappearedListings || 0}</div><div>Disappeared Listings</div></div>
     </div>
 
     <h2>Latest Scouted Listings</h2>
@@ -736,6 +804,91 @@ app.get("/rejections", (req, res) => {
         </tr>
       `).join("")}
     </table>
+  `));
+});
+
+
+app.get("/history", (req, res) => {
+  const summary = historyEngine.summarizeHistory();
+  const stats = summary.stats || {};
+
+  res.send(layout("CardHawk History", `
+    ${historyTabs("/history")}
+
+    <div class="stats">
+      <div class="stat"><div class="number">${stats.totalListingsTracked || 0}</div><div>Total Tracked</div></div>
+      <div class="stat"><div class="number">${stats.activeListings || 0}</div><div>Still Active</div></div>
+      <div class="stat"><div class="number">${stats.disappearedListings || 0}</div><div>Disappeared</div></div>
+      <div class="stat"><div class="number">${stats.totalPriceDrops || 0}</div><div>Price Drops</div></div>
+    </div>
+
+    <h2>Recent Price Drops</h2>
+    ${summary.recentPriceDrops.length ? `
+      <table>
+        <tr><th>Lane</th><th>Title</th><th>From</th><th>To</th><th>Dropped</th><th>%</th><th>Detected</th><th>Link</th></tr>
+        ${summary.recentPriceDrops.map(priceDropRow).join("")}
+      </table>
+    ` : `<div class="empty">No price drops found yet.</div>`}
+
+    <h2 class="table-title">Recently Disappeared</h2>
+    ${summary.recentDisappeared.length ? `
+      <table>
+        <tr><th>Lane</th><th>Title</th><th>Current</th><th>Scans</th><th>Status</th><th>First Seen</th><th>Last Seen</th><th>Link</th></tr>
+        ${summary.recentDisappeared.map(historyListingRow).join("")}
+      </table>
+    ` : `<div class="empty">No disappeared listings yet.</div>`}
+  `));
+});
+
+app.get("/history/price-drops", (req, res) => {
+  const lane = getLane(req);
+  const drops = historyEngine.getPriceDrops({ lane: lane === "all" ? null : lane }, 100);
+
+  res.send(layout("CardHawk Price Drops", `
+    ${historyTabs("/history/price-drops")}
+    ${laneTabs(lane, "history/price-drops")}
+    <h2>Price Drops</h2>
+    ${drops.length ? `
+      <table>
+        <tr><th>Lane</th><th>Title</th><th>From</th><th>To</th><th>Dropped</th><th>%</th><th>Detected</th><th>Link</th></tr>
+        ${drops.map(priceDropRow).join("")}
+      </table>
+    ` : `<div class="empty">No price drops in this lane yet.</div>`}
+  `));
+});
+
+app.get("/history/disappeared", (req, res) => {
+  const lane = getLane(req);
+  const disappeared = filterByLane(historyEngine.getDisappearedListings(200), lane);
+
+  res.send(layout("CardHawk Disappeared", `
+    ${historyTabs("/history/disappeared")}
+    ${laneTabs(lane, "history/disappeared")}
+    <h2>Disappeared Listings</h2>
+    <div class="small">These are likely sold or ended listings. This becomes useful once we compare disappearance timing with price and score.</div><br>
+    ${disappeared.length ? `
+      <table>
+        <tr><th>Lane</th><th>Title</th><th>Current</th><th>Scans</th><th>Status</th><th>First Seen</th><th>Last Seen</th><th>Link</th></tr>
+        ${disappeared.map(historyListingRow).join("")}
+      </table>
+    ` : `<div class="empty">No disappeared listings in this lane yet.</div>`}
+  `));
+});
+
+app.get("/history/active", (req, res) => {
+  const lane = getLane(req);
+  const active = filterByLane(historyEngine.getActiveListings(200), lane);
+
+  res.send(layout("CardHawk Active History", `
+    ${historyTabs("/history/active")}
+    ${laneTabs(lane, "history/active")}
+    <h2>Active Tracked Listings</h2>
+    ${active.length ? `
+      <table>
+        <tr><th>Lane</th><th>Title</th><th>Current</th><th>Scans</th><th>Status</th><th>First Seen</th><th>Last Seen</th><th>Link</th></tr>
+        ${active.map(historyListingRow).join("")}
+      </table>
+    ` : `<div class="empty">No active tracked listings in this lane yet.</div>`}
   `));
 });
 
@@ -870,6 +1023,7 @@ function listingCard(item) {
       <div class="meta">Seller: ${escapeHtml(item.sellerUsername || "Unknown")}</div>
       ${item.dealGate && !item.dealGate.passed ? `<div class="meta">Rejected: ${escapeHtml(item.dealGate.reasons.join(", "))}</div>` : ""}
       <a href="${escapeHtml(item.url)}" target="_blank">View on eBay</a>
+      ${item.ebayItemId ? ` &nbsp; <a href="/api/history/listing/${escapeHtml(item.ebayItemId)}" target="_blank">History</a>` : ""}
     </div>
   `;
 }
