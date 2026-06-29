@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const historyEngine = require("./engines/historyEngine");
+const compEngine = require("./engines/compEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -352,9 +353,12 @@ function estimateMarketValue(listing) {
   return Math.max(0, listing.totalCost * multiplier);
 }
 
-function scoreListing(listing) {
+function scoreListing(listing, compUniverse = []) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
-  const estimatedValue = estimateMarketValue(listing);
+  const compData = compEngine.evaluateListing(listing, compUniverse, {
+    fallbackEstimator: estimateMarketValue
+  });
+  const estimatedValue = compData.marketValue;
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
   const roi = listing.totalCost > 0 ? estimatedProfit / listing.totalCost : 0;
@@ -374,6 +378,13 @@ function scoreListing(listing) {
   if (roi >= 0.25) score += 12;
   if (roi >= 0.4) score += 10;
   if (roi >= 0.6) score += 8;
+
+  if (compData.confidence >= 60) score += 10;
+  else if (compData.confidence >= 40) score += 5;
+  else if (compData.confidence <= 15) score -= 10;
+
+  if (compData.source === "active_market") score += 3;
+  if (compData.source === "heuristic_fallback") score -= 6;
 
   if (parsed.flags.firstBowman) score += 8;
   if (parsed.flags.numbered) score += 7;
@@ -400,7 +411,11 @@ function scoreListing(listing) {
     estimatedValue,
     estimatedProfit,
     roi,
-    ebayFees
+    ebayFees,
+    compData,
+    marketConfidence: compData.confidence,
+    compCount: compData.compCount,
+    compSource: compData.source
   };
 }
 
@@ -435,7 +450,7 @@ function dealGate(listing) {
 }
 
 function saveScoutedListing(listing, query, lane) {
-  const scoring = scoreListing(listing);
+  const scoring = scoreListing(listing, Object.values(store.listings));
   const detectedLane = detectLane(listing.title, lane);
   const now = new Date().toISOString();
   const existing = store.listings[listing.ebayItemId];
@@ -449,6 +464,10 @@ function saveScoutedListing(listing, query, lane) {
     estimatedProfit: scoring.estimatedProfit,
     roi: scoring.roi,
     ebayFees: scoring.ebayFees,
+    compData: scoring.compData,
+    marketConfidence: scoring.marketConfidence,
+    compCount: scoring.compCount,
+    compSource: scoring.compSource,
     firstSeenAt: existing?.firstSeenAt || now,
     lastSeenAt: now,
     seenCount: existing?.seenCount ? existing.seenCount + 1 : 1,
@@ -473,6 +492,10 @@ function saveScoutedListing(listing, query, lane) {
       estimatedProfit: saved.estimatedProfit,
       roi: saved.roi,
       score: saved.score,
+      marketConfidence: saved.marketConfidence,
+      compCount: saved.compCount,
+      compSource: saved.compSource,
+      compData: saved.compData,
       url: listing.url,
       image: listing.image,
       query,
@@ -490,6 +513,9 @@ function saveScoutedListing(listing, query, lane) {
       score: saved.score,
       estimatedProfit: saved.estimatedProfit,
       roi: saved.roi,
+      marketConfidence: saved.marketConfidence,
+      compCount: saved.compCount,
+      compSource: saved.compSource,
       reasons: gate.reasons,
       createdAt: now
     });
@@ -572,15 +598,20 @@ async function runScoutScan(source = "automatic") {
 }
 
 function rescoreExistingData() {
-  for (const item of Object.values(store.listings)) {
+  const universe = Object.values(store.listings);
+  for (const item of universe) {
     item.parsed = parseCardTitle(item.title);
     item.lane = item.lane || detectLane(item.title);
-    const scoring = scoreListing(item);
+    const scoring = scoreListing(item, universe);
     item.score = scoring.score;
     item.estimatedValue = scoring.estimatedValue;
     item.estimatedProfit = scoring.estimatedProfit;
     item.roi = scoring.roi;
     item.ebayFees = scoring.ebayFees;
+    item.compData = scoring.compData;
+    item.marketConfidence = scoring.marketConfidence;
+    item.compCount = scoring.compCount;
+    item.compSource = scoring.compSource;
     item.dealGate = dealGate(item);
   }
 
@@ -920,7 +951,7 @@ app.get("/search", async (req, res) => {
     const results = query ? await searchEbay(query, 12) : [];
 
     const scored = results.map(item => {
-      const scoring = scoreListing(item);
+      const scoring = scoreListing(item, Object.values(store.listings));
       const lane = detectLane(item.title, selectedLane);
       const full = { ...item, ...scoring, lane };
       full.dealGate = dealGate(full);
@@ -972,6 +1003,29 @@ app.get("/api/history/listing/:itemId", (req, res) => {
   res.json(listing);
 });
 
+
+app.get("/api/comps/listing/:itemId", (req, res) => {
+  const listing = store.listings[req.params.itemId];
+  if (!listing) return res.status(404).json({ error: "Listing not found" });
+
+  const compData = compEngine.evaluateListing(listing, Object.values(store.listings), {
+    fallbackEstimator: estimateMarketValue
+  });
+
+  res.json({
+    listing: {
+      ebayItemId: listing.ebayItemId,
+      title: listing.title,
+      lane: listing.lane,
+      price: listing.price,
+      shipping: listing.shipping,
+      totalCost: listing.totalCost,
+      url: listing.url
+    },
+    compData
+  });
+});
+
 app.get("/api/status", (req, res) => {
   res.json({
     scoutEnabled: SCOUT_ENABLED,
@@ -1017,6 +1071,8 @@ function listingCard(item) {
       <div class="meta">Price: $${money(item.price)}</div>
       <div class="meta">Shipping: $${money(item.shipping)}</div>
       <div class="meta">Estimated Value: $${money(item.estimatedValue)}</div>
+      <div class="meta">Market Confidence: ${Math.round(item.marketConfidence || 0)}% (${item.compCount || 0} comps)</div>
+      <div class="meta">Comp Source: ${escapeHtml(item.compSource || "fallback")}</div>
       <div class="meta">Estimated Profit: $${money(item.estimatedProfit)}</div>
       <div class="meta">ROI: ${Math.round((item.roi || 0) * 100)}%</div>
       <div class="meta">Condition: ${escapeHtml(item.condition || "Unknown")}</div>
@@ -1024,6 +1080,7 @@ function listingCard(item) {
       ${item.dealGate && !item.dealGate.passed ? `<div class="meta">Rejected: ${escapeHtml(item.dealGate.reasons.join(", "))}</div>` : ""}
       <a href="${escapeHtml(item.url)}" target="_blank">View on eBay</a>
       ${item.ebayItemId ? ` &nbsp; <a href="/api/history/listing/${escapeHtml(item.ebayItemId)}" target="_blank">History</a>` : ""}
+      ${item.ebayItemId ? ` &nbsp; <a href="/api/comps/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Comps</a>` : ""}
     </div>
   `;
 }
