@@ -1,13 +1,6 @@
 // engines/notificationEngine.js
-// CardHawk Notification Engine v1
-// Sends deal alerts by email or carrier email-to-SMS gateway.
-
-let nodemailer;
-try {
-  nodemailer = require("nodemailer");
-} catch (error) {
-  nodemailer = null;
-}
+// CardHawk Notification Engine v2
+// Sends deal alerts through Resend HTTP API instead of SMTP.
 
 const sentAlertKeys = new Set();
 
@@ -28,45 +21,19 @@ function percent(value) {
 }
 
 function timeoutMs() {
-  return Number(env("SMTP_TIMEOUT_MS", "15000"));
+  return Number(env("RESEND_TIMEOUT_MS", "15000"));
 }
 
-function getTransporter() {
-  if (!nodemailer) {
-    throw new Error("nodemailer is not installed. Add it to package.json dependencies.");
-  }
-
-  const host = env("SMTP_HOST", "smtp.gmail.com");
-  const port = Number(env("SMTP_PORT", "465"));
-  const secure = String(env("SMTP_SECURE", "true")).toLowerCase() === "true";
-  const user = env("SMTP_USER");
-  const pass = env("SMTP_PASS");
-  const timeout = timeoutMs();
-
-  if (!user || !pass) {
-    throw new Error("Missing SMTP_USER or SMTP_PASS environment variable.");
-  }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    connectionTimeout: timeout,
-    greetingTimeout: timeout,
-    socketTimeout: timeout
-  });
+function getResendApiKey() {
+  return env("RESEND_API_KEY");
 }
 
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${ms}ms. Check SMTP_PORT, SMTP_SECURE, SMTP_PASS, or Railway outbound SMTP access.`));
-    }, ms);
-  });
+function getFromAddress() {
+  return env("RESEND_FROM") || env("ALERT_FROM") || "CardHawk <onboarding@resend.dev>";
+}
 
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+function getAlertTo() {
+  return env("ALERT_TO");
 }
 
 function buildAlertKey(listing) {
@@ -101,13 +68,57 @@ function buildEmailBody(listing) {
   return `${sms}\n\nComp Source: ${compSource}\nComp Count: ${compCount}\nCondition: ${listing.condition || "Unknown"}\nSeller: ${listing.sellerUsername || "Unknown"}`;
 }
 
+async function postToResend(payload) {
+  const apiKey = getResendApiKey();
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY environment variable.");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs());
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
+      const message = data?.message || data?.error || text || `Resend API error ${response.status}`;
+      throw new Error(message);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`CardHawk Resend notification timed out after ${timeoutMs()}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sendDealAlert(listing, options = {}) {
   if (!isEnabled() && !options.force) {
     return { sent: false, reason: "alerts disabled" };
   }
 
-  const to = options.to || env("ALERT_TO");
-  const from = options.from || env("ALERT_FROM") || env("SMTP_USER");
+  const to = options.to || getAlertTo();
+  const from = options.from || getFromAddress();
 
   if (!to) {
     return { sent: false, reason: "missing ALERT_TO" };
@@ -118,28 +129,22 @@ async function sendDealAlert(listing, options = {}) {
     return { sent: false, reason: "duplicate alert skipped", key };
   }
 
-  const transporter = getTransporter();
   const subject = options.subject || `CardHawk Deal: $${money(listing.totalCost || listing.price)}`;
   const text = options.smsOnly ? buildSmsBody(listing) : buildEmailBody(listing);
-  const ms = timeoutMs();
 
-  let info;
-  try {
-    info = await withTimeout(transporter.sendMail({
-      from,
-      to,
-      subject,
-      text
-    }), ms, "CardHawk notification send");
-  } finally {
-    if (typeof transporter.close === "function") transporter.close();
-  }
+  const result = await postToResend({
+    from,
+    to: to.split(",").map(item => item.trim()).filter(Boolean),
+    subject,
+    text
+  });
 
   sentAlertKeys.add(key);
 
   return {
     sent: true,
-    messageId: info.messageId || null,
+    provider: "resend",
+    id: result.id || null,
     to,
     key
   };
@@ -147,7 +152,7 @@ async function sendDealAlert(listing, options = {}) {
 
 async function sendTestAlert(options = {}) {
   return sendDealAlert({
-    ebayItemId: "cardhawk-test-alert",
+    ebayItemId: `cardhawk-test-alert-${Date.now()}`,
     lane: "test",
     title: "CardHawk test alert — notifications are working",
     price: 1,
@@ -168,15 +173,12 @@ async function sendTestAlert(options = {}) {
 function getStatus() {
   return {
     enabled: isEnabled(),
-    hasNodemailer: Boolean(nodemailer),
-    hasSmtpUser: Boolean(env("SMTP_USER")),
-    hasSmtpPass: Boolean(env("SMTP_PASS")),
-    hasAlertTo: Boolean(env("ALERT_TO")),
-    alertTo: env("ALERT_TO") || null,
-    smtpHost: env("SMTP_HOST", "smtp.gmail.com"),
-    smtpPort: Number(env("SMTP_PORT", "465")),
-    smtpSecure: String(env("SMTP_SECURE", "true")).toLowerCase() === "true",
-    smtpTimeoutMs: timeoutMs()
+    provider: "resend",
+    hasResendApiKey: Boolean(getResendApiKey()),
+    hasAlertTo: Boolean(getAlertTo()),
+    alertTo: getAlertTo() || null,
+    from: getFromAddress(),
+    timeoutMs: timeoutMs()
   };
 }
 
