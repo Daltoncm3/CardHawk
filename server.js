@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
+const notificationEngine = require("./engines/notificationEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -505,6 +506,10 @@ function saveScoutedListing(listing, query, lane) {
     });
 
     store.listings[listing.ebayItemId].alertCreated = true;
+
+    notificationEngine.sendDealAlert(store.alerts[0]).catch(error => {
+      console.error("Notification alert failed:", error.message);
+    });
   } else if (!gate.passed) {
     store.rejections.unshift({
       ebayItemId: listing.ebayItemId,
@@ -1024,6 +1029,28 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
     },
     compData
   });
+});
+
+app.get("/api/notifications/status", (req, res) => {
+  res.json(notificationEngine.getStatus());
+});
+
+app.post("/api/notifications/test", async (req, res) => {
+  try {
+    const result = await notificationEngine.sendTestAlert({ smsOnly: true });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ sent: false, error: error.message });
+  }
+});
+
+app.get("/api/notifications/test", async (req, res) => {
+  try {
+    const result = await notificationEngine.sendTestAlert({ smsOnly: true });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ sent: false, error: error.message });
+  }
 });
 
 app.get("/api/status", (req, res) => {
