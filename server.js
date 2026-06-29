@@ -11,17 +11,85 @@ app.use(express.json());
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "cardhawk-data.json");
 
-const DEFAULT_SCOUT_QUERIES = [
-  "PSA 10 baseball rookie auto",
-  "Bowman Chrome baseball auto",
-  "Topps Chrome baseball rookie auto",
-  "SGC 10 baseball rookie card",
-  "BGS 9.5 baseball auto",
-  "2024 Bowman Chrome auto",
-  "2023 Bowman Chrome auto",
-  "2024 Topps Chrome rookie auto",
-  "2023 Topps Chrome rookie auto"
-];
+const LANES = {
+  all: { label: "All", queries: [] },
+  baseball: {
+    label: "Baseball",
+    queries: [
+      "PSA 10 baseball rookie auto",
+      "Bowman Chrome baseball auto",
+      "1st Bowman auto baseball",
+      "Topps Chrome baseball rookie auto",
+      "baseball rookie autograph numbered"
+    ]
+  },
+  football: {
+    label: "Football",
+    queries: [
+      "PSA 10 football rookie auto",
+      "Prizm football rookie silver",
+      "Optic football rookie auto",
+      "football rookie autograph numbered",
+      "Downtown football rookie card"
+    ]
+  },
+  basketball: {
+    label: "Basketball",
+    queries: [
+      "PSA 10 basketball rookie auto",
+      "Prizm basketball rookie silver",
+      "Optic basketball rookie auto",
+      "basketball rookie autograph numbered",
+      "National Treasures basketball RPA"
+    ]
+  },
+  hockey: {
+    label: "Hockey",
+    queries: [
+      "PSA 10 hockey rookie auto",
+      "Young Guns PSA 10 hockey",
+      "hockey rookie autograph numbered",
+      "Upper Deck hockey rookie PSA 10"
+    ]
+  },
+  soccer: {
+    label: "Soccer",
+    queries: [
+      "PSA 10 soccer rookie auto",
+      "Prizm soccer rookie silver",
+      "soccer rookie autograph numbered",
+      "Topps Chrome soccer rookie auto"
+    ]
+  },
+  pokemon: {
+    label: "Pokémon",
+    queries: [
+      "Pokemon PSA 10 Charizard",
+      "Pokemon alt art PSA 10",
+      "Pokemon SAR PSA 10",
+      "Pokemon Japanese PSA 10",
+      "Pokemon rookie card PSA 10"
+    ]
+  },
+  racing: {
+    label: "Racing",
+    queries: [
+      "F1 Chrome PSA 10 rookie",
+      "Formula 1 Topps Chrome auto",
+      "F1 Sapphire PSA 10",
+      "NASCAR rookie auto PSA 10"
+    ]
+  },
+  ufc: {
+    label: "UFC",
+    queries: [
+      "UFC Prizm rookie auto",
+      "UFC PSA 10 rookie",
+      "UFC numbered autograph card",
+      "UFC rookie silver Prizm"
+    ]
+  }
+};
 
 const SCOUT_INTERVAL_MINUTES = Number(process.env.SCOUT_INTERVAL_MINUTES || 10);
 const SCOUT_ENABLED = String(process.env.SCOUT_ENABLED || "true").toLowerCase() === "true";
@@ -32,9 +100,11 @@ let store = {
   listings: {},
   alerts: [],
   scans: [],
+  rejections: [],
   settings: {
-    scoutQueries: DEFAULT_SCOUT_QUERIES,
-    minDealScore: 70
+    minDealScore: 85,
+    minProfit: 20,
+    minRoi: 0.25
   }
 };
 
@@ -53,13 +123,18 @@ function loadStore() {
       listings: loaded.listings || {},
       alerts: loaded.alerts || [],
       scans: loaded.scans || [],
+      rejections: loaded.rejections || [],
       settings: {
-        scoutQueries: loaded.settings?.scoutQueries || DEFAULT_SCOUT_QUERIES,
-        minDealScore: loaded.settings?.minDealScore || 70
+        minDealScore: loaded.settings?.minDealScore || 85,
+        minProfit: loaded.settings?.minProfit || 20,
+        minRoi: loaded.settings?.minRoi || 0.25
       }
     };
+
+    rescoreExistingData();
+    saveStore();
   } catch (error) {
-    console.error("Failed to load data file:", error.message);
+    console.error("Failed to load data:", error.message);
     saveStore();
   }
 }
@@ -71,7 +146,6 @@ function saveStore() {
 
 function requireLogin(req, res, next) {
   const auth = req.headers.authorization;
-
   if (!auth) {
     res.setHeader("WWW-Authenticate", 'Basic realm="CardHawk"');
     return res.status(401).send("Login required");
@@ -81,9 +155,7 @@ function requireLogin(req, res, next) {
   const decoded = Buffer.from(encoded, "base64").toString();
   const [user, pass] = decoded.split(":");
 
-  if (user === process.env.CARDHAWK_USER && pass === process.env.CARDHAWK_PASS) {
-    return next();
-  }
+  if (user === process.env.CARDHAWK_USER && pass === process.env.CARDHAWK_PASS) return next();
 
   res.setHeader("WWW-Authenticate", 'Basic realm="CardHawk"');
   return res.status(401).send("Invalid login");
@@ -106,10 +178,7 @@ function escapeHtml(value) {
 
 async function getEbayToken() {
   const now = Date.now();
-
-  if (ebayTokenCache.token && ebayTokenCache.expiresAt > now + 60_000) {
-    return ebayTokenCache.token;
-  }
+  if (ebayTokenCache.token && ebayTokenCache.expiresAt > now + 60_000) return ebayTokenCache.token;
 
   const credentials = Buffer.from(
     `${process.env.EBAY_APP_ID.trim()}:${process.env.EBAY_CERT_ID.trim()}`
@@ -135,10 +204,10 @@ async function getEbayToken() {
   return ebayTokenCache.token;
 }
 
-async function searchEbay(query, limit = 25) {
+async function searchEbay(query, limit = 20) {
   const token = await getEbayToken();
-
   const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
+
   url.searchParams.set("q", query);
   url.searchParams.set("limit", String(limit));
   url.searchParams.set("filter", "buyingOptions:{FIXED_PRICE|AUCTION}");
@@ -182,6 +251,21 @@ function normalizeEbayItem(item) {
   };
 }
 
+function detectLane(title, fallbackLane = "all") {
+  const lower = title.toLowerCase();
+
+  if (/\b(pokemon|charizard|pikachu|mewtwo|umbreon|eevee|sylveon|lugia|rayquaza|sar|alt art)\b/i.test(lower)) return "pokemon";
+  if (/\b(baseball|bowman|topps chrome|mlb|prospects)\b/i.test(lower)) return "baseball";
+  if (/\b(football|nfl|prizm football|optic football|downtown)\b/i.test(lower)) return "football";
+  if (/\b(basketball|nba|prizm basketball|optic basketball|national treasures)\b/i.test(lower)) return "basketball";
+  if (/\b(hockey|nhl|young guns|upper deck)\b/i.test(lower)) return "hockey";
+  if (/\b(soccer|futbol|prizm soccer|topps chrome soccer)\b/i.test(lower)) return "soccer";
+  if (/\b(f1|formula 1|racing|nascar|sapphire)\b/i.test(lower)) return "racing";
+  if (/\b(ufc|mma|octagon)\b/i.test(lower)) return "ufc";
+
+  return fallbackLane;
+}
+
 function parseCardTitle(title) {
   const lower = title.toLowerCase();
 
@@ -189,40 +273,45 @@ function parseCardTitle(title) {
   const gradeMatch = lower.match(/\b(psa|sgc|bgs|cgc)\s*(10|9\.5|9|8\.5|8)\b/i);
   const numberedMatch = lower.match(/\/\s*(\d{1,4})\b/);
 
+  const isClearlySealedWax =
+    /\b(sealed|unopened|factory sealed|hobby box|blaster box|mega box sealed|sealed box|pack lot|wax box)\b/i.test(title);
+
   const flags = {
-    autograph: /\b(auto|autograph|signed)\b/i.test(title),
-    rookie: /\b(rookie|rc)\b/i.test(title),
+    autograph: /\b(auto|autograph|signed|signature)\b/i.test(title),
+    rookie: /\b(rookie|rc|1st bowman)\b/i.test(title),
     graded: /\b(psa|sgc|bgs|cgc)\b/i.test(title),
     numbered: Boolean(numberedMatch),
     chrome: /\bchrome\b/i.test(title),
     bowman: /\bbowman\b/i.test(title),
     topps: /\btopps\b/i.test(title),
     prizm: /\bprizm\b/i.test(title),
-    refractor: /\brefractor\b/i.test(title),
+    optic: /\boptic\b/i.test(title),
+    refractor: /\b(refractor|silver|mojo|wave|sapphire|cracked ice)\b/i.test(title),
     firstBowman: /\b1st bowman\b/i.test(title),
     lot: /\b(lot|collection|bulk|mystery|repack|break)\b/i.test(title),
     reprint: /\b(reprint|rp|facsimile)\b/i.test(title),
     digital: /\b(digital|nft)\b/i.test(title),
     custom: /\b(custom|art card)\b/i.test(title),
-    sealed: /\b(box|pack|blaster|mega|hobby)\b/i.test(title)
+    sealed: isClearlySealedWax,
+    pokemon: /\b(pokemon|charizard|pikachu|umbreon|mewtwo|sar|alt art)\b/i.test(title)
   };
 
   let setName = "Unknown";
-
   if (flags.bowman && flags.chrome) setName = "Bowman Chrome";
   else if (flags.topps && flags.chrome) setName = "Topps Chrome";
+  else if (flags.prizm) setName = "Prizm";
+  else if (flags.optic) setName = "Optic";
   else if (flags.bowman) setName = "Bowman";
   else if (flags.topps) setName = "Topps";
-  else if (flags.prizm) setName = "Prizm";
+  else if (flags.pokemon) setName = "Pokémon";
 
-  let qualityTier = "unknown";
-
-  if (flags.reprint || flags.digital || flags.custom) qualityTier = "avoid";
-  else if (flags.lot || flags.sealed) qualityTier = "low-confidence";
+  let qualityTier = "generic";
+  if (flags.reprint || flags.digital || flags.custom || flags.sealed) qualityTier = "avoid";
+  else if (flags.lot) qualityTier = "low-confidence";
   else if (flags.graded && flags.autograph && flags.rookie) qualityTier = "premium";
+  else if (flags.graded && flags.pokemon) qualityTier = "premium";
   else if (flags.autograph && flags.rookie) qualityTier = "strong";
   else if (flags.graded || flags.autograph || flags.rookie || flags.numbered) qualityTier = "watch";
-  else qualityTier = "generic";
 
   return {
     year: yearMatch ? Number(yearMatch[1]) : null,
@@ -237,24 +326,27 @@ function parseCardTitle(title) {
 
 function estimateMarketValue(listing) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
-  let multiplier = 1.15;
+  let multiplier = 1.05;
 
-  if (parsed.flags.graded) multiplier += 0.2;
-  if (parsed.grade === 10) multiplier += 0.25;
-  if (parsed.grade === 9.5) multiplier += 0.15;
+  if (parsed.flags.graded) multiplier += 0.25;
+  if (parsed.grade === 10) multiplier += 0.35;
+  if (parsed.grade === 9.5) multiplier += 0.18;
   if (parsed.flags.autograph) multiplier += 0.25;
-  if (parsed.flags.rookie) multiplier += 0.15;
-  if (parsed.flags.firstBowman) multiplier += 0.2;
-  if (parsed.flags.numbered) multiplier += 0.15;
-  if (parsed.flags.refractor) multiplier += 0.1;
-  if (parsed.setName === "Bowman Chrome") multiplier += 0.15;
+  if (parsed.flags.rookie) multiplier += 0.18;
+  if (parsed.flags.firstBowman) multiplier += 0.22;
+  if (parsed.flags.numbered) multiplier += 0.18;
+  if (parsed.flags.refractor) multiplier += 0.12;
+  if (parsed.setName === "Bowman Chrome") multiplier += 0.14;
   if (parsed.setName === "Topps Chrome") multiplier += 0.1;
+  if (parsed.setName === "Prizm") multiplier += 0.12;
+  if (parsed.setName === "Optic") multiplier += 0.08;
+  if (parsed.flags.pokemon) multiplier += 0.15;
 
-  if (parsed.flags.lot) multiplier -= 0.45;
-  if (parsed.flags.sealed) multiplier -= 0.25;
-  if (parsed.flags.reprint) multiplier -= 0.9;
-  if (parsed.flags.digital) multiplier -= 0.9;
-  if (parsed.flags.custom) multiplier -= 0.7;
+  if (parsed.flags.lot) multiplier -= 0.55;
+  if (parsed.flags.sealed) multiplier -= 0.75;
+  if (parsed.flags.reprint) multiplier -= 0.95;
+  if (parsed.flags.digital) multiplier -= 0.95;
+  if (parsed.flags.custom) multiplier -= 0.85;
 
   return Math.max(0, listing.totalCost * multiplier);
 }
@@ -271,39 +363,39 @@ function scoreListing(listing) {
   if (parsed.qualityTier === "premium") score += 45;
   if (parsed.qualityTier === "strong") score += 35;
   if (parsed.qualityTier === "watch") score += 20;
-  if (parsed.qualityTier === "generic") score += 5;
-  if (parsed.qualityTier === "low-confidence") score -= 20;
+  if (parsed.qualityTier === "generic") score += 3;
+  if (parsed.qualityTier === "low-confidence") score -= 30;
   if (parsed.qualityTier === "avoid") score = 0;
 
-  if (estimatedProfit > 10) score += 10;
-  if (estimatedProfit > 25) score += 15;
-  if (estimatedProfit > 50) score += 15;
-  if (roi > 0.2) score += 10;
-  if (roi > 0.35) score += 10;
-  if (roi > 0.5) score += 10;
+  if (estimatedProfit >= 20) score += 15;
+  if (estimatedProfit >= 40) score += 15;
+  if (estimatedProfit >= 75) score += 10;
+  if (roi >= 0.25) score += 12;
+  if (roi >= 0.4) score += 10;
+  if (roi >= 0.6) score += 8;
 
   if (parsed.flags.firstBowman) score += 8;
-  if (parsed.flags.numbered) score += 6;
+  if (parsed.flags.numbered) score += 7;
   if (parsed.grade === 10) score += 8;
   if (parsed.setName === "Bowman Chrome") score += 6;
-  if (parsed.setName === "Topps Chrome") score += 4;
+  if (parsed.setName === "Topps Chrome") score += 5;
+  if (parsed.setName === "Prizm") score += 5;
+  if (parsed.flags.pokemon && parsed.grade === 10) score += 8;
 
-  if (parsed.flags.lot) score -= 35;
-  if (parsed.flags.sealed) score -= 20;
-  if (parsed.flags.reprint) score -= 80;
-  if (parsed.flags.digital) score -= 80;
-  if (parsed.flags.custom) score -= 60;
+  if (parsed.flags.lot) score -= 45;
+  if (parsed.flags.sealed) score -= 80;
+  if (parsed.flags.reprint) score -= 100;
+  if (parsed.flags.digital) score -= 100;
+  if (parsed.flags.custom) score -= 90;
 
-  if (listing.sellerFeedbackPercentage >= 99) score += 4;
-  if (listing.sellerFeedbackScore >= 100) score += 4;
+  if (listing.sellerFeedbackPercentage >= 99) score += 3;
+  if (listing.sellerFeedbackScore >= 100) score += 3;
 
   if (listing.totalCost <= 0) score = 0;
-  if (listing.totalCost > 500 && estimatedProfit < 100) score -= 15;
-
-  score = Math.max(0, Math.min(100, Math.round(score)));
+  if (listing.totalCost > 750 && estimatedProfit < 150) score -= 20;
 
   return {
-    score,
+    score: Math.max(0, Math.min(100, Math.round(score))),
     estimatedValue,
     estimatedProfit,
     roi,
@@ -311,13 +403,45 @@ function scoreListing(listing) {
   };
 }
 
-function saveScoutedListing(listing, query) {
+function dealGate(listing) {
+  const parsed = listing.parsed || parseCardTitle(listing.title);
+  const reasons = [];
+
+  if (parsed.flags.reprint) reasons.push("reprint");
+  if (parsed.flags.digital) reasons.push("digital");
+  if (parsed.flags.custom) reasons.push("custom");
+  if (parsed.flags.sealed) reasons.push("sealed wax");
+  if (parsed.flags.lot) reasons.push("lot/collection/repack");
+  if (listing.totalCost <= 0) reasons.push("invalid price");
+
+  const hasStrongTrait =
+    parsed.flags.graded ||
+    parsed.flags.autograph ||
+    parsed.flags.rookie ||
+    parsed.flags.numbered ||
+    parsed.flags.firstBowman ||
+    parsed.flags.pokemon;
+
+  if (!hasStrongTrait) reasons.push("not enough collector traits");
+  if (listing.score < store.settings.minDealScore) reasons.push("score too low");
+  if (listing.estimatedProfit < store.settings.minProfit) reasons.push("profit too low");
+  if (listing.roi < store.settings.minRoi) reasons.push("ROI too low");
+
+  return {
+    passed: reasons.length === 0,
+    reasons
+  };
+}
+
+function saveScoutedListing(listing, query, lane) {
   const scoring = scoreListing(listing);
+  const detectedLane = detectLane(listing.title, lane);
   const now = new Date().toISOString();
   const existing = store.listings[listing.ebayItemId];
 
   const saved = {
     ...listing,
+    lane: detectedLane,
     query,
     score: scoring.score,
     estimatedValue: scoring.estimatedValue,
@@ -330,12 +454,16 @@ function saveScoutedListing(listing, query) {
     alertCreated: existing?.alertCreated || false
   };
 
+  const gate = dealGate(saved);
+  saved.dealGate = gate;
+
   store.listings[listing.ebayItemId] = saved;
 
-  if (!saved.alertCreated && saved.score >= store.settings.minDealScore) {
-    const alert = {
+  if (!saved.alertCreated && gate.passed) {
+    store.alerts.unshift({
       id: `${listing.ebayItemId}-${Date.now()}`,
       ebayItemId: listing.ebayItemId,
+      lane: detectedLane,
       title: listing.title,
       price: listing.price,
       shipping: listing.shipping,
@@ -350,12 +478,23 @@ function saveScoutedListing(listing, query) {
       parsed: saved.parsed,
       createdAt: now,
       status: "new"
-    };
+    });
 
-    store.alerts.unshift(alert);
     store.listings[listing.ebayItemId].alertCreated = true;
+  } else if (!gate.passed) {
+    store.rejections.unshift({
+      ebayItemId: listing.ebayItemId,
+      lane: detectedLane,
+      title: listing.title,
+      score: saved.score,
+      estimatedProfit: saved.estimatedProfit,
+      roi: saved.roi,
+      reasons: gate.reasons,
+      createdAt: now
+    });
   }
 
+  store.rejections = store.rejections.slice(0, 300);
   return saved;
 }
 
@@ -365,7 +504,7 @@ async function runScoutScan(source = "automatic") {
     source,
     startedAt: new Date().toISOString(),
     finishedAt: null,
-    queries: [],
+    lanes: [],
     listingsFound: 0,
     newAlerts: 0,
     status: "running",
@@ -375,15 +514,22 @@ async function runScoutScan(source = "automatic") {
   const alertsBefore = store.alerts.length;
 
   try {
-    for (const query of store.settings.scoutQueries) {
-      const results = await searchEbay(query, 25);
+    for (const [laneKey, lane] of Object.entries(LANES)) {
+      if (laneKey === "all") continue;
 
-      scan.queries.push({ query, count: results.length });
-      scan.listingsFound += results.length;
+      let laneCount = 0;
 
-      for (const listing of results) {
-        saveScoutedListing(listing, query);
+      for (const query of lane.queries) {
+        const results = await searchEbay(query, 12);
+        laneCount += results.length;
+        scan.listingsFound += results.length;
+
+        for (const listing of results) {
+          saveScoutedListing(listing, query, laneKey);
+        }
       }
+
+      scan.lanes.push({ lane: laneKey, count: laneCount });
     }
 
     scan.newAlerts = store.alerts.length - alertsBefore;
@@ -403,6 +549,27 @@ async function runScoutScan(source = "automatic") {
   return scan;
 }
 
+function rescoreExistingData() {
+  for (const item of Object.values(store.listings)) {
+    item.parsed = parseCardTitle(item.title);
+    item.lane = item.lane || detectLane(item.title);
+    const scoring = scoreListing(item);
+    item.score = scoring.score;
+    item.estimatedValue = scoring.estimatedValue;
+    item.estimatedProfit = scoring.estimatedProfit;
+    item.roi = scoring.roi;
+    item.ebayFees = scoring.ebayFees;
+    item.dealGate = dealGate(item);
+  }
+
+  store.alerts = store.alerts.filter(alert => {
+    const item = store.listings[alert.ebayItemId];
+    if (!item) return false;
+    const gate = dealGate(item);
+    return gate.passed;
+  });
+}
+
 function startScoutEngine() {
   if (!SCOUT_ENABLED) {
     console.log("Scout Engine disabled.");
@@ -410,9 +577,20 @@ function startScoutEngine() {
   }
 
   console.log(`Scout Engine enabled. Running every ${SCOUT_INTERVAL_MINUTES} minutes.`);
-
   setTimeout(() => runScoutScan("startup"), 3000);
   setInterval(() => runScoutScan("automatic"), SCOUT_INTERVAL_MINUTES * 60 * 1000);
+}
+
+function laneTabs(activeLane, page) {
+  return `
+    <div class="tabs">
+      ${Object.entries(LANES).map(([key, lane]) => `
+        <a class="${activeLane === key ? "active" : ""}" href="/${page}?lane=${key}">
+          ${escapeHtml(lane.label)}
+        </a>
+      `).join("")}
+    </div>
+  `;
 }
 
 function layout(title, content) {
@@ -422,13 +600,15 @@ function layout(title, content) {
         <title>${escapeHtml(title)}</title>
         <style>
           body { margin: 0; font-family: Arial, sans-serif; background: #0f172a; color: white; }
-          .container { max-width: 1250px; margin: auto; padding: 34px 20px; }
+          .container { max-width: 1300px; margin: auto; padding: 34px 20px; }
           h1 { font-size: 42px; margin-bottom: 8px; }
           .subtitle { color: #94a3b8; margin-bottom: 24px; }
-          nav { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-          nav a, button { padding: 12px 16px; border: none; border-radius: 10px; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; text-decoration: none; }
+          nav, .tabs { display: flex; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+          nav a, button, .tabs a { padding: 12px 16px; border: none; border-radius: 10px; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; text-decoration: none; }
+          .tabs a { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+          .tabs a.active { background: #22c55e; color: #052e16; }
           form { display: flex; gap: 10px; margin-bottom: 26px; }
-          input { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; }
+          input, select { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; }
           .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
           .stat { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 18px; }
           .number { font-size: 30px; font-weight: bold; color: #22c55e; }
@@ -440,28 +620,31 @@ function layout(title, content) {
           .meta { color: #cbd5e1; font-size: 14px; margin: 6px 0; }
           .score { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #facc15; color: #0f172a; font-weight: bold; margin: 8px 0; }
           .tag { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #334155; color: #e2e8f0; font-size: 12px; margin: 3px 3px 3px 0; }
-          .avoid { background: #7f1d1d; }
           .premium { background: #14532d; }
+          .avoid { background: #7f1d1d; }
           a { color: #38bdf8; font-weight: bold; }
           table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 14px; overflow: hidden; }
           th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: left; font-size: 14px; }
           th { color: #94a3b8; }
-          pre { white-space: pre-wrap; background: #1e293b; padding: 18px; border-radius: 12px; }
+          .empty { background: #1e293b; padding: 28px; border-radius: 16px; color: #cbd5e1; }
         </style>
       </head>
       <body>
         <div class="container">
           <h1>🦅 CardHawk</h1>
-          <div class="subtitle">Private eBay scouting engine. Built to find undervalued cards automatically.</div>
+          <div class="subtitle">Private scouting engine. Built to find cards that can actually make money.</div>
+
           <nav>
             <a href="/">Dashboard</a>
             <a href="/alerts">Deal Alerts</a>
+            <a href="/rejections">Rejected</a>
             <a href="/scans">Scan History</a>
             <a href="/search">Manual Search</a>
             <form method="POST" action="/scan-now" style="margin:0;">
               <button type="submit">Run Scout Now</button>
             </form>
           </nav>
+
           ${content}
         </div>
       </body>
@@ -469,47 +652,76 @@ function layout(title, content) {
   `;
 }
 
-app.get("/", (req, res) => {
-  const listings = Object.values(store.listings);
-  const alerts = store.alerts;
-  const scans = store.scans;
+function getLane(req) {
+  const lane = req.query.lane || "all";
+  return LANES[lane] ? lane : "all";
+}
 
-  const latestListings = listings
-    .sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt))
-    .slice(0, 12);
+function filterByLane(items, lane) {
+  if (lane === "all") return items;
+  return items.filter(item => item.lane === lane);
+}
+
+app.get("/", (req, res) => {
+  const lane = getLane(req);
+  const listings = filterByLane(Object.values(store.listings), lane);
+  const alerts = filterByLane(store.alerts, lane);
+  const latestListings = listings.sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt)).slice(0, 12);
 
   res.send(layout("CardHawk Dashboard", `
+    ${laneTabs(lane, "")}
+
     <div class="stats">
       <div class="stat"><div class="number">${listings.length}</div><div>Total Listings Scouted</div></div>
-      <div class="stat"><div class="number">${alerts.filter(a => a.status === "new").length}</div><div>New Deal Alerts</div></div>
-      <div class="stat"><div class="number">${scans.length}</div><div>Total Scout Scans</div></div>
+      <div class="stat"><div class="number">${alerts.length}</div><div>Real Deal Alerts</div></div>
+      <div class="stat"><div class="number">${store.scans.length}</div><div>Total Scout Scans</div></div>
       <div class="stat"><div class="number">${SCOUT_ENABLED ? "ON" : "OFF"}</div><div>Scout Engine</div></div>
     </div>
 
     <h2>Latest Scouted Listings</h2>
-    <div class="grid">${latestListings.map(item => listingCard(item)).join("")}</div>
+    ${latestListings.length ? `<div class="grid">${latestListings.map(listingCard).join("")}</div>` : `<div class="empty">No listings scouted in this lane yet.</div>`}
   `));
 });
 
 app.get("/alerts", (req, res) => {
+  const lane = getLane(req);
+  const alerts = filterByLane(store.alerts, lane);
+
   res.send(layout("CardHawk Alerts", `
+    ${laneTabs(lane, "alerts")}
     <h2>Deal Alerts</h2>
-    <div class="grid">${store.alerts.map(alert => listingCard(alert)).join("")}</div>
+    ${alerts.length ? `<div class="grid">${alerts.map(listingCard).join("")}</div>` : `<div class="empty">No real deals right now. That is good — CardHawk is filtering out noise.</div>`}
+  `));
+});
+
+app.get("/rejections", (req, res) => {
+  const lane = getLane(req);
+  const rejections = filterByLane(store.rejections, lane).slice(0, 80);
+
+  res.send(layout("Rejected Listings", `
+    ${laneTabs(lane, "rejections")}
+    <h2>Rejected Listings</h2>
+    <table>
+      <tr><th>Lane</th><th>Title</th><th>Score</th><th>Profit</th><th>ROI</th><th>Reasons</th></tr>
+      ${rejections.map(r => `
+        <tr>
+          <td>${escapeHtml(LANES[r.lane]?.label || r.lane)}</td>
+          <td>${escapeHtml(r.title)}</td>
+          <td>${r.score}</td>
+          <td>$${money(r.estimatedProfit)}</td>
+          <td>${Math.round((r.roi || 0) * 100)}%</td>
+          <td>${escapeHtml((r.reasons || []).join(", "))}</td>
+        </tr>
+      `).join("")}
+    </table>
   `));
 });
 
 app.get("/scans", (req, res) => {
-  res.send(layout("CardHawk Scan History", `
+  res.send(layout("Scan History", `
     <h2>Scan History</h2>
     <table>
-      <tr>
-        <th>Started</th>
-        <th>Source</th>
-        <th>Status</th>
-        <th>Listings Found</th>
-        <th>New Alerts</th>
-        <th>Error</th>
-      </tr>
+      <tr><th>Started</th><th>Source</th><th>Status</th><th>Listings</th><th>New Alerts</th><th>Lanes</th><th>Error</th></tr>
       ${store.scans.map(scan => `
         <tr>
           <td>${escapeHtml(scan.startedAt)}</td>
@@ -517,6 +729,7 @@ app.get("/scans", (req, res) => {
           <td>${escapeHtml(scan.status)}</td>
           <td>${scan.listingsFound}</td>
           <td>${scan.newAlerts}</td>
+          <td>${escapeHtml((scan.lanes || []).map(l => `${l.lane}: ${l.count}`).join(" | "))}</td>
           <td>${escapeHtml(scan.error || "")}</td>
         </tr>
       `).join("")}
@@ -527,18 +740,30 @@ app.get("/scans", (req, res) => {
 app.get("/search", async (req, res) => {
   try {
     const query = req.query.q || "";
+    const selectedLane = req.query.lane || "baseball";
     const results = query ? await searchEbay(query, 12) : [];
 
-    res.send(layout("CardHawk Manual Search", `
+    const scored = results.map(item => {
+      const scoring = scoreListing(item);
+      const lane = detectLane(item.title, selectedLane);
+      const full = { ...item, ...scoring, lane };
+      full.dealGate = dealGate(full);
+      return full;
+    });
+
+    res.send(layout("Manual Search", `
       <form>
         <input name="q" value="${escapeHtml(query)}" placeholder="Search for a card..." />
+        <select name="lane">
+          ${Object.entries(LANES).filter(([k]) => k !== "all").map(([key, lane]) => `
+            <option value="${key}" ${selectedLane === key ? "selected" : ""}>${escapeHtml(lane.label)}</option>
+          `).join("")}
+        </select>
         <button>Search</button>
       </form>
 
-      <h2>Manual Results${query ? ` for: ${escapeHtml(query)}` : ""}</h2>
-      <div class="grid">
-        ${results.map(item => listingCard({ ...item, ...scoreListing(item) })).join("")}
-      </div>
+      <h2>Manual Results</h2>
+      <div class="grid">${scored.map(listingCard).join("")}</div>
     `));
   } catch (error) {
     res.status(500).send(layout("Error", `<pre>${escapeHtml(error.message)}</pre>`));
@@ -557,15 +782,15 @@ app.get("/api/status", (req, res) => {
     totalListings: Object.keys(store.listings).length,
     totalAlerts: store.alerts.length,
     totalScans: store.scans.length,
-    scoutQueries: store.settings.scoutQueries
+    lanes: Object.keys(LANES)
   });
 });
 
-function parsedTags(parsed) {
+function parsedTags(parsed, lane) {
   if (!parsed) return "";
 
   const tags = [];
-
+  if (lane && LANES[lane]) tags.push(LANES[lane].label);
   tags.push(parsed.qualityTier);
   if (parsed.year) tags.push(String(parsed.year));
   if (parsed.setName && parsed.setName !== "Unknown") tags.push(parsed.setName);
@@ -573,10 +798,10 @@ function parsedTags(parsed) {
   if (parsed.flags.autograph) tags.push("Auto");
   if (parsed.flags.rookie) tags.push("Rookie");
   if (parsed.flags.numbered) tags.push(`/${parsed.numberedTo}`);
+  if (parsed.flags.refractor) tags.push("Refractor");
   if (parsed.flags.lot) tags.push("Lot");
+  if (parsed.flags.sealed) tags.push("Wax");
   if (parsed.flags.reprint) tags.push("Reprint");
-  if (parsed.flags.digital) tags.push("Digital");
-  if (parsed.flags.custom) tags.push("Custom");
 
   return tags.map(tag => {
     const cls = parsed.qualityTier === "avoid" ? "tag avoid" : parsed.qualityTier === "premium" ? "tag premium" : "tag";
@@ -589,7 +814,7 @@ function listingCard(item) {
     <div class="card">
       <img src="${escapeHtml(item.image || "")}" />
       <div class="title">${escapeHtml(item.title)}</div>
-      <div>${parsedTags(item.parsed)}</div>
+      <div>${parsedTags(item.parsed, item.lane)}</div>
       <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
       <div class="price">$${money(item.totalCost || item.price)}</div>
       <div class="meta">Price: $${money(item.price)}</div>
@@ -599,6 +824,7 @@ function listingCard(item) {
       <div class="meta">ROI: ${Math.round((item.roi || 0) * 100)}%</div>
       <div class="meta">Condition: ${escapeHtml(item.condition || "Unknown")}</div>
       <div class="meta">Seller: ${escapeHtml(item.sellerUsername || "Unknown")}</div>
+      ${item.dealGate && !item.dealGate.passed ? `<div class="meta">Rejected: ${escapeHtml(item.dealGate.reasons.join(", "))}</div>` : ""}
       <a href="${escapeHtml(item.url)}" target="_blank">View on eBay</a>
     </div>
   `;
