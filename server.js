@@ -12,20 +12,21 @@ const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "cardhawk-data.json");
 
 const DEFAULT_SCOUT_QUERIES = [
-  "baseball card rookie auto",
-  "psa 10 baseball card",
-  "bowman chrome auto baseball",
-  "topps chrome rookie auto baseball",
-  "sports card lot rookie auto"
+  "PSA 10 baseball rookie auto",
+  "Bowman Chrome baseball auto",
+  "Topps Chrome baseball rookie auto",
+  "SGC 10 baseball rookie card",
+  "BGS 9.5 baseball auto",
+  "2024 Bowman Chrome auto",
+  "2023 Bowman Chrome auto",
+  "2024 Topps Chrome rookie auto",
+  "2023 Topps Chrome rookie auto"
 ];
 
 const SCOUT_INTERVAL_MINUTES = Number(process.env.SCOUT_INTERVAL_MINUTES || 10);
 const SCOUT_ENABLED = String(process.env.SCOUT_ENABLED || "true").toLowerCase() === "true";
 
-let ebayTokenCache = {
-  token: null,
-  expiresAt: 0
-};
+let ebayTokenCache = { token: null, expiresAt: 0 };
 
 let store = {
   listings: {},
@@ -33,27 +34,32 @@ let store = {
   scans: [],
   settings: {
     scoutQueries: DEFAULT_SCOUT_QUERIES,
-    minDealScore: 65
+    minDealScore: 70
   }
 };
 
 function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR);
-  }
-
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
-  }
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
 }
 
 function loadStore() {
   try {
     ensureDataFile();
     const raw = fs.readFileSync(DATA_FILE, "utf8");
-    store = JSON.parse(raw);
+    const loaded = JSON.parse(raw);
+
+    store = {
+      listings: loaded.listings || {},
+      alerts: loaded.alerts || [],
+      scans: loaded.scans || [],
+      settings: {
+        scoutQueries: loaded.settings?.scoutQueries || DEFAULT_SCOUT_QUERIES,
+        minDealScore: loaded.settings?.minDealScore || 70
+      }
+    };
   } catch (error) {
-    console.error("Failed to load data file. Starting with default store.", error.message);
+    console.error("Failed to load data file:", error.message);
     saveStore();
   }
 }
@@ -75,10 +81,7 @@ function requireLogin(req, res, next) {
   const decoded = Buffer.from(encoded, "base64").toString();
   const [user, pass] = decoded.split(":");
 
-  if (
-    user === process.env.CARDHAWK_USER &&
-    pass === process.env.CARDHAWK_PASS
-  ) {
+  if (user === process.env.CARDHAWK_USER && pass === process.env.CARDHAWK_PASS) {
     return next();
   }
 
@@ -89,8 +92,7 @@ function requireLogin(req, res, next) {
 app.use(requireLogin);
 
 function money(value) {
-  const number = Number(value || 0);
-  return number.toFixed(2);
+  return Number(value || 0).toFixed(2);
 }
 
 function escapeHtml(value) {
@@ -123,14 +125,11 @@ async function getEbayToken() {
   });
 
   const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(JSON.stringify(data));
-  }
+  if (!response.ok) throw new Error(JSON.stringify(data));
 
   ebayTokenCache = {
     token: data.access_token,
-    expiresAt: Date.now() + (Number(data.expires_in || 7200) * 1000)
+    expiresAt: Date.now() + Number(data.expires_in || 7200) * 1000
   };
 
   return ebayTokenCache.token;
@@ -152,10 +151,7 @@ async function searchEbay(query, limit = 25) {
   });
 
   const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(JSON.stringify(data));
-  }
+  if (!response.ok) throw new Error(JSON.stringify(data));
 
   return (data.itemSummaries || []).map(normalizeEbayItem);
 }
@@ -164,6 +160,7 @@ function normalizeEbayItem(item) {
   const price = Number(item.price?.value || 0);
   const shipping = Number(item.shippingOptions?.[0]?.shippingCost?.value || 0);
   const totalCost = price + shipping;
+  const parsed = parseCardTitle(item.title || "");
 
   return {
     ebayItemId: item.itemId,
@@ -180,28 +177,90 @@ function normalizeEbayItem(item) {
     sellerFeedbackScore: Number(item.seller?.feedbackScore || 0),
     buyingOptions: item.buyingOptions || [],
     itemEndDate: item.itemEndDate || null,
+    parsed,
     raw: item
   };
 }
 
+function parseCardTitle(title) {
+  const lower = title.toLowerCase();
+
+  const yearMatch = lower.match(/\b(19[5-9][0-9]|20[0-3][0-9])\b/);
+  const gradeMatch = lower.match(/\b(psa|sgc|bgs|cgc)\s*(10|9\.5|9|8\.5|8)\b/i);
+  const numberedMatch = lower.match(/\/\s*(\d{1,4})\b/);
+
+  const flags = {
+    autograph: /\b(auto|autograph|signed)\b/i.test(title),
+    rookie: /\b(rookie|rc)\b/i.test(title),
+    graded: /\b(psa|sgc|bgs|cgc)\b/i.test(title),
+    numbered: Boolean(numberedMatch),
+    chrome: /\bchrome\b/i.test(title),
+    bowman: /\bbowman\b/i.test(title),
+    topps: /\btopps\b/i.test(title),
+    prizm: /\bprizm\b/i.test(title),
+    refractor: /\brefractor\b/i.test(title),
+    firstBowman: /\b1st bowman\b/i.test(title),
+    lot: /\b(lot|collection|bulk|mystery|repack|break)\b/i.test(title),
+    reprint: /\b(reprint|rp|facsimile)\b/i.test(title),
+    digital: /\b(digital|nft)\b/i.test(title),
+    custom: /\b(custom|art card)\b/i.test(title),
+    sealed: /\b(box|pack|blaster|mega|hobby)\b/i.test(title)
+  };
+
+  let setName = "Unknown";
+
+  if (flags.bowman && flags.chrome) setName = "Bowman Chrome";
+  else if (flags.topps && flags.chrome) setName = "Topps Chrome";
+  else if (flags.bowman) setName = "Bowman";
+  else if (flags.topps) setName = "Topps";
+  else if (flags.prizm) setName = "Prizm";
+
+  let qualityTier = "unknown";
+
+  if (flags.reprint || flags.digital || flags.custom) qualityTier = "avoid";
+  else if (flags.lot || flags.sealed) qualityTier = "low-confidence";
+  else if (flags.graded && flags.autograph && flags.rookie) qualityTier = "premium";
+  else if (flags.autograph && flags.rookie) qualityTier = "strong";
+  else if (flags.graded || flags.autograph || flags.rookie || flags.numbered) qualityTier = "watch";
+  else qualityTier = "generic";
+
+  return {
+    year: yearMatch ? Number(yearMatch[1]) : null,
+    gradeCompany: gradeMatch ? gradeMatch[1].toUpperCase() : null,
+    grade: gradeMatch ? Number(gradeMatch[2]) : null,
+    numberedTo: numberedMatch ? Number(numberedMatch[1]) : null,
+    setName,
+    qualityTier,
+    flags
+  };
+}
+
 function estimateMarketValue(listing) {
-  const title = listing.title.toLowerCase();
+  const parsed = listing.parsed || parseCardTitle(listing.title);
+  let multiplier = 1.15;
 
-  let multiplier = 1.35;
+  if (parsed.flags.graded) multiplier += 0.2;
+  if (parsed.grade === 10) multiplier += 0.25;
+  if (parsed.grade === 9.5) multiplier += 0.15;
+  if (parsed.flags.autograph) multiplier += 0.25;
+  if (parsed.flags.rookie) multiplier += 0.15;
+  if (parsed.flags.firstBowman) multiplier += 0.2;
+  if (parsed.flags.numbered) multiplier += 0.15;
+  if (parsed.flags.refractor) multiplier += 0.1;
+  if (parsed.setName === "Bowman Chrome") multiplier += 0.15;
+  if (parsed.setName === "Topps Chrome") multiplier += 0.1;
 
-  if (title.includes("psa 10")) multiplier += 0.25;
-  if (title.includes("auto") || title.includes("autograph")) multiplier += 0.2;
-  if (title.includes("rookie") || title.includes(" rc ")) multiplier += 0.15;
-  if (title.includes("bowman chrome")) multiplier += 0.15;
-  if (title.includes("lot")) multiplier -= 0.2;
-  if (title.includes("reprint")) multiplier -= 0.6;
-  if (title.includes("digital")) multiplier -= 0.8;
+  if (parsed.flags.lot) multiplier -= 0.45;
+  if (parsed.flags.sealed) multiplier -= 0.25;
+  if (parsed.flags.reprint) multiplier -= 0.9;
+  if (parsed.flags.digital) multiplier -= 0.9;
+  if (parsed.flags.custom) multiplier -= 0.7;
 
-  const estimatedValue = listing.totalCost * multiplier;
-  return Math.max(0, estimatedValue);
+  return Math.max(0, listing.totalCost * multiplier);
 }
 
 function scoreListing(listing) {
+  const parsed = listing.parsed || parseCardTitle(listing.title);
   const estimatedValue = estimateMarketValue(listing);
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
@@ -209,27 +268,37 @@ function scoreListing(listing) {
 
   let score = 0;
 
-  if (estimatedProfit > 10) score += 15;
-  if (estimatedProfit > 25) score += 20;
-  if (estimatedProfit > 50) score += 20;
-  if (roi > 0.2) score += 15;
-  if (roi > 0.35) score += 15;
-  if (roi > 0.5) score += 15;
+  if (parsed.qualityTier === "premium") score += 45;
+  if (parsed.qualityTier === "strong") score += 35;
+  if (parsed.qualityTier === "watch") score += 20;
+  if (parsed.qualityTier === "generic") score += 5;
+  if (parsed.qualityTier === "low-confidence") score -= 20;
+  if (parsed.qualityTier === "avoid") score = 0;
 
-  const title = listing.title.toLowerCase();
+  if (estimatedProfit > 10) score += 10;
+  if (estimatedProfit > 25) score += 15;
+  if (estimatedProfit > 50) score += 15;
+  if (roi > 0.2) score += 10;
+  if (roi > 0.35) score += 10;
+  if (roi > 0.5) score += 10;
 
-  if (title.includes("psa 10")) score += 8;
-  if (title.includes("auto") || title.includes("autograph")) score += 8;
-  if (title.includes("rookie") || title.includes(" rc ")) score += 6;
-  if (title.includes("bowman chrome")) score += 6;
+  if (parsed.flags.firstBowman) score += 8;
+  if (parsed.flags.numbered) score += 6;
+  if (parsed.grade === 10) score += 8;
+  if (parsed.setName === "Bowman Chrome") score += 6;
+  if (parsed.setName === "Topps Chrome") score += 4;
 
-  if (title.includes("reprint")) score -= 40;
-  if (title.includes("digital")) score -= 40;
-  if (title.includes("custom")) score -= 20;
+  if (parsed.flags.lot) score -= 35;
+  if (parsed.flags.sealed) score -= 20;
+  if (parsed.flags.reprint) score -= 80;
+  if (parsed.flags.digital) score -= 80;
+  if (parsed.flags.custom) score -= 60;
 
-  if (listing.sellerFeedbackPercentage >= 99) score += 5;
-  if (listing.sellerFeedbackScore >= 100) score += 5;
+  if (listing.sellerFeedbackPercentage >= 99) score += 4;
+  if (listing.sellerFeedbackScore >= 100) score += 4;
+
   if (listing.totalCost <= 0) score = 0;
+  if (listing.totalCost > 500 && estimatedProfit < 100) score -= 15;
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
@@ -245,7 +314,6 @@ function scoreListing(listing) {
 function saveScoutedListing(listing, query) {
   const scoring = scoreListing(listing);
   const now = new Date().toISOString();
-
   const existing = store.listings[listing.ebayItemId];
 
   const saved = {
@@ -279,6 +347,7 @@ function saveScoutedListing(listing, query) {
       url: listing.url,
       image: listing.image,
       query,
+      parsed: saved.parsed,
       createdAt: now,
       status: "new"
     };
@@ -309,11 +378,7 @@ async function runScoutScan(source = "automatic") {
     for (const query of store.settings.scoutQueries) {
       const results = await searchEbay(query, 25);
 
-      scan.queries.push({
-        query,
-        count: results.length
-      });
-
+      scan.queries.push({ query, count: results.length });
       scan.listingsFound += results.length;
 
       for (const listing of results) {
@@ -335,7 +400,6 @@ async function runScoutScan(source = "automatic") {
   store.alerts = store.alerts.slice(0, 200);
 
   saveStore();
-
   return scan;
 }
 
@@ -347,13 +411,8 @@ function startScoutEngine() {
 
   console.log(`Scout Engine enabled. Running every ${SCOUT_INTERVAL_MINUTES} minutes.`);
 
-  setTimeout(() => {
-    runScoutScan("startup");
-  }, 3000);
-
-  setInterval(() => {
-    runScoutScan("automatic");
-  }, SCOUT_INTERVAL_MINUTES * 60 * 1000);
+  setTimeout(() => runScoutScan("startup"), 3000);
+  setInterval(() => runScoutScan("automatic"), SCOUT_INTERVAL_MINUTES * 60 * 1000);
 }
 
 function layout(title, content) {
@@ -362,147 +421,38 @@ function layout(title, content) {
       <head>
         <title>${escapeHtml(title)}</title>
         <style>
-          body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #0f172a;
-            color: white;
-          }
-          .container {
-            max-width: 1200px;
-            margin: auto;
-            padding: 34px 20px;
-          }
-          h1 {
-            font-size: 42px;
-            margin-bottom: 8px;
-          }
-          .subtitle {
-            color: #94a3b8;
-            margin-bottom: 24px;
-          }
-          nav {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-          }
-          nav a, button, .button {
-            padding: 12px 16px;
-            border: none;
-            border-radius: 10px;
-            background: #38bdf8;
-            color: #0f172a;
-            font-weight: bold;
-            cursor: pointer;
-            text-decoration: none;
-          }
-          form {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 26px;
-          }
-          input {
-            flex: 1;
-            padding: 14px;
-            border-radius: 10px;
-            border: none;
-            font-size: 16px;
-          }
-          .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-            gap: 14px;
-            margin-bottom: 24px;
-          }
-          .stat {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 16px;
-            padding: 18px;
-          }
-          .stat .number {
-            font-size: 30px;
-            font-weight: bold;
-            color: #22c55e;
-          }
-          .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
-            gap: 18px;
-          }
-          .card {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 16px;
-            padding: 16px;
-          }
-          .card img {
-            width: 100%;
-            height: 220px;
-            object-fit: contain;
-            background: white;
-            border-radius: 12px;
-            margin-bottom: 12px;
-          }
-          .title {
-            font-size: 16px;
-            font-weight: bold;
-            min-height: 58px;
-          }
-          .price {
-            color: #22c55e;
-            font-size: 22px;
-            font-weight: bold;
-            margin-top: 10px;
-          }
-          .meta {
-            color: #cbd5e1;
-            font-size: 14px;
-            margin: 6px 0;
-          }
-          .score {
-            display: inline-block;
-            padding: 7px 10px;
-            border-radius: 999px;
-            background: #facc15;
-            color: #0f172a;
-            font-weight: bold;
-            margin: 8px 0;
-          }
-          a {
-            color: #38bdf8;
-            font-weight: bold;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            background: #1e293b;
-            border-radius: 14px;
-            overflow: hidden;
-          }
-          th, td {
-            padding: 12px;
-            border-bottom: 1px solid #334155;
-            text-align: left;
-            font-size: 14px;
-          }
-          th {
-            color: #94a3b8;
-          }
-          pre {
-            white-space: pre-wrap;
-            background: #1e293b;
-            padding: 18px;
-            border-radius: 12px;
-          }
+          body { margin: 0; font-family: Arial, sans-serif; background: #0f172a; color: white; }
+          .container { max-width: 1250px; margin: auto; padding: 34px 20px; }
+          h1 { font-size: 42px; margin-bottom: 8px; }
+          .subtitle { color: #94a3b8; margin-bottom: 24px; }
+          nav { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+          nav a, button { padding: 12px 16px; border: none; border-radius: 10px; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; text-decoration: none; }
+          form { display: flex; gap: 10px; margin-bottom: 26px; }
+          input { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; }
+          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+          .stat { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 18px; }
+          .number { font-size: 30px; font-weight: bold; color: #22c55e; }
+          .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 18px; }
+          .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 16px; }
+          .card img { width: 100%; height: 220px; object-fit: contain; background: white; border-radius: 12px; margin-bottom: 12px; }
+          .title { font-size: 16px; font-weight: bold; min-height: 58px; }
+          .price { color: #22c55e; font-size: 22px; font-weight: bold; margin-top: 10px; }
+          .meta { color: #cbd5e1; font-size: 14px; margin: 6px 0; }
+          .score { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #facc15; color: #0f172a; font-weight: bold; margin: 8px 0; }
+          .tag { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #334155; color: #e2e8f0; font-size: 12px; margin: 3px 3px 3px 0; }
+          .avoid { background: #7f1d1d; }
+          .premium { background: #14532d; }
+          a { color: #38bdf8; font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 14px; overflow: hidden; }
+          th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: left; font-size: 14px; }
+          th { color: #94a3b8; }
+          pre { white-space: pre-wrap; background: #1e293b; padding: 18px; border-radius: 12px; }
         </style>
       </head>
       <body>
         <div class="container">
           <h1>🦅 CardHawk</h1>
           <div class="subtitle">Private eBay scouting engine. Built to find undervalued cards automatically.</div>
-
           <nav>
             <a href="/">Dashboard</a>
             <a href="/alerts">Deal Alerts</a>
@@ -512,7 +462,6 @@ function layout(title, content) {
               <button type="submit">Run Scout Now</button>
             </form>
           </nav>
-
           ${content}
         </div>
       </body>
@@ -531,37 +480,21 @@ app.get("/", (req, res) => {
 
   res.send(layout("CardHawk Dashboard", `
     <div class="stats">
-      <div class="stat">
-        <div class="number">${listings.length}</div>
-        <div>Total Listings Scouted</div>
-      </div>
-      <div class="stat">
-        <div class="number">${alerts.filter(a => a.status === "new").length}</div>
-        <div>New Deal Alerts</div>
-      </div>
-      <div class="stat">
-        <div class="number">${scans.length}</div>
-        <div>Total Scout Scans</div>
-      </div>
-      <div class="stat">
-        <div class="number">${SCOUT_ENABLED ? "ON" : "OFF"}</div>
-        <div>Scout Engine</div>
-      </div>
+      <div class="stat"><div class="number">${listings.length}</div><div>Total Listings Scouted</div></div>
+      <div class="stat"><div class="number">${alerts.filter(a => a.status === "new").length}</div><div>New Deal Alerts</div></div>
+      <div class="stat"><div class="number">${scans.length}</div><div>Total Scout Scans</div></div>
+      <div class="stat"><div class="number">${SCOUT_ENABLED ? "ON" : "OFF"}</div><div>Scout Engine</div></div>
     </div>
 
     <h2>Latest Scouted Listings</h2>
-    <div class="grid">
-      ${latestListings.map(item => listingCard(item)).join("")}
-    </div>
+    <div class="grid">${latestListings.map(item => listingCard(item)).join("")}</div>
   `));
 });
 
 app.get("/alerts", (req, res) => {
   res.send(layout("CardHawk Alerts", `
     <h2>Deal Alerts</h2>
-    <div class="grid">
-      ${store.alerts.map(alert => listingCard(alert)).join("")}
-    </div>
+    <div class="grid">${store.alerts.map(alert => listingCard(alert)).join("")}</div>
   `));
 });
 
@@ -593,8 +526,8 @@ app.get("/scans", (req, res) => {
 
 app.get("/search", async (req, res) => {
   try {
-    const query = req.query.q || "baseball card";
-    const results = req.query.q ? await searchEbay(query, 12) : [];
+    const query = req.query.q || "";
+    const results = query ? await searchEbay(query, 12) : [];
 
     res.send(layout("CardHawk Manual Search", `
       <form>
@@ -602,8 +535,7 @@ app.get("/search", async (req, res) => {
         <button>Search</button>
       </form>
 
-      <h2>Manual Results${req.query.q ? ` for: ${escapeHtml(query)}` : ""}</h2>
-
+      <h2>Manual Results${query ? ` for: ${escapeHtml(query)}` : ""}</h2>
       <div class="grid">
         ${results.map(item => listingCard({ ...item, ...scoreListing(item) })).join("")}
       </div>
@@ -629,11 +561,35 @@ app.get("/api/status", (req, res) => {
   });
 });
 
+function parsedTags(parsed) {
+  if (!parsed) return "";
+
+  const tags = [];
+
+  tags.push(parsed.qualityTier);
+  if (parsed.year) tags.push(String(parsed.year));
+  if (parsed.setName && parsed.setName !== "Unknown") tags.push(parsed.setName);
+  if (parsed.gradeCompany) tags.push(`${parsed.gradeCompany} ${parsed.grade}`);
+  if (parsed.flags.autograph) tags.push("Auto");
+  if (parsed.flags.rookie) tags.push("Rookie");
+  if (parsed.flags.numbered) tags.push(`/${parsed.numberedTo}`);
+  if (parsed.flags.lot) tags.push("Lot");
+  if (parsed.flags.reprint) tags.push("Reprint");
+  if (parsed.flags.digital) tags.push("Digital");
+  if (parsed.flags.custom) tags.push("Custom");
+
+  return tags.map(tag => {
+    const cls = parsed.qualityTier === "avoid" ? "tag avoid" : parsed.qualityTier === "premium" ? "tag premium" : "tag";
+    return `<span class="${cls}">${escapeHtml(tag)}</span>`;
+  }).join("");
+}
+
 function listingCard(item) {
   return `
     <div class="card">
       <img src="${escapeHtml(item.image || "")}" />
       <div class="title">${escapeHtml(item.title)}</div>
+      <div>${parsedTags(item.parsed)}</div>
       <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
       <div class="price">$${money(item.totalCost || item.price)}</div>
       <div class="meta">Price: $${money(item.price)}</div>
