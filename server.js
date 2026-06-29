@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const historyEngine = require("./engines/historyEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -512,6 +513,7 @@ async function runScoutScan(source = "automatic") {
   };
 
   const alertsBefore = store.alerts.length;
+  const observedListings = [];
 
   try {
     for (const [laneKey, lane] of Object.entries(LANES)) {
@@ -525,7 +527,8 @@ async function runScoutScan(source = "automatic") {
         scan.listingsFound += results.length;
 
         for (const listing of results) {
-          saveScoutedListing(listing, query, laneKey);
+          const savedListing = saveScoutedListing(listing, query, laneKey);
+          observedListings.push(savedListing);
         }
       }
 
@@ -538,6 +541,25 @@ async function runScoutScan(source = "automatic") {
     scan.status = "failed";
     scan.error = error.message;
     console.error("Scout scan failed:", error.message);
+  }
+
+  try {
+    const historyResult = historyEngine.recordScan(observedListings, {
+      scanId: scan.id,
+      source
+    });
+
+    scan.history = {
+      observedCount: historyResult.observedCount,
+      trackedCount: historyResult.trackedCount,
+      activeCount: historyResult.activeCount,
+      newCount: historyResult.newListings.length,
+      priceDropCount: historyResult.priceDrops.length,
+      disappearedCount: historyResult.disappeared.length
+    };
+  } catch (historyError) {
+    scan.historyError = historyError.message;
+    console.error("History Engine failed:", historyError.message);
   }
 
   scan.finishedAt = new Date().toISOString();
@@ -721,7 +743,7 @@ app.get("/scans", (req, res) => {
   res.send(layout("Scan History", `
     <h2>Scan History</h2>
     <table>
-      <tr><th>Started</th><th>Source</th><th>Status</th><th>Listings</th><th>New Alerts</th><th>Lanes</th><th>Error</th></tr>
+      <tr><th>Started</th><th>Source</th><th>Status</th><th>Listings</th><th>New Alerts</th><th>History</th><th>Lanes</th><th>Error</th></tr>
       ${store.scans.map(scan => `
         <tr>
           <td>${escapeHtml(scan.startedAt)}</td>
@@ -729,6 +751,7 @@ app.get("/scans", (req, res) => {
           <td>${escapeHtml(scan.status)}</td>
           <td>${scan.listingsFound}</td>
           <td>${scan.newAlerts}</td>
+          <td>${scan.history ? escapeHtml(`new: ${scan.history.newCount}, drops: ${scan.history.priceDropCount}, gone: ${scan.history.disappearedCount}`) : ""}</td>
           <td>${escapeHtml((scan.lanes || []).map(l => `${l.lane}: ${l.count}`).join(" | "))}</td>
           <td>${escapeHtml(scan.error || "")}</td>
         </tr>
@@ -773,6 +796,27 @@ app.get("/search", async (req, res) => {
 app.post("/scan-now", async (req, res) => {
   await runScoutScan("manual");
   res.redirect("/");
+});
+
+app.get("/api/history/summary", (req, res) => {
+  res.json(historyEngine.summarizeHistory());
+});
+
+app.get("/api/history/price-drops", (req, res) => {
+  const lane = req.query.lane || null;
+  const limit = Number(req.query.limit || 50);
+  res.json(historyEngine.getPriceDrops({ lane }, limit));
+});
+
+app.get("/api/history/disappeared", (req, res) => {
+  const limit = Number(req.query.limit || 50);
+  res.json(historyEngine.getDisappearedListings(limit));
+});
+
+app.get("/api/history/listing/:itemId", (req, res) => {
+  const listing = historyEngine.getListing(req.params.itemId);
+  if (!listing) return res.status(404).json({ error: "Listing not found" });
+  res.json(listing);
 });
 
 app.get("/api/status", (req, res) => {
