@@ -27,6 +27,10 @@ function percent(value) {
   return Math.round(Number(value || 0) * 100);
 }
 
+function timeoutMs() {
+  return Number(env("SMTP_TIMEOUT_MS", "15000"));
+}
+
 function getTransporter() {
   if (!nodemailer) {
     throw new Error("nodemailer is not installed. Add it to package.json dependencies.");
@@ -37,6 +41,7 @@ function getTransporter() {
   const secure = String(env("SMTP_SECURE", "true")).toLowerCase() === "true";
   const user = env("SMTP_USER");
   const pass = env("SMTP_PASS");
+  const timeout = timeoutMs();
 
   if (!user || !pass) {
     throw new Error("Missing SMTP_USER or SMTP_PASS environment variable.");
@@ -46,8 +51,22 @@ function getTransporter() {
     host,
     port,
     secure,
-    auth: { user, pass }
+    auth: { user, pass },
+    connectionTimeout: timeout,
+    greetingTimeout: timeout,
+    socketTimeout: timeout
   });
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms. Check SMTP_PORT, SMTP_SECURE, SMTP_PASS, or Railway outbound SMTP access.`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function buildAlertKey(listing) {
@@ -102,13 +121,19 @@ async function sendDealAlert(listing, options = {}) {
   const transporter = getTransporter();
   const subject = options.subject || `CardHawk Deal: $${money(listing.totalCost || listing.price)}`;
   const text = options.smsOnly ? buildSmsBody(listing) : buildEmailBody(listing);
+  const ms = timeoutMs();
 
-  const info = await transporter.sendMail({
-    from,
-    to,
-    subject,
-    text
-  });
+  let info;
+  try {
+    info = await withTimeout(transporter.sendMail({
+      from,
+      to,
+      subject,
+      text
+    }), ms, "CardHawk notification send");
+  } finally {
+    if (typeof transporter.close === "function") transporter.close();
+  }
 
   sentAlertKeys.add(key);
 
@@ -147,7 +172,11 @@ function getStatus() {
     hasSmtpUser: Boolean(env("SMTP_USER")),
     hasSmtpPass: Boolean(env("SMTP_PASS")),
     hasAlertTo: Boolean(env("ALERT_TO")),
-    alertTo: env("ALERT_TO") || null
+    alertTo: env("ALERT_TO") || null,
+    smtpHost: env("SMTP_HOST", "smtp.gmail.com"),
+    smtpPort: Number(env("SMTP_PORT", "465")),
+    smtpSecure: String(env("SMTP_SECURE", "true")).toLowerCase() === "true",
+    smtpTimeoutMs: timeoutMs()
   };
 }
 
