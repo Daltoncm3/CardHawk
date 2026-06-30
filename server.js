@@ -7,6 +7,7 @@ const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
+const systemHealth = require("./engines/systemHealth");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -702,6 +703,7 @@ async function runScoutScan(source = "automatic") {
       error: "Another scout scan is already running."
     };
 
+    systemHealth.markScanSkipped(skippedScan, skippedScan.error);
     store.scans.unshift(skippedScan);
     store.scans = store.scans.slice(0, 100);
     saveStore();
@@ -725,13 +727,18 @@ async function runScoutScan(source = "automatic") {
     laneDelayMs: EBAY_LANE_DELAY_MS
   };
 
+  systemHealth.startScan(scan);
+  systemHealth.setEngine("scout", "running", { source, scanId: scan.id });
+
   const alertsBefore = store.alerts.length;
   const observedListings = [];
+  const scanStartedMs = Date.now();
 
   try {
     for (const [laneKey, lane] of Object.entries(LANES)) {
       if (laneKey === "all") continue;
 
+      const laneStartedMs = Date.now();
       let laneCount = 0;
       const laneErrors = [];
 
@@ -745,6 +752,12 @@ async function runScoutScan(source = "automatic") {
             const savedListing = saveScoutedListing(listing, query, laneKey);
             observedListings.push(savedListing);
           }
+
+          systemHealth.recordScanEngine("ebay", "ok", {
+            lastQuery: query,
+            lane: laneKey,
+            results: results.length
+          });
         } catch (error) {
           const compactError = compactEbayError(error);
           laneErrors.push({ query, error: compactError });
@@ -752,17 +765,32 @@ async function runScoutScan(source = "automatic") {
           if (isEbayRateLimitError(error)) {
             scan.rateLimited = true;
             scan.error = compactError;
+            systemHealth.recordScanEngine("ebay", "warning", {
+              lane: laneKey,
+              query,
+              error: compactError
+            });
             console.warn(`eBay rate limit reached on query "${query}". Ending this scan cleanly.`);
             break;
           }
 
+          systemHealth.recordScanEngine("ebay", "warning", {
+            lane: laneKey,
+            query,
+            error: compactError
+          });
           console.error(`eBay query failed for "${query}":`, compactError);
         }
 
         await sleep(EBAY_SEARCH_DELAY_MS);
       }
 
-      scan.lanes.push({ lane: laneKey, count: laneCount, errors: laneErrors });
+      scan.lanes.push({
+        lane: laneKey,
+        count: laneCount,
+        errors: laneErrors,
+        durationMs: Date.now() - laneStartedMs
+      });
 
       if (scan.rateLimited) break;
       await sleep(EBAY_LANE_DELAY_MS);
@@ -770,9 +798,15 @@ async function runScoutScan(source = "automatic") {
 
     scan.newAlerts = store.alerts.length - alertsBefore;
     scan.status = scan.rateLimited ? "rate_limited" : "completed";
+    systemHealth.setEngine("scout", scan.status === "completed" ? "ok" : "warning", {
+      listingsFound: scan.listingsFound,
+      newAlerts: scan.newAlerts,
+      durationMs: Date.now() - scanStartedMs
+    });
   } catch (error) {
     scan.status = "failed";
     scan.error = compactEbayError(error);
+    systemHealth.setEngine("scout", "failed", { error: scan.error });
     console.error("Scout scan failed:", scan.error);
   }
 
@@ -790,18 +824,24 @@ async function runScoutScan(source = "automatic") {
       priceDropCount: historyResult.priceDrops.length,
       disappearedCount: historyResult.disappeared.length
     };
+
+    systemHealth.recordScanEngine("history", "ok", scan.history);
   } catch (historyError) {
     scan.historyError = historyError.message;
+    systemHealth.recordScanEngine("history", "warning", { error: historyError.message });
     console.error("History Engine failed:", historyError.message);
+  } finally {
+    scan.finishedAt = new Date().toISOString();
+    scan.durationMs = Date.now() - scanStartedMs;
+    store.scans.unshift(scan);
+    store.scans = store.scans.slice(0, 100);
+    store.alerts = store.alerts.slice(0, 200);
+
+    systemHealth.finishScan(scan);
+    saveStore();
+    scanInProgress = false;
   }
 
-  scan.finishedAt = new Date().toISOString();
-  store.scans.unshift(scan);
-  store.scans = store.scans.slice(0, 100);
-  store.alerts = store.alerts.slice(0, 200);
-
-  saveStore();
-  scanInProgress = false;
   return scan;
 }
 
@@ -909,6 +949,10 @@ function layout(title, content) {
           .small { color: #94a3b8; font-size: 13px; }
           .good { color: #22c55e; font-weight: bold; }
           .bad { color: #f87171; font-weight: bold; }
+          .health-ok { color: #22c55e; font-weight: bold; }
+          .health-warning { color: #facc15; font-weight: bold; }
+          .health-failed { color: #f87171; font-weight: bold; }
+          .health-running { color: #38bdf8; font-weight: bold; }
           .table-title { margin-top: 28px; }
         </style>
       </head>
@@ -923,6 +967,7 @@ function layout(title, content) {
             <a href="/rejections">Rejected</a>
             <a href="/history">History</a>
             <a href="/scans">Scan History</a>
+            <a href="/health">Health</a>
             <a href="/search">Manual Search</a>
             <form method="POST" action="/scan-now" style="margin:0;">
               <button type="submit">Run Scout Now</button>
@@ -1464,9 +1509,107 @@ app.get("/api/notifications/test", async (req, res) => {
   }
 });
 
+
+function healthClass(status) {
+  if (status === "ok" || status === "healthy" || status === "completed") return "health-ok";
+  if (status === "running" || status === "scanning") return "health-running";
+  if (status === "warning" || status === "rate_limited" || status === "skipped") return "health-warning";
+  if (status === "failed" || status === "degraded") return "health-failed";
+  return "small";
+}
+
+app.get("/health", (req, res) => {
+  const health = systemHealth.summarizeRuntime(store, {
+    scoutEnabled: SCOUT_ENABLED,
+    rateLimitProtection: {
+      ebaySearchDelayMs: EBAY_SEARCH_DELAY_MS,
+      ebayLaneDelayMs: EBAY_LANE_DELAY_MS,
+      ebayMaxRetries: EBAY_MAX_RETRIES,
+      ebayBackoffBaseMs: EBAY_BACKOFF_BASE_MS,
+      ebayScanQueryLimit: EBAY_SCAN_QUERY_LIMIT
+    }
+  });
+
+  const engines = Object.values(health.engines || {});
+  const lastScan = health.lastScan || {};
+
+  res.send(layout("CardHawk Health", `
+    <h2>System Health</h2>
+    <div class="stats">
+      <div class="stat"><div class="number ${healthClass(health.status)}">${escapeHtml(health.status)}</div><div>Overall Status</div></div>
+      <div class="stat"><div class="number">${health.data.totalListings}</div><div>Total Listings</div></div>
+      <div class="stat"><div class="number">${health.data.totalAlerts}</div><div>Total Alerts</div></div>
+      <div class="stat"><div class="number">${health.data.recentFailures}</div><div>Recent Failed/Rate-Limited Scans</div></div>
+    </div>
+
+    <h2>Engines</h2>
+    <table>
+      <tr><th>Engine</th><th>Status</th><th>Updated</th><th>Details</th></tr>
+      ${engines.map(engine => `
+        <tr>
+          <td>${escapeHtml(engine.name)}</td>
+          <td class="${healthClass(engine.status)}">${escapeHtml(engine.status)}</td>
+          <td>${escapeHtml(shortDate(engine.updatedAt))}</td>
+          <td><pre style="white-space:pre-wrap;margin:0;color:#cbd5e1;">${escapeHtml(JSON.stringify(engine.details || {}, null, 2))}</pre></td>
+        </tr>
+      `).join("")}
+    </table>
+
+    <h2 class="table-title">Last Scan</h2>
+    <table>
+      <tr><th>Status</th><th>Source</th><th>Listings</th><th>New Alerts</th><th>Duration</th><th>Error</th></tr>
+      <tr>
+        <td class="${healthClass(lastScan.status)}">${escapeHtml(lastScan.status || "none")}</td>
+        <td>${escapeHtml(lastScan.source || "")}</td>
+        <td>${lastScan.listingsFound || 0}</td>
+        <td>${lastScan.newAlerts || 0}</td>
+        <td>${Math.round(Number(lastScan.durationMs || 0) / 1000)}s</td>
+        <td>${escapeHtml(lastScan.error || "")}</td>
+      </tr>
+    </table>
+
+    <h2 class="table-title">Recent Events</h2>
+    <table>
+      <tr><th>Time</th><th>Type</th><th>Message</th></tr>
+      ${(health.recentEvents || []).map(event => `
+        <tr>
+          <td>${escapeHtml(shortDate(event.createdAt))}</td>
+          <td>${escapeHtml(event.type)}</td>
+          <td>${escapeHtml(event.message)}</td>
+        </tr>
+      `).join("")}
+    </table>
+  `));
+});
+
+app.get("/api/health", (req, res) => {
+  res.json(systemHealth.summarizeRuntime(store, {
+    scoutEnabled: SCOUT_ENABLED,
+    rateLimitProtection: {
+      ebaySearchDelayMs: EBAY_SEARCH_DELAY_MS,
+      ebayLaneDelayMs: EBAY_LANE_DELAY_MS,
+      ebayMaxRetries: EBAY_MAX_RETRIES,
+      ebayBackoffBaseMs: EBAY_BACKOFF_BASE_MS,
+      ebayScanQueryLimit: EBAY_SCAN_QUERY_LIMIT
+    }
+  }));
+});
+
 app.get("/api/status", (req, res) => {
+  const health = systemHealth.summarizeRuntime(store, {
+    scoutEnabled: SCOUT_ENABLED,
+    rateLimitProtection: {
+      ebaySearchDelayMs: EBAY_SEARCH_DELAY_MS,
+      ebayLaneDelayMs: EBAY_LANE_DELAY_MS,
+      ebayMaxRetries: EBAY_MAX_RETRIES,
+      ebayBackoffBaseMs: EBAY_BACKOFF_BASE_MS,
+      ebayScanQueryLimit: EBAY_SCAN_QUERY_LIMIT
+    }
+  });
+
   res.json({
     scoutEnabled: SCOUT_ENABLED,
+    systemHealth: health.status,
     scoutIntervalMinutes: SCOUT_INTERVAL_MINUTES,
     totalListings: Object.keys(store.listings).length,
     totalAlerts: store.alerts.length,
@@ -1539,6 +1682,12 @@ function listingCard(item) {
 }
 
 loadStore();
+systemHealth.setEngine("scout", SCOUT_ENABLED ? "ok" : "disabled", { scoutIntervalMinutes: SCOUT_INTERVAL_MINUTES });
+systemHealth.setEngine("comps", "ok");
+systemHealth.setEngine("confidence", "ok");
+systemHealth.setEngine("grading", "ok");
+systemHealth.setEngine("quality", "ok");
+systemHealth.setEngine("notifications", notificationEngine.getStatus()?.enabled ? "ok" : "warning", notificationEngine.getStatus());
 
 app.listen(PORT, () => {
   console.log(`CardHawk running on port ${PORT}`);
