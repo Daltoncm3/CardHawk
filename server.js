@@ -4,6 +4,7 @@ const path = require("path");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const notificationEngine = require("./engines/notificationEngine");
+const confidenceEngine = require("./engines/confidenceEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -359,6 +360,7 @@ function scoreListing(listing, compUniverse = []) {
   const compData = compEngine.evaluateListing(listing, compUniverse, {
     fallbackEstimator: estimateMarketValue
   });
+  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
   const estimatedValue = compData.marketValue;
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
@@ -380,9 +382,10 @@ function scoreListing(listing, compUniverse = []) {
   if (roi >= 0.4) score += 10;
   if (roi >= 0.6) score += 8;
 
-  if (compData.confidence >= 60) score += 10;
-  else if (compData.confidence >= 40) score += 5;
-  else if (compData.confidence <= 15) score -= 10;
+  if (confidenceData.confidence >= 75) score += 14;
+  else if (confidenceData.confidence >= 60) score += 10;
+  else if (confidenceData.confidence >= 40) score += 5;
+  else if (confidenceData.confidence <= 15) score -= 10;
 
   if (compData.source === "active_market") score += 3;
   if (compData.source === "heuristic_fallback") score -= 6;
@@ -414,7 +417,10 @@ function scoreListing(listing, compUniverse = []) {
     roi,
     ebayFees,
     compData,
-    marketConfidence: compData.confidence,
+    confidenceData,
+    marketConfidence: confidenceData.confidence,
+    confidenceReasons: confidenceData.reasons,
+    confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
     compSource: compData.source
   };
@@ -467,6 +473,8 @@ function saveScoutedListing(listing, query, lane) {
     ebayFees: scoring.ebayFees,
     compData: scoring.compData,
     marketConfidence: scoring.marketConfidence,
+    confidenceReasons: scoring.confidenceReasons,
+    confidenceCap: scoring.confidenceCap,
     compCount: scoring.compCount,
     compSource: scoring.compSource,
     firstSeenAt: existing?.firstSeenAt || now,
@@ -494,6 +502,8 @@ function saveScoutedListing(listing, query, lane) {
       roi: saved.roi,
       score: saved.score,
       marketConfidence: saved.marketConfidence,
+      confidenceReasons: saved.confidenceReasons,
+      confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
       compData: saved.compData,
@@ -519,6 +529,8 @@ function saveScoutedListing(listing, query, lane) {
       estimatedProfit: saved.estimatedProfit,
       roi: saved.roi,
       marketConfidence: saved.marketConfidence,
+      confidenceReasons: saved.confidenceReasons,
+      confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
       reasons: gate.reasons,
@@ -615,6 +627,8 @@ function rescoreExistingData() {
     item.ebayFees = scoring.ebayFees;
     item.compData = scoring.compData;
     item.marketConfidence = scoring.marketConfidence;
+    item.confidenceReasons = scoring.confidenceReasons;
+    item.confidenceCap = scoring.confidenceCap;
     item.compCount = scoring.compCount;
     item.compSource = scoring.compSource;
     item.dealGate = dealGate(item);
@@ -1017,6 +1031,8 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
     fallbackEstimator: estimateMarketValue
   });
 
+  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, Object.values(store.listings));
+
   res.json({
     listing: {
       ebayItemId: listing.ebayItemId,
@@ -1027,7 +1043,8 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
       totalCost: listing.totalCost,
       url: listing.url
     },
-    compData
+    compData,
+    confidenceData
   });
 });
 
@@ -1045,6 +1062,8 @@ app.get("/api/alerts/debug", (req, res) => {
       roi: alert.roi,
       score: alert.score,
       marketConfidence: alert.marketConfidence,
+      confidenceReasons: alert.confidenceReasons || [],
+      confidenceCap: alert.confidenceCap,
       compCount: alert.compCount,
       compSource: alert.compSource,
       url: alert.url,
@@ -1084,6 +1103,7 @@ app.get("/api/alerts/preview", (req, res) => {
         roiPercent: Math.round(Number(alert.roi || 0) * 100),
         score: alert.score,
         confidence: alert.marketConfidence,
+        confidenceReasons: alert.confidenceReasons || [],
         compCount: alert.compCount,
         wouldNotify: ruleCheck.passed,
         reason: ruleCheck.passed ? "passes notification rules" : ruleCheck.failures.join("; "),
@@ -1168,6 +1188,7 @@ function listingCard(item) {
       <div class="meta">Shipping: $${money(item.shipping)}</div>
       <div class="meta">Estimated Value: $${money(item.estimatedValue)}</div>
       <div class="meta">Market Confidence: ${Math.round(item.marketConfidence || 0)}% (${item.compCount || 0} comps)</div>
+      ${item.confidenceReasons?.length ? `<div class="meta">Confidence: ${escapeHtml(item.confidenceReasons.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="meta">Comp Source: ${escapeHtml(item.compSource || "fallback")}</div>
       <div class="meta">Estimated Profit: $${money(item.estimatedProfit)}</div>
       <div class="meta">ROI: ${Math.round((item.roi || 0) * 100)}%</div>
