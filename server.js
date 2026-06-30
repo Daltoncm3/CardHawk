@@ -6,6 +6,7 @@ const compEngine = require("./engines/compEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
+const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
 const systemHealth = require("./engines/systemHealth");
@@ -429,6 +430,7 @@ function scoreListing(listing, compUniverse = []) {
   });
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
   const populationData = populationEngine.getPopulation(listing);
+  const trendData = trendEngine.evaluateTrend(listing);
   const estimatedValue = compData.marketValue;
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
@@ -533,6 +535,7 @@ function scoreListing(listing, compUniverse = []) {
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
 population: populationEngine.summarizePopulation(populationData),
+    trend: trendEngine.summarizeTrend(trendData),
 dealGrade
   };
 }
