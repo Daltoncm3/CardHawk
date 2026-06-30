@@ -438,6 +438,8 @@ function scoreListing(listing, compUniverse = []) {
 
   let score = 0;
 
+  score += trendData.scoreBonus || 0;
+
   if (parsed.qualityTier === "premium") score += 45;
   if (parsed.qualityTier === "strong") score += 35;
   if (parsed.qualityTier === "watch") score += 20;
