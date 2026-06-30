@@ -6,6 +6,7 @@ const compEngine = require("./engines/compEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const gradingEngine = require("./engines/gradingEngine");
+const qualityEngine = require("./engines/qualityEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -99,7 +100,16 @@ const LANES = {
 const SCOUT_INTERVAL_MINUTES = Number(process.env.SCOUT_INTERVAL_MINUTES || 10);
 const SCOUT_ENABLED = String(process.env.SCOUT_ENABLED || "true").toLowerCase() === "true";
 
+// Phase 1: eBay rate-limit protection.
+// These defaults intentionally slow CardHawk down so it behaves like a steady scout, not a request spammer.
+const EBAY_SEARCH_DELAY_MS = Number(process.env.EBAY_SEARCH_DELAY_MS || 2500);
+const EBAY_LANE_DELAY_MS = Number(process.env.EBAY_LANE_DELAY_MS || 6000);
+const EBAY_MAX_RETRIES = Number(process.env.EBAY_MAX_RETRIES || 2);
+const EBAY_BACKOFF_BASE_MS = Number(process.env.EBAY_BACKOFF_BASE_MS || 15000);
+const EBAY_SCAN_QUERY_LIMIT = Number(process.env.EBAY_SCAN_QUERY_LIMIT || 8);
+
 let ebayTokenCache = { token: null, expiresAt: 0 };
+let scanInProgress = false;
 
 let store = {
   listings: {},
@@ -181,6 +191,39 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseErrorPayload(message) {
+  try {
+    return JSON.parse(message);
+  } catch (_) {
+    return null;
+  }
+}
+
+function isEbayRateLimitError(error) {
+  const message = String(error?.message || error || "");
+  if (/too many requests|request limit|rate limit|429/i.test(message)) return true;
+
+  const payload = parseErrorPayload(message);
+  const errors = payload?.errors || [];
+  return errors.some(item =>
+    Number(item.errorId) === 2001 ||
+    /too many requests|request limit|rate limit/i.test(`${item.message || ""} ${item.longMessage || ""}`)
+  );
+}
+
+function compactEbayError(error) {
+  const payload = parseErrorPayload(error?.message);
+  const first = payload?.errors?.[0];
+  if (first) {
+    return `${first.message || "eBay error"}${first.longMessage ? ` — ${first.longMessage}` : ""}`;
+  }
+  return error?.message || String(error);
+}
+
 async function getEbayToken() {
   const now = Date.now();
   if (ebayTokenCache.token && ebayTokenCache.expiresAt > now + 60_000) return ebayTokenCache.token;
@@ -228,6 +271,27 @@ async function searchEbay(query, limit = 20) {
   if (!response.ok) throw new Error(JSON.stringify(data));
 
   return (data.itemSummaries || []).map(normalizeEbayItem);
+}
+
+async function searchEbayWithBackoff(query, limit = EBAY_SCAN_QUERY_LIMIT) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= EBAY_MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        const waitMs = EBAY_BACKOFF_BASE_MS * attempt;
+        console.log(`eBay retry ${attempt}/${EBAY_MAX_RETRIES} for "${query}" after ${waitMs}ms`);
+        await sleep(waitMs);
+      }
+
+      return await searchEbay(query, limit);
+    } catch (error) {
+      lastError = error;
+      if (!isEbayRateLimitError(error) || attempt === EBAY_MAX_RETRIES) break;
+    }
+  }
+
+  throw lastError;
 }
 
 function normalizeEbayItem(item) {
@@ -412,8 +476,9 @@ function scoreListing(listing, compUniverse = []) {
   if (listing.totalCost > 750 && estimatedProfit < 150) score -= 20;
 
   const finalScore = Math.max(0, Math.min(100, Math.round(score)));
-  const dealGrade = gradingEngine.gradeDeal({
+  const qualityData = qualityEngine.evaluateQuality({
     ...listing,
+    parsed,
     score: finalScore,
     estimatedValue,
     estimatedProfit,
@@ -425,6 +490,23 @@ function scoreListing(listing, compUniverse = []) {
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
     compSource: compData.source
+  });
+  const dealGrade = gradingEngine.gradeDeal({
+    ...listing,
+    parsed,
+    score: finalScore,
+    estimatedValue,
+    estimatedProfit,
+    roi,
+    ebayFees,
+    compData,
+    marketConfidence: confidenceData.confidence,
+    confidenceReasons: confidenceData.reasons,
+    confidenceCap: confidenceData.cap,
+    compCount: compData.compCount,
+    compSource: compData.source,
+    qualityData,
+    investmentQuality: qualityData.investmentQuality
   });
 
   return {
@@ -440,6 +522,13 @@ function scoreListing(listing, compUniverse = []) {
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
     compSource: compData.source,
+    qualityData,
+    investmentQuality: qualityData.investmentQuality,
+    qualityBucket: qualityData.bucket,
+    liquidityScore: qualityData.liquidityScore,
+    riskLevel: qualityData.riskLevel,
+    qualityReasons: qualityData.positives,
+    qualityWarnings: qualityData.warnings,
     dealGrade
   };
 }
@@ -495,6 +584,13 @@ function saveScoutedListing(listing, query, lane) {
     confidenceCap: scoring.confidenceCap,
     compCount: scoring.compCount,
     compSource: scoring.compSource,
+    qualityData: scoring.qualityData,
+    investmentQuality: scoring.investmentQuality,
+    qualityBucket: scoring.qualityBucket,
+    liquidityScore: scoring.liquidityScore,
+    riskLevel: scoring.riskLevel,
+    qualityReasons: scoring.qualityReasons,
+    qualityWarnings: scoring.qualityWarnings,
     dealGrade: scoring.dealGrade,
     firstSeenAt: existing?.firstSeenAt || now,
     lastSeenAt: now,
@@ -525,8 +621,15 @@ function saveScoutedListing(listing, query, lane) {
       confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
-      dealGrade: saved.dealGrade,
       compData: saved.compData,
+      qualityData: saved.qualityData,
+      investmentQuality: saved.investmentQuality,
+      qualityBucket: saved.qualityBucket,
+      liquidityScore: saved.liquidityScore,
+      riskLevel: saved.riskLevel,
+      qualityReasons: saved.qualityReasons,
+      qualityWarnings: saved.qualityWarnings,
+      dealGrade: saved.dealGrade,
       url: listing.url,
       image: listing.image,
       query,
@@ -568,6 +671,13 @@ function saveScoutedListing(listing, query, lane) {
       confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
+      qualityData: saved.qualityData,
+      investmentQuality: saved.investmentQuality,
+      qualityBucket: saved.qualityBucket,
+      liquidityScore: saved.liquidityScore,
+      riskLevel: saved.riskLevel,
+      qualityReasons: saved.qualityReasons,
+      qualityWarnings: saved.qualityWarnings,
       dealGrade: saved.dealGrade,
       reasons: gate.reasons,
       createdAt: now
@@ -579,6 +689,27 @@ function saveScoutedListing(listing, query, lane) {
 }
 
 async function runScoutScan(source = "automatic") {
+  if (scanInProgress) {
+    const skippedScan = {
+      id: Date.now().toString(),
+      source,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      lanes: [],
+      listingsFound: 0,
+      newAlerts: 0,
+      status: "skipped",
+      error: "Another scout scan is already running."
+    };
+
+    store.scans.unshift(skippedScan);
+    store.scans = store.scans.slice(0, 100);
+    saveStore();
+    return skippedScan;
+  }
+
+  scanInProgress = true;
+
   const scan = {
     id: Date.now().toString(),
     source,
@@ -588,7 +719,10 @@ async function runScoutScan(source = "automatic") {
     listingsFound: 0,
     newAlerts: 0,
     status: "running",
-    error: null
+    error: null,
+    rateLimited: false,
+    queryDelayMs: EBAY_SEARCH_DELAY_MS,
+    laneDelayMs: EBAY_LANE_DELAY_MS
   };
 
   const alertsBefore = store.alerts.length;
@@ -599,27 +733,47 @@ async function runScoutScan(source = "automatic") {
       if (laneKey === "all") continue;
 
       let laneCount = 0;
+      const laneErrors = [];
 
       for (const query of lane.queries) {
-        const results = await searchEbay(query, 12);
-        laneCount += results.length;
-        scan.listingsFound += results.length;
+        try {
+          const results = await searchEbayWithBackoff(query, EBAY_SCAN_QUERY_LIMIT);
+          laneCount += results.length;
+          scan.listingsFound += results.length;
 
-        for (const listing of results) {
-          const savedListing = saveScoutedListing(listing, query, laneKey);
-          observedListings.push(savedListing);
+          for (const listing of results) {
+            const savedListing = saveScoutedListing(listing, query, laneKey);
+            observedListings.push(savedListing);
+          }
+        } catch (error) {
+          const compactError = compactEbayError(error);
+          laneErrors.push({ query, error: compactError });
+
+          if (isEbayRateLimitError(error)) {
+            scan.rateLimited = true;
+            scan.error = compactError;
+            console.warn(`eBay rate limit reached on query "${query}". Ending this scan cleanly.`);
+            break;
+          }
+
+          console.error(`eBay query failed for "${query}":`, compactError);
         }
+
+        await sleep(EBAY_SEARCH_DELAY_MS);
       }
 
-      scan.lanes.push({ lane: laneKey, count: laneCount });
+      scan.lanes.push({ lane: laneKey, count: laneCount, errors: laneErrors });
+
+      if (scan.rateLimited) break;
+      await sleep(EBAY_LANE_DELAY_MS);
     }
 
     scan.newAlerts = store.alerts.length - alertsBefore;
-    scan.status = "completed";
+    scan.status = scan.rateLimited ? "rate_limited" : "completed";
   } catch (error) {
     scan.status = "failed";
-    scan.error = error.message;
-    console.error("Scout scan failed:", error.message);
+    scan.error = compactEbayError(error);
+    console.error("Scout scan failed:", scan.error);
   }
 
   try {
@@ -647,6 +801,7 @@ async function runScoutScan(source = "automatic") {
   store.alerts = store.alerts.slice(0, 200);
 
   saveStore();
+  scanInProgress = false;
   return scan;
 }
 
@@ -667,6 +822,13 @@ function rescoreExistingData() {
     item.confidenceCap = scoring.confidenceCap;
     item.compCount = scoring.compCount;
     item.compSource = scoring.compSource;
+    item.qualityData = scoring.qualityData;
+    item.investmentQuality = scoring.investmentQuality;
+    item.qualityBucket = scoring.qualityBucket;
+    item.liquidityScore = scoring.liquidityScore;
+    item.riskLevel = scoring.riskLevel;
+    item.qualityReasons = scoring.qualityReasons;
+    item.qualityWarnings = scoring.qualityWarnings;
     item.dealGrade = scoring.dealGrade;
     item.dealGate = dealGate(item);
   }
@@ -686,7 +848,10 @@ function startScoutEngine() {
   }
 
   console.log(`Scout Engine enabled. Running every ${SCOUT_INTERVAL_MINUTES} minutes.`);
-  setTimeout(() => runScoutScan("startup"), 3000);
+  console.log(`eBay rate protection: query delay ${EBAY_SEARCH_DELAY_MS}ms, lane delay ${EBAY_LANE_DELAY_MS}ms, query limit ${EBAY_SCAN_QUERY_LIMIT}.`);
+
+  // Wait one minute after deploy before the first startup scan so Railway restarts do not hammer eBay.
+  setTimeout(() => runScoutScan("startup"), 60_000);
   setInterval(() => runScoutScan("automatic"), SCOUT_INTERVAL_MINUTES * 60 * 1000);
 }
 
@@ -728,7 +893,8 @@ function layout(title, content) {
           .price { color: #22c55e; font-size: 22px; font-weight: bold; margin-top: 10px; }
           .meta { color: #cbd5e1; font-size: 14px; margin: 6px 0; }
           .score { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #facc15; color: #0f172a; font-weight: bold; margin: 8px 0; }
-          .deal-grade { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #22c55e; color: #052e16; font-weight: bold; margin: 8px 6px 8px 0; }
+          .deal-grade, .quality-chip { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #22c55e; color: #052e16; font-weight: bold; margin: 8px 6px 8px 0; }
+          .quality-chip { background: #38bdf8; color: #082f49; }
           .tag { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #334155; color: #e2e8f0; font-size: 12px; margin: 3px 3px 3px 0; }
           .premium { background: #14532d; }
           .avoid { background: #7f1d1d; }
@@ -1070,6 +1236,8 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
   });
 
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, Object.values(store.listings));
+  const qualityData = qualityEngine.evaluateQuality({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source });
+  const dealGrade = gradingEngine.gradeDeal({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source, qualityData, investmentQuality: qualityData.investmentQuality });
 
   res.json({
     listing: {
@@ -1083,7 +1251,8 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
     },
     compData,
     confidenceData,
-    dealGrade: gradingEngine.gradeDeal({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source })
+    qualityData,
+    dealGrade
   });
 });
 
@@ -1098,17 +1267,29 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
       ebayItemId: listing.ebayItemId,
       title: listing.title,
       lane: listing.lane,
-      price: listing.price,
-      totalCost: listing.totalCost,
+      price: listing.totalCost || listing.price,
       url: listing.url
     },
     grade: scoring.dealGrade,
-    score: scoring.score,
-    estimatedProfit: scoring.estimatedProfit,
-    roi: scoring.roi,
-    marketConfidence: scoring.marketConfidence,
-    compCount: scoring.compCount,
-    compSource: scoring.compSource
+    quality: scoring.qualityData
+  });
+});
+
+app.get("/api/quality/listing/:itemId", (req, res) => {
+  const listing = store.listings[req.params.itemId];
+  if (!listing) return res.status(404).json({ error: "Listing not found" });
+
+  const scoring = scoreListing(listing, Object.values(store.listings));
+  res.json({
+    listing: {
+      ebayItemId: listing.ebayItemId,
+      title: listing.title,
+      lane: listing.lane,
+      price: listing.totalCost || listing.price,
+      url: listing.url
+    },
+    quality: scoring.qualityData,
+    grade: scoring.dealGrade
   });
 });
 
@@ -1129,6 +1310,12 @@ app.get("/api/alerts/debug", (req, res) => {
       confidenceCap: alert.confidenceCap,
       compCount: alert.compCount,
       compSource: alert.compSource,
+      investmentQuality: alert.investmentQuality || alert.qualityData?.investmentQuality || null,
+      qualityBucket: alert.qualityBucket || alert.qualityData?.bucket || null,
+      liquidityScore: alert.liquidityScore || alert.qualityData?.liquidityScore || null,
+      riskLevel: alert.riskLevel || alert.qualityData?.riskLevel || null,
+      qualityReasons: alert.qualityReasons || alert.qualityData?.positives || [],
+      qualityWarnings: alert.qualityWarnings || alert.qualityData?.warnings || [],
       dealGrade: alert.dealGrade || null,
       url: alert.url,
       wouldNotify: ruleCheck.passed,
@@ -1170,9 +1357,12 @@ app.get("/api/alerts/preview", (req, res) => {
         roiPercent: Math.round(Number(alert.roi || 0) * 100),
         score: alert.score,
         confidence: alert.marketConfidence,
+        investmentQuality: alert.investmentQuality || alert.qualityData?.investmentQuality || null,
+        qualityBucket: alert.qualityBucket || alert.qualityData?.bucket || null,
+        riskLevel: alert.riskLevel || alert.qualityData?.riskLevel || null,
+        dealGrade: alert.dealGrade || null,
         confidenceReasons: alert.confidenceReasons || [],
         compCount: alert.compCount,
-        dealGrade: alert.dealGrade || null,
         wouldNotify: ruleCheck.passed,
         reason: ruleCheck.passed ? "passes notification rules" : ruleCheck.failures.join("; "),
         url: alert.url
@@ -1213,6 +1403,8 @@ app.get("/api/alerts/send-pending", async (req, res) => {
         roi: item.alert.roi,
         score: item.alert.score,
         marketConfidence: item.alert.marketConfidence,
+        investmentQuality: item.alert.investmentQuality || item.alert.qualityData?.investmentQuality || null,
+        qualityBucket: item.alert.qualityBucket || item.alert.qualityData?.bucket || null,
         dealGrade: item.alert.dealGrade || null,
         url: item.alert.url
       }))
@@ -1279,6 +1471,14 @@ app.get("/api/status", (req, res) => {
     totalListings: Object.keys(store.listings).length,
     totalAlerts: store.alerts.length,
     totalScans: store.scans.length,
+    scanInProgress,
+    rateLimitProtection: {
+      ebaySearchDelayMs: EBAY_SEARCH_DELAY_MS,
+      ebayLaneDelayMs: EBAY_LANE_DELAY_MS,
+      ebayMaxRetries: EBAY_MAX_RETRIES,
+      ebayBackoffBaseMs: EBAY_BACKOFF_BASE_MS,
+      ebayScanQueryLimit: EBAY_SCAN_QUERY_LIMIT
+    },
     lanes: Object.keys(LANES)
   });
 });
@@ -1313,9 +1513,10 @@ function listingCard(item) {
       <div class="title">${escapeHtml(item.title)}</div>
       <div>${parsedTags(item.parsed, item.lane)}</div>
       ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)} — ${escapeHtml(item.dealGrade.action || "")}</div>` : ""}
+      ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(item.qualityBucket || "")}</div>` : ""}
       <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
-      ${item.dealGrade?.summary ? `<div class="meta">Deal Grade: ${escapeHtml(item.dealGrade.summary)}</div>` : ""}
-      ${item.dealGrade?.reasons?.length ? `<div class="meta">Grade Reasons: ${escapeHtml(item.dealGrade.reasons.slice(0, 2).join(" | "))}</div>` : ""}
+      ${item.qualityReasons?.length ? `<div class="meta">Quality: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}
+      ${item.qualityWarnings?.length ? `<div class="meta">Warnings: ${escapeHtml(item.qualityWarnings.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="price">$${money(item.totalCost || item.price)}</div>
       <div class="meta">Price: $${money(item.price)}</div>
       <div class="meta">Shipping: $${money(item.shipping)}</div>
@@ -1332,6 +1533,7 @@ function listingCard(item) {
       ${item.ebayItemId ? ` &nbsp; <a href="/api/history/listing/${escapeHtml(item.ebayItemId)}" target="_blank">History</a>` : ""}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/comps/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Comps</a>` : ""}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/grades/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Grade</a>` : ""}
+      ${item.ebayItemId ? ` &nbsp; <a href="/api/quality/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Quality</a>` : ""}
     </div>
   `;
 }
