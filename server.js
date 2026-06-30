@@ -5,6 +5,7 @@ const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
+const gradingEngine = require("./engines/gradingEngine");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -410,8 +411,24 @@ function scoreListing(listing, compUniverse = []) {
   if (listing.totalCost <= 0) score = 0;
   if (listing.totalCost > 750 && estimatedProfit < 150) score -= 20;
 
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  const dealGrade = gradingEngine.gradeDeal({
+    ...listing,
+    score: finalScore,
+    estimatedValue,
+    estimatedProfit,
+    roi,
+    ebayFees,
+    compData,
+    marketConfidence: confidenceData.confidence,
+    confidenceReasons: confidenceData.reasons,
+    confidenceCap: confidenceData.cap,
+    compCount: compData.compCount,
+    compSource: compData.source
+  });
+
   return {
-    score: Math.max(0, Math.min(100, Math.round(score))),
+    score: finalScore,
     estimatedValue,
     estimatedProfit,
     roi,
@@ -422,7 +439,8 @@ function scoreListing(listing, compUniverse = []) {
     confidenceReasons: confidenceData.reasons,
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
-    compSource: compData.source
+    compSource: compData.source,
+    dealGrade
   };
 }
 
@@ -477,6 +495,7 @@ function saveScoutedListing(listing, query, lane) {
     confidenceCap: scoring.confidenceCap,
     compCount: scoring.compCount,
     compSource: scoring.compSource,
+    dealGrade: scoring.dealGrade,
     firstSeenAt: existing?.firstSeenAt || now,
     lastSeenAt: now,
     seenCount: existing?.seenCount ? existing.seenCount + 1 : 1,
@@ -506,6 +525,7 @@ function saveScoutedListing(listing, query, lane) {
       confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
+      dealGrade: saved.dealGrade,
       compData: saved.compData,
       url: listing.url,
       image: listing.image,
@@ -548,6 +568,7 @@ function saveScoutedListing(listing, query, lane) {
       confidenceCap: saved.confidenceCap,
       compCount: saved.compCount,
       compSource: saved.compSource,
+      dealGrade: saved.dealGrade,
       reasons: gate.reasons,
       createdAt: now
     });
@@ -646,6 +667,7 @@ function rescoreExistingData() {
     item.confidenceCap = scoring.confidenceCap;
     item.compCount = scoring.compCount;
     item.compSource = scoring.compSource;
+    item.dealGrade = scoring.dealGrade;
     item.dealGate = dealGate(item);
   }
 
@@ -706,6 +728,7 @@ function layout(title, content) {
           .price { color: #22c55e; font-size: 22px; font-weight: bold; margin-top: 10px; }
           .meta { color: #cbd5e1; font-size: 14px; margin: 6px 0; }
           .score { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #facc15; color: #0f172a; font-weight: bold; margin: 8px 0; }
+          .deal-grade { display: inline-block; padding: 7px 10px; border-radius: 999px; background: #22c55e; color: #052e16; font-weight: bold; margin: 8px 6px 8px 0; }
           .tag { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #334155; color: #e2e8f0; font-size: 12px; margin: 3px 3px 3px 0; }
           .premium { background: #14532d; }
           .avoid { background: #7f1d1d; }
@@ -1059,10 +1082,35 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
       url: listing.url
     },
     compData,
-    confidenceData
+    confidenceData,
+    dealGrade: gradingEngine.gradeDeal({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source })
   });
 });
 
+
+app.get("/api/grades/listing/:itemId", (req, res) => {
+  const listing = store.listings[req.params.itemId];
+  if (!listing) return res.status(404).json({ error: "Listing not found" });
+
+  const scoring = scoreListing(listing, Object.values(store.listings));
+  res.json({
+    listing: {
+      ebayItemId: listing.ebayItemId,
+      title: listing.title,
+      lane: listing.lane,
+      price: listing.price,
+      totalCost: listing.totalCost,
+      url: listing.url
+    },
+    grade: scoring.dealGrade,
+    score: scoring.score,
+    estimatedProfit: scoring.estimatedProfit,
+    roi: scoring.roi,
+    marketConfidence: scoring.marketConfidence,
+    compCount: scoring.compCount,
+    compSource: scoring.compSource
+  });
+});
 
 app.get("/api/alerts/debug", (req, res) => {
   const alerts = store.alerts || [];
@@ -1081,6 +1129,7 @@ app.get("/api/alerts/debug", (req, res) => {
       confidenceCap: alert.confidenceCap,
       compCount: alert.compCount,
       compSource: alert.compSource,
+      dealGrade: alert.dealGrade || null,
       url: alert.url,
       wouldNotify: ruleCheck.passed,
       status: alert.status || "new",
@@ -1123,6 +1172,7 @@ app.get("/api/alerts/preview", (req, res) => {
         confidence: alert.marketConfidence,
         confidenceReasons: alert.confidenceReasons || [],
         compCount: alert.compCount,
+        dealGrade: alert.dealGrade || null,
         wouldNotify: ruleCheck.passed,
         reason: ruleCheck.passed ? "passes notification rules" : ruleCheck.failures.join("; "),
         url: alert.url
@@ -1163,6 +1213,7 @@ app.get("/api/alerts/send-pending", async (req, res) => {
         roi: item.alert.roi,
         score: item.alert.score,
         marketConfidence: item.alert.marketConfidence,
+        dealGrade: item.alert.dealGrade || null,
         url: item.alert.url
       }))
     });
@@ -1261,7 +1312,10 @@ function listingCard(item) {
       <img src="${escapeHtml(item.image || "")}" />
       <div class="title">${escapeHtml(item.title)}</div>
       <div>${parsedTags(item.parsed, item.lane)}</div>
+      ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)} — ${escapeHtml(item.dealGrade.action || "")}</div>` : ""}
       <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
+      ${item.dealGrade?.summary ? `<div class="meta">Deal Grade: ${escapeHtml(item.dealGrade.summary)}</div>` : ""}
+      ${item.dealGrade?.reasons?.length ? `<div class="meta">Grade Reasons: ${escapeHtml(item.dealGrade.reasons.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="price">$${money(item.totalCost || item.price)}</div>
       <div class="meta">Price: $${money(item.price)}</div>
       <div class="meta">Shipping: $${money(item.shipping)}</div>
@@ -1277,6 +1331,7 @@ function listingCard(item) {
       <a href="${escapeHtml(item.url)}" target="_blank">View on eBay</a>
       ${item.ebayItemId ? ` &nbsp; <a href="/api/history/listing/${escapeHtml(item.ebayItemId)}" target="_blank">History</a>` : ""}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/comps/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Comps</a>` : ""}
+      ${item.ebayItemId ? ` &nbsp; <a href="/api/grades/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Grade</a>` : ""}
     </div>
   `;
 }
