@@ -1031,6 +1031,75 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
   });
 });
 
+
+app.get("/api/alerts/debug", (req, res) => {
+  const alerts = store.alerts || [];
+  const analyzed = alerts.map(alert => {
+    const ruleCheck = notificationEngine.evaluateAlertRules(alert);
+    return {
+      ebayItemId: alert.ebayItemId,
+      lane: alert.lane,
+      title: alert.title,
+      price: alert.totalCost || alert.price,
+      estimatedProfit: alert.estimatedProfit,
+      roi: alert.roi,
+      score: alert.score,
+      marketConfidence: alert.marketConfidence,
+      compCount: alert.compCount,
+      compSource: alert.compSource,
+      url: alert.url,
+      wouldNotify: ruleCheck.passed,
+      notificationFailures: ruleCheck.failures,
+      createdAt: alert.createdAt
+    };
+  });
+
+  const wouldNotify = analyzed.filter(item => item.wouldNotify);
+  const blocked = analyzed.filter(item => !item.wouldNotify);
+
+  res.json({
+    thresholds: notificationEngine.getAlertThresholds(),
+    totalDealAlerts: alerts.length,
+    wouldNotifyCount: wouldNotify.length,
+    blockedCount: blocked.length,
+    topNotifyCandidates: wouldNotify
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 25),
+    topBlockedCandidates: blocked
+      .sort((a, b) => (b.estimatedProfit || 0) - (a.estimatedProfit || 0))
+      .slice(0, 25)
+  });
+});
+
+app.get("/api/alerts/preview", (req, res) => {
+  const limit = Math.min(Number(req.query.limit || 25), 100);
+  const alerts = (store.alerts || [])
+    .map(alert => {
+      const ruleCheck = notificationEngine.evaluateAlertRules(alert);
+      return {
+        title: alert.title,
+        lane: alert.lane,
+        price: alert.totalCost || alert.price,
+        estimatedProfit: alert.estimatedProfit,
+        roiPercent: Math.round(Number(alert.roi || 0) * 100),
+        score: alert.score,
+        confidence: alert.marketConfidence,
+        compCount: alert.compCount,
+        wouldNotify: ruleCheck.passed,
+        reason: ruleCheck.passed ? "passes notification rules" : ruleCheck.failures.join("; "),
+        url: alert.url
+      };
+    })
+    .sort((a, b) => Number(b.wouldNotify) - Number(a.wouldNotify) || (b.score || 0) - (a.score || 0))
+    .slice(0, limit);
+
+  res.json({
+    thresholds: notificationEngine.getAlertThresholds(),
+    count: alerts.length,
+    alerts
+  });
+});
+
 app.get("/api/notifications/status", (req, res) => {
   res.json(notificationEngine.getStatus());
 });
