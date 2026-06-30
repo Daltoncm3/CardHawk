@@ -532,7 +532,8 @@ function scoreListing(listing, compUniverse = []) {
     riskLevel: qualityData.riskLevel,
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
-    dealGrade
+population: populationEngine.summarizePopulation(populationData),
+dealGrade
   };
 }
 
