@@ -435,6 +435,8 @@ function scoreListing(listing, compUniverse = []) {
   const roi = listing.totalCost > 0 ? estimatedProfit / listing.totalCost : 0;
 
   let score = 0;
+  
+  score += populationData.scoreBonus || 0;
 
   if (parsed.qualityTier === "premium") score += 45;
   if (parsed.qualityTier === "strong") score += 35;
