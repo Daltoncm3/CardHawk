@@ -428,6 +428,7 @@ function scoreListing(listing, compUniverse = []) {
     fallbackEstimator: estimateMarketValue
   });
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
+  const populationData = populationEngine.getPopulation(listing);
   const estimatedValue = compData.marketValue;
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
