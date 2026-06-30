@@ -5,6 +5,7 @@ const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
+const populationEngine = require("./engines/populationEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
 const systemHealth = require("./engines/systemHealth");
