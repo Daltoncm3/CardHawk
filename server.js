@@ -489,7 +489,7 @@ function saveScoutedListing(listing, query, lane) {
   store.listings[listing.ebayItemId] = saved;
 
   if (!saved.alertCreated && gate.passed) {
-    store.alerts.unshift({
+    const newAlert = {
       id: `${listing.ebayItemId}-${Date.now()}`,
       ebayItemId: listing.ebayItemId,
       lane: detectedLane,
@@ -512,14 +512,29 @@ function saveScoutedListing(listing, query, lane) {
       query,
       parsed: saved.parsed,
       createdAt: now,
-      status: "new"
-    });
+      status: "new",
+      notifiedAt: null,
+      notificationResult: null,
+      notificationError: null
+    };
 
+    store.alerts.unshift(newAlert);
     store.listings[listing.ebayItemId].alertCreated = true;
 
-    notificationEngine.sendDealAlert(store.alerts[0]).catch(error => {
-      console.error("Notification alert failed:", error.message);
-    });
+    notificationEngine.sendDealAlert(newAlert)
+      .then(result => {
+        if (result?.sent) {
+          newAlert.status = "notified";
+          newAlert.notifiedAt = new Date().toISOString();
+          newAlert.notificationResult = result;
+          saveStore();
+        }
+      })
+      .catch(error => {
+        newAlert.notificationError = error.message;
+        saveStore();
+        console.error("Notification alert failed:", error.message);
+      });
   } else if (!gate.passed) {
     store.rejections.unshift({
       ebayItemId: listing.ebayItemId,
@@ -1068,7 +1083,10 @@ app.get("/api/alerts/debug", (req, res) => {
       compSource: alert.compSource,
       url: alert.url,
       wouldNotify: ruleCheck.passed,
+      status: alert.status || "new",
+      notifiedAt: alert.notifiedAt || null,
       notificationFailures: ruleCheck.failures,
+      notificationError: alert.notificationError || null,
       createdAt: alert.createdAt
     };
   });
@@ -1118,6 +1136,67 @@ app.get("/api/alerts/preview", (req, res) => {
     count: alerts.length,
     alerts
   });
+});
+
+app.get("/api/alerts/send-pending", async (req, res) => {
+  const limit = Math.min(Number(req.query.limit || 5), 25);
+  const dryRun = String(req.query.dryRun || "false").toLowerCase() === "true";
+  const alerts = store.alerts || [];
+
+  const candidates = alerts
+    .filter(alert => alert.status !== "notified")
+    .map(alert => ({ alert, ruleCheck: notificationEngine.evaluateAlertRules(alert) }))
+    .filter(item => item.ruleCheck.passed)
+    .sort((a, b) => (b.alert.score || 0) - (a.alert.score || 0) || (b.alert.estimatedProfit || 0) - (a.alert.estimatedProfit || 0))
+    .slice(0, limit);
+
+  if (dryRun) {
+    return res.json({
+      dryRun: true,
+      count: candidates.length,
+      candidates: candidates.map(item => ({
+        ebayItemId: item.alert.ebayItemId,
+        title: item.alert.title,
+        lane: item.alert.lane,
+        price: item.alert.totalCost || item.alert.price,
+        estimatedProfit: item.alert.estimatedProfit,
+        roi: item.alert.roi,
+        score: item.alert.score,
+        marketConfidence: item.alert.marketConfidence,
+        url: item.alert.url
+      }))
+    });
+  }
+
+  const results = [];
+  for (const item of candidates) {
+    try {
+      const result = await notificationEngine.sendDealAlert(item.alert);
+      if (result?.sent) {
+        item.alert.status = "notified";
+        item.alert.notifiedAt = new Date().toISOString();
+        item.alert.notificationResult = result;
+        item.alert.notificationError = null;
+      }
+      results.push({
+        ebayItemId: item.alert.ebayItemId,
+        title: item.alert.title,
+        sent: Boolean(result?.sent),
+        result
+      });
+    } catch (error) {
+      item.alert.notificationError = error.message;
+      results.push({
+        ebayItemId: item.alert.ebayItemId,
+        title: item.alert.title,
+        sent: false,
+        error: error.message
+      });
+    }
+  }
+
+  saveStore();
+  res.json({ attempted: candidates.length, results });
 });
 
 app.get("/api/notifications/status", (req, res) => {
