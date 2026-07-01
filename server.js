@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
+const marketValueEngine = require("./engines/marketValueEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -425,13 +426,28 @@ function estimateMarketValue(listing) {
 
 function scoreListing(listing, compUniverse = []) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
+
   const compData = compEngine.evaluateListing(listing, compUniverse, {
     fallbackEstimator: estimateMarketValue
   });
-  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
+
   const populationData = populationEngine.getPopulation(listing);
   const trendData = trendEngine.evaluateTrend(listing);
-  const estimatedValue = compData.marketValue;
+
+  const marketData = marketValueEngine.calculateMarketValue({
+    listing: { ...listing, parsed },
+    activeCompData: compData,
+    soldComps: [],
+    populationData,
+    trendData,
+    options: {
+      fallbackEstimator: estimateMarketValue
+    }
+  });
+
+  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
+
+  const estimatedValue = marketData.marketValue || compData.marketValue;
   const ebayFees = estimatedValue * 0.1325;
   const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
   const roi = listing.totalCost > 0 ? estimatedProfit / listing.totalCost : 0;
@@ -454,13 +470,17 @@ function scoreListing(listing, compUniverse = []) {
   if (roi >= 0.4) score += 10;
   if (roi >= 0.6) score += 8;
 
-  if (confidenceData.confidence >= 75) score += 14;
-  else if (confidenceData.confidence >= 60) score += 10;
-  else if (confidenceData.confidence >= 40) score += 5;
-  else if (confidenceData.confidence <= 15) score -= 10;
+  const combinedConfidence = Math.max(confidenceData.confidence || 0, marketData.confidence || 0);
 
-  if (compData.source === "active_market") score += 3;
-  if (compData.source === "heuristic_fallback") score -= 6;
+  if (combinedConfidence >= 75) score += 14;
+  else if (combinedConfidence >= 60) score += 10;
+  else if (combinedConfidence >= 40) score += 5;
+  else if (combinedConfidence <= 15) score -= 10;
+
+  if (marketData.source === "sold_market") score += 8;
+  if (marketData.source === "blended_market") score += 5;
+  if (marketData.source === "active_market") score += 3;
+  if (marketData.source === "fallback") score -= 6;
 
   if (parsed.flags.firstBowman) score += 8;
   if (parsed.flags.numbered) score += 7;
@@ -483,6 +503,7 @@ function scoreListing(listing, compUniverse = []) {
   if (listing.totalCost > 750 && estimatedProfit < 150) score -= 20;
 
   const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+
   const qualityData = qualityEngine.evaluateQuality({
     ...listing,
     parsed,
@@ -492,12 +513,14 @@ function scoreListing(listing, compUniverse = []) {
     roi,
     ebayFees,
     compData,
-    marketConfidence: confidenceData.confidence,
+    marketData,
+    marketConfidence: combinedConfidence,
     confidenceReasons: confidenceData.reasons,
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
     compSource: compData.source
   });
+
   const dealGrade = gradingEngine.gradeDeal({
     ...listing,
     parsed,
@@ -507,7 +530,8 @@ function scoreListing(listing, compUniverse = []) {
     roi,
     ebayFees,
     compData,
-    marketConfidence: confidenceData.confidence,
+    marketData,
+    marketConfidence: combinedConfidence,
     confidenceReasons: confidenceData.reasons,
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
@@ -523,12 +547,15 @@ function scoreListing(listing, compUniverse = []) {
     roi,
     ebayFees,
     compData,
+    marketData,
     confidenceData,
-    marketConfidence: confidenceData.confidence,
+    marketConfidence: combinedConfidence,
     confidenceReasons: confidenceData.reasons,
     confidenceCap: confidenceData.cap,
     compCount: compData.compCount,
     compSource: compData.source,
+    marketSource: marketData.source,
+    marketMethod: marketData.method,
     qualityData,
     investmentQuality: qualityData.investmentQuality,
     qualityBucket: qualityData.bucket,
@@ -536,9 +563,9 @@ function scoreListing(listing, compUniverse = []) {
     riskLevel: qualityData.riskLevel,
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
-population: populationEngine.summarizePopulation(populationData),
+    population: populationEngine.summarizePopulation(populationData),
     trend: trendEngine.summarizeTrend(trendData),
-dealGrade
+    dealGrade
   };
 }
 
