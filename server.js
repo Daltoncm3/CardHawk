@@ -5,6 +5,7 @@ const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const marketValueEngine = require("./engines/marketValueEngine");
 const soldSalesEngine = require("./engines/soldSalesEngine");
+const roiEngine = require("./engines/roiEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -453,10 +454,19 @@ const marketData = marketValueEngine.calculateMarketValue({
 
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
 
-  const estimatedValue = marketData.marketValue || compData.marketValue;
-  const ebayFees = estimatedValue * 0.1325;
-  const estimatedProfit = estimatedValue - listing.totalCost - ebayFees;
-  const roi = listing.totalCost > 0 ? estimatedProfit / listing.totalCost : 0;
+ const estimatedValue = marketData.marketValue || compData.marketValue;
+
+const roiData = roiEngine.evaluateROI({
+  listing: { ...listing, parsed },
+  marketData,
+  marketConfidence: marketData.confidence,
+  minimumProfitTarget: store.settings.minProfit,
+  minimumRoiTarget: store.settings.minRoi
+});
+
+const ebayFees = roiData.costs?.fees?.totalSellerFees || estimatedValue * 0.1325;
+const estimatedProfit = roiData.netProfit;
+const roi = roiData.roi;
 
   let score = 0;
 
@@ -555,6 +565,7 @@ const marketData = marketValueEngine.calculateMarketValue({
     compData,
     marketData,
     soldSales: soldSalesSummary,
+    roiData,
     confidenceData,
     marketConfidence: combinedConfidence,
     confidenceReasons: confidenceData.reasons,
