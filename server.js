@@ -4,6 +4,7 @@ const path = require("path");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const marketValueEngine = require("./engines/marketValueEngine");
+const soldSalesEngine = require("./engines/soldSalesEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -434,16 +435,21 @@ function scoreListing(listing, compUniverse = []) {
   const populationData = populationEngine.getPopulation(listing);
   const trendData = trendEngine.evaluateTrend(listing);
 
-  const marketData = marketValueEngine.calculateMarketValue({
+ const soldSalesSummary = soldSalesEngine.summarizeSoldSales(
+    { ...listing, parsed },
+    Object.values(store.listings)
+);
+
+const marketData = marketValueEngine.calculateMarketValue({
     listing: { ...listing, parsed },
     activeCompData: compData,
-    soldComps: [],
+    soldComps: soldSalesSummary.sales,
     populationData,
     trendData,
     options: {
-      fallbackEstimator: estimateMarketValue
+        fallbackEstimator: estimateMarketValue
     }
-  });
+});
 
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
 
@@ -548,6 +554,7 @@ function scoreListing(listing, compUniverse = []) {
     ebayFees,
     compData,
     marketData,
+    soldSales: soldSalesSummary,
     confidenceData,
     marketConfidence: combinedConfidence,
     confidenceReasons: confidenceData.reasons,
