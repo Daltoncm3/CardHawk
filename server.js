@@ -7,6 +7,7 @@ const marketValueEngine = require("./engines/marketValueEngine");
 const soldSalesEngine = require("./engines/soldSalesEngine");
 const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
+const decisionEngine = require("./engines/decisionEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -547,7 +548,20 @@ const roi = roiData.roi;
     trendData,
     qualityData
 });
-
+  
+const decisionData = decisionEngine.makeDecision({
+  listing: { ...listing, parsed },
+  score: finalScore,
+  roiData,
+  riskData,
+  marketData,
+  confidenceData,
+  qualityData,
+  trendData,
+  soldSales: soldSalesSummary,
+  compData
+});
+  
   const dealGrade = gradingEngine.gradeDeal({
     ...listing,
     parsed,
@@ -591,6 +605,7 @@ const roi = roiData.roi;
     liquidityScore: qualityData.liquidityScore,
     riskLevel: riskData.riskLevel,
 riskData,
+    decision: decisionData
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
     population: populationEngine.summarizePopulation(populationData),
