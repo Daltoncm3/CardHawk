@@ -605,7 +605,7 @@ const decisionData = decisionEngine.makeDecision({
     liquidityScore: qualityData.liquidityScore,
     riskLevel: riskData.riskLevel,
 riskData,
-    decision: decisionData
+    decision: decisionData,
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
     population: populationEngine.summarizePopulation(populationData),
