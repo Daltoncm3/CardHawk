@@ -226,6 +226,34 @@ function sourceWeight(source = "") {
   return 0.75;
 }
 
+function hasSelectedComps(activeCompData = {}) {
+  return Array.isArray(activeCompData.selectedComps) && activeCompData.selectedComps.length > 0;
+}
+
+function isHeuristicFallbackCompData(activeCompData = {}) {
+  const source = normalizeText(activeCompData.source);
+  const method = normalizeText(activeCompData.method);
+
+  return source.includes("heuristic_fallback") ||
+    source.includes("fallback") ||
+    method.includes("fallback");
+}
+
+function getCompEngineMetrics(activeCompData = {}) {
+  return {
+    hasSelectedComps: hasSelectedComps(activeCompData),
+    usableCompCount: toNumber(activeCompData.usableCompCount, 0),
+    strongCompCount: toNumber(activeCompData.strongCompCount, 0),
+    confidence: toNumber(activeCompData.confidence, 0),
+    pricingSpread: toNumber(activeCompData.pricingSpread, 0),
+    marketConsistency: activeCompData.marketConsistency || "unknown",
+    cappedCompCount: toNumber(activeCompData.cappedCompCount, 0),
+    rejectedCompCount: toNumber(activeCompData.rejectedCompCount, 0),
+    source: activeCompData.source || "",
+    method: activeCompData.method || ""
+  };
+}
+
 function buildSoldEvidence(listing, soldComps = [], options = {}) {
   const now = options.now ? new Date(options.now) : new Date();
   const minSimilarity = toNumber(options.minSoldSimilarity, 62);
@@ -255,7 +283,11 @@ function buildSoldEvidence(listing, soldComps = [], options = {}) {
 }
 
 function buildActiveEvidence(activeCompData = {}) {
-  const comps = Array.isArray(activeCompData.comps) ? activeCompData.comps : [];
+  const comps = hasSelectedComps(activeCompData)
+    ? activeCompData.selectedComps
+    : Array.isArray(activeCompData.comps)
+      ? activeCompData.comps
+      : [];
 
   return comps
     .map(comp => ({
@@ -263,14 +295,22 @@ function buildActiveEvidence(activeCompData = {}) {
       title: comp.title || "Untitled active comp",
       price: getEvidencePrice(comp),
       url: comp.url || comp.itemWebUrl || "",
-      date: comp.lastSeenAt || comp.lastSeen || null,
-      source: "active_market",
-      type: "active",
+      date: comp.lastSeenAt || comp.lastSeen || comp.soldDate || comp.saleDate || null,
+      source: hasSelectedComps(activeCompData) ? "comp_engine_selected" : "active_market",
+      type: hasSelectedComps(activeCompData) ? "selected_comp" : "active",
       similarity: toNumber(comp.similarity, 0),
-      weight: roundMoney((toNumber(comp.similarity, 0) / 100) * 0.55)
+      weight: roundMoney(
+        toNumber(comp.contributionWeight, 0) > 0
+          ? toNumber(comp.contributionWeight, 0)
+          : (toNumber(comp.similarity, 0) / 100) * 0.55
+      ),
+      compStatus: comp.compStatus || "",
+      similarityCap: comp.similarityCap,
+      identityCaps: comp.identityCaps || [],
+      fatalMismatches: comp.fatalMismatches || []
     }))
     .filter(comp => comp.price > 0)
-    .filter(comp => comp.similarity >= 58)
+    .filter(comp => comp.similarity >= (hasSelectedComps(activeCompData) ? 60 : 58))
     .sort((a, b) => b.weight - a.weight);
 }
 
@@ -329,7 +369,7 @@ function applyPopulationAdjustment(value, populationData = {}) {
   return roundMoney(value * (1 + clamp(adjustment, -0.08, 0.10)));
 }
 
-function calculateEvidenceConfidence({ soldEvidence, activeEvidence, source, outliersRemoved }) {
+function calculateEvidenceConfidence({ soldEvidence, activeEvidence, source, outliersRemoved, compMetrics }) {
   let confidence = 0;
 
   const soldCount = soldEvidence.length;
@@ -351,6 +391,38 @@ function calculateEvidenceConfidence({ soldEvidence, activeEvidence, source, out
   if (avgSoldSimilarity >= 86) confidence += 7;
   if (!soldCount && avgActiveSimilarity >= 80) confidence += 6;
   if (outliersRemoved > 0) confidence -= Math.min(8, outliersRemoved * 2);
+
+  if (compMetrics && compMetrics.confidence > 0) {
+    confidence = Math.round(confidence * 0.7 + compMetrics.confidence * 0.3);
+  }
+
+  if (compMetrics && compMetrics.usableCompCount > 0 && compMetrics.usableCompCount < 3) {
+    confidence = Math.min(confidence, compMetrics.usableCompCount === 1 ? 38 : 48);
+  }
+
+  if (compMetrics && compMetrics.hasSelectedComps && activeEvidence.length < 3) {
+    confidence = Math.min(confidence, activeEvidence.length <= 1 ? 38 : 48);
+  }
+
+  if (compMetrics && compMetrics.pricingSpread > 0.65) {
+    confidence = Math.min(confidence, 55);
+  }
+
+  if (compMetrics && compMetrics.marketConsistency === "volatile_market") {
+    confidence = Math.min(confidence, 52);
+  }
+
+  if (compMetrics && compMetrics.strongCompCount <= 0 && compMetrics.hasSelectedComps) {
+    confidence = Math.min(confidence, 68);
+  }
+
+  if (compMetrics && compMetrics.cappedCompCount > 0) {
+    confidence -= Math.min(12, compMetrics.cappedCompCount * 3);
+  }
+
+  if (compMetrics && compMetrics.rejectedCompCount > 0) {
+    confidence -= Math.min(8, compMetrics.rejectedCompCount * 1.5);
+  }
 
   if (source === "active_market") confidence = Math.min(confidence, 72);
   if (source === "fallback") confidence = Math.min(confidence, 25);
@@ -381,10 +453,12 @@ function calculateMarketValue(input = {}) {
   const trendData = input.trendData || {};
   const populationData = input.populationData || {};
   const options = input.options || {};
+  const compMetrics = getCompEngineMetrics(activeCompData);
+  const compFallbackUsed = isHeuristicFallbackCompData(activeCompData);
 
   const listingPrice = getListingPrice(listing);
   const soldEvidenceRaw = buildSoldEvidence(listing, soldComps, options);
-  const activeEvidenceRaw = buildActiveEvidence(activeCompData);
+  const activeEvidenceRaw = compFallbackUsed ? [] : buildActiveEvidence(activeCompData);
 
   const soldClean = removePriceOutliers(soldEvidenceRaw, options);
   const activeClean = removePriceOutliers(activeEvidenceRaw, options);
@@ -397,7 +471,11 @@ function calculateMarketValue(input = {}) {
   let source = "fallback";
   let method = "fallback";
 
-  if (soldEvidence.length >= 3) {
+  if (compFallbackUsed) {
+    baseValue = roundMoney(toNumber(activeCompData.marketValue, 0) || (typeof options.fallbackEstimator === "function" ? options.fallbackEstimator(listing) : listingPrice));
+    source = "fallback";
+    method = activeCompData.method || "compEngineFallback";
+  } else if (soldEvidence.length >= 3) {
     baseValue = weightedAverage(soldEvidence.map(comp => ({ value: comp.price, weight: comp.weight })));
     source = "sold_market";
     method = "weightedSoldComps";
@@ -413,7 +491,7 @@ function calculateMarketValue(input = {}) {
   } else if (activeEvidence.length >= 3 || activeCompData.marketValue > 0) {
     baseValue = roundMoney(toNumber(activeCompData.marketValue, 0) || weightedAverage(activeEvidence.map(comp => ({ value: comp.price, weight: comp.weight }))) * 0.9);
     source = "active_market";
-    method = "discountedActiveComps";
+    method = hasSelectedComps(activeCompData) ? "compEngineSelectedComps" : "discountedActiveComps";
   } else if (typeof options.fallbackEstimator === "function") {
     baseValue = roundMoney(options.fallbackEstimator(listing));
     source = "fallback";
@@ -432,7 +510,8 @@ function calculateMarketValue(input = {}) {
     soldEvidence,
     activeEvidence,
     source,
-    outliersRemoved
+    outliersRemoved,
+    compMetrics
   });
 
   const marketValue = roundMoney(adjustedValue);
@@ -457,6 +536,19 @@ function calculateMarketValue(input = {}) {
     evidence: {
       sold: soldEvidence.slice(0, toNumber(options.evidenceLimit, 10)),
       active: activeEvidence.slice(0, toNumber(options.evidenceLimit, 10))
+    },
+    compEngine: {
+      source: compMetrics.source,
+      method: compMetrics.method,
+      confidence: compMetrics.confidence,
+      usableCompCount: compMetrics.usableCompCount,
+      strongCompCount: compMetrics.strongCompCount,
+      pricingSpread: compMetrics.pricingSpread,
+      marketConsistency: compMetrics.marketConsistency,
+      cappedCompCount: compMetrics.cappedCompCount,
+      rejectedCompCount: compMetrics.rejectedCompCount,
+      selectedCompsUsed: compMetrics.hasSelectedComps,
+      heuristicFallbackUsed: compFallbackUsed
     },
     adjustments: {
       populationApplied: Boolean(populationData && Object.keys(populationData).length),
