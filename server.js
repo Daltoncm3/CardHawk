@@ -8,6 +8,7 @@ const soldSalesEngine = require("./engines/soldSalesEngine");
 const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
 const decisionEngine = require("./engines/decisionEngine");
+const decisionValidationEngine = require("./engines/decisionValidationEngine");
 const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
 const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
@@ -1037,6 +1038,36 @@ function saveScoutedListing(listing, query, lane) {
 
   const gate = dealGate(saved);
   saved.dealGate = gate;
+  try {
+  decisionValidationEngine.recordDecision({
+    listingId: saved.ebayItemId,
+    title: saved.title,
+    decision: gate.passed ? "BUY_NOW" : "PASS",
+    decisionScore: scoring.decision?.decisionScore || scoring.decision?.score || scoring.score,
+    decisionConfidence: scoring.decision?.decisionConfidence || scoring.decision?.confidence,
+    evidenceScore:
+      scoring.decision?.evidenceScore ||
+      scoring.decision?.evidenceStrength ||
+      scoring.decision?.matrix?.evidenceStrength?.score,
+    opportunityScore:
+      scoring.decision?.opportunityScore ||
+      scoring.decision?.investmentQuality ||
+      scoring.decision?.matrix?.investmentQuality?.score,
+    expectedValue:
+      scoring.marketData?.expectedValue ||
+      scoring.marketData?.marketValue ||
+      scoring.estimatedValue,
+    expectedValueLow: scoring.marketData?.expectedValueLow,
+    expectedValueHigh: scoring.marketData?.expectedValueHigh,
+    listingCost: saved.totalCost || saved.price,
+    projectedROI: scoring.roi,
+    projectedProfit: scoring.estimatedProfit,
+    timestamp: now
+  });
+} catch (decisionValidationError) {
+  console.warn("Decision Validation Engine recordDecision failed:", decisionValidationError.message);
+}
+  
   try {
   learningEngine.recordPrediction({
     listing: saved,
