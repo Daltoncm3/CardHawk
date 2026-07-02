@@ -629,33 +629,374 @@ marketRecommendation: marketIntelligenceData.recommendation,
   };
 }
 
-function dealGate(listing) {
-  const parsed = listing.parsed || parseCardTitle(listing.title);
+function dealGate(listing = {}) {
   const reasons = [];
+  const positives = [];
 
-  if (parsed.flags.reprint) reasons.push("reprint");
-  if (parsed.flags.digital) reasons.push("digital");
-  if (parsed.flags.custom) reasons.push("custom");
-  if (parsed.flags.sealed) reasons.push("sealed wax");
-  if (parsed.flags.lot) reasons.push("lot/collection/repack");
-  if (listing.totalCost <= 0) reasons.push("invalid price");
+  const toNumber = (value, fallback = 0) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
 
-  const hasStrongTrait =
-    parsed.flags.graded ||
-    parsed.flags.autograph ||
-    parsed.flags.rookie ||
-    parsed.flags.numbered ||
-    parsed.flags.firstBowman ||
-    parsed.flags.pokemon;
+  const normalize = (value) => String(value || '').trim().toLowerCase();
 
-  if (!hasStrongTrait) reasons.push("not enough collector traits");
-  if (listing.score < store.settings.minDealScore) reasons.push("score too low");
-  if (listing.estimatedProfit < store.settings.minProfit) reasons.push("profit too low");
-  if (listing.roi < store.settings.minRoi) reasons.push("ROI too low");
+  const pickNumber = (sources, keys, fallback = 0) => {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+
+      for (const key of keys) {
+        if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+          const value = toNumber(source[key], NaN);
+          if (Number.isFinite(value)) return value;
+        }
+      }
+    }
+
+    return fallback;
+  };
+
+  const pickString = (sources, keys, fallback = '') => {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+
+      for (const key of keys) {
+        if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+          return String(source[key]).trim();
+        }
+      }
+    }
+
+    return fallback;
+  };
+
+  const marketData = listing.marketData || {};
+  const soldSales = Array.isArray(listing.soldSales) ? listing.soldSales : [];
+  const marketIntelligenceData = listing.marketIntelligenceData || {};
+  const riskData = listing.riskData || {};
+  const compData = listing.compData || {};
+  const qualityData = listing.qualityData || {};
+  const parsed = listing.parsed || {};
+
+  const score = toNumber(listing.score, 0);
+  const estimatedProfit = toNumber(listing.estimatedProfit, 0);
+  const roi = toNumber(listing.roi, 0);
+
+  const soldCompCount = Math.max(
+    soldSales.length,
+    pickNumber([marketData, compData, qualityData, marketIntelligenceData.compQuality], [
+      'soldCount',
+      'recentSoldCount',
+      'completedSales',
+      'salesCount',
+      'compCount',
+      'usableSoldCompCount'
+    ], 0)
+  );
+
+  const marketIntelligenceScore = pickNumber([
+    listing,
+    marketIntelligenceData,
+    marketIntelligenceData.confidence
+  ], [
+    'marketIntelligenceScore',
+    'intelligenceScore',
+    'confidenceScore'
+  ], 0);
+
+  const marketTrustLevel = normalize(
+    listing.marketTrustLevel ||
+    marketIntelligenceData.trustLevel ||
+    marketIntelligenceData.confidence && marketIntelligenceData.confidence.trustLevel
+  );
+
+  const marketRecommendation = normalize(
+    listing.marketRecommendation ||
+    marketIntelligenceData.recommendation ||
+    marketIntelligenceData.confidence && marketIntelligenceData.confidence.recommendation
+  );
+
+  const riskLevel = normalize(
+    listing.riskLevel ||
+    riskData.riskLevel ||
+    riskData.level ||
+    riskData.risk
+  );
+
+  const liquidityScore = pickNumber([
+    marketIntelligenceData.liquidity,
+    marketData
+  ], [
+    'score',
+    'liquidityScore'
+  ], 0);
+
+  const liquidityLevel = normalize(pickString([
+    marketIntelligenceData.liquidity,
+    marketData
+  ], [
+    'level',
+    'liquidityLevel'
+  ], ''));
+
+  const priceConsistencyScore = pickNumber([
+    marketIntelligenceData.priceConsistency,
+    marketIntelligenceData.pricing,
+    compData
+  ], [
+    'score',
+    'priceConsistencyScore',
+    'pricingScore'
+  ], 0);
+
+  const pricingLevel = normalize(pickString([
+    marketIntelligenceData.priceConsistency,
+    marketIntelligenceData.pricing,
+    compData
+  ], [
+    'level',
+    'pricingLevel'
+  ], ''));
+
+  const confidenceScore = pickNumber([
+    marketIntelligenceData.confidence,
+    marketIntelligenceData,
+    marketData,
+    qualityData
+  ], [
+    'confidenceScore',
+    'confidence',
+    'marketConfidence',
+    'marketConfidenceScore'
+  ], 0);
+
+  const condition = normalize(
+    listing.condition ||
+    parsed.condition ||
+    parsed.grade ||
+    qualityData.condition
+  );
+
+  const dealGrade = String(listing.dealGrade || '').trim().toUpperCase();
+
+  const compSource = normalize(
+    listing.compSource ||
+    compData.compSource ||
+    compData.source ||
+    marketData.source ||
+    marketData.valueSource ||
+    marketData.valuationSource
+  );
+
+  const usesHeuristicFallback =
+    compSource.includes('heuristic') ||
+    compSource.includes('fallback') ||
+    normalize(marketData.source).includes('heuristic') ||
+    normalize(marketData.valueSource).includes('heuristic') ||
+    normalize(marketData.valuationSource).includes('heuristic');
+
+  const estimatedValue = pickNumber([
+    listing,
+    marketData,
+    compData,
+    marketIntelligenceData.pricing,
+    marketIntelligenceData.priceConsistency
+  ], [
+    'estimatedValue',
+    'estimatedSalePrice',
+    'targetSalePrice',
+    'projectedSalePrice',
+    'marketValue'
+  ], 0);
+
+  const referenceMarketValue = pickNumber([
+    marketData,
+    compData,
+    marketIntelligenceData.pricing,
+    marketIntelligenceData.priceConsistency
+  ], [
+    'referencePrice',
+    'medianPrice',
+    'medianSoldPrice',
+    'averagePrice',
+    'avgPrice',
+    'averageSoldPrice',
+    'marketValue'
+  ], 0);
+
+  const conditionUnknown =
+    !condition ||
+    condition === 'unknown' ||
+    condition === 'n/a' ||
+    condition === 'na' ||
+    condition === 'ungraded?';
+
+  if (soldCompCount <= 0) {
+    reasons.push('Zero sold comps available.');
+  } else if (soldCompCount < 3) {
+    reasons.push(`Only ${soldCompCount} sold comp${soldCompCount === 1 ? '' : 's'} available; minimum is 3.`);
+  } else {
+    positives.push(`Supported by ${soldCompCount} sold comps.`);
+  }
+
+  if (confidenceScore > 0 && confidenceScore < 60) {
+    reasons.push(`Market confidence is too low (${confidenceScore}/100).`);
+  }
+
+  if (marketIntelligenceScore > 0 && marketIntelligenceScore < 60) {
+    reasons.push(`Market Intelligence score is too low (${marketIntelligenceScore}/100).`);
+  }
+
+  if (liquidityScore > 0 && liquidityScore < 55) {
+    reasons.push(`Liquidity score is weak (${liquidityScore}/100).`);
+  }
+
+  if (['weak', 'poor', 'thin', 'unreliable'].includes(liquidityLevel)) {
+    reasons.push(`Liquidity level is ${liquidityLevel}.`);
+  }
+
+  if (priceConsistencyScore > 0 && priceConsistencyScore < 55) {
+    reasons.push(`Pricing reliability is too low (${priceConsistencyScore}/100).`);
+  }
+
+  if (['weak', 'poor', 'unreliable'].includes(pricingLevel)) {
+    reasons.push(`Pricing level is ${pricingLevel}.`);
+  }
+
+  if (['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel)) {
+    reasons.push(`Risk level is ${riskLevel}.`);
+  }
+
+  if (['weak', 'unreliable'].includes(marketTrustLevel)) {
+    reasons.push(`Market trust level is ${marketTrustLevel}.`);
+  }
+
+  if (marketRecommendation === 'do_not_trust') {
+    reasons.push('Market Intelligence recommendation is do_not_trust.');
+  }
+
+  if (confidenceScore > 0 && confidenceScore < 60 && ['A', 'A+'].includes(dealGrade)) {
+    reasons.push(`Impossible grade/confidence combination: ${dealGrade} with ${confidenceScore}/100 confidence.`);
+  }
+
+  if (usesHeuristicFallback && ['A', 'A+'].includes(dealGrade)) {
+    reasons.push(`Heuristic fallback cannot support ${dealGrade} approval.`);
+  }
+
+  if (referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 2.5) {
+    reasons.push(
+      `Estimated value (${estimatedValue}) is more than 2.5x market support (${referenceMarketValue}).`
+    );
+  }
+
+  if (soldCompCount <= 0 && estimatedProfit > 50) {
+    reasons.push('Projected profit is high despite no sold history.');
+  }
+
+  if (roi > 150) {
+    const roiHasStrongSupport =
+      soldCompCount >= 8 &&
+      confidenceScore >= 85 &&
+      marketIntelligenceScore >= 85 &&
+      liquidityScore >= 75 &&
+      priceConsistencyScore >= 75 &&
+      ['excellent', 'good', ''].includes(marketTrustLevel) &&
+      !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel) &&
+      !usesHeuristicFallback;
+
+    if (!roiHasStrongSupport) {
+      reasons.push(`ROI is excessive (${roi}%) without very strong independent support.`);
+    }
+  }
+
+  if (usesHeuristicFallback) {
+    const heuristicHasStrongSupport =
+      soldCompCount >= 8 &&
+      confidenceScore >= 88 &&
+      marketIntelligenceScore >= 85 &&
+      liquidityScore >= 80 &&
+      priceConsistencyScore >= 80 &&
+      ['excellent', 'good'].includes(marketTrustLevel) &&
+      ['excellent', 'good', ''].includes(liquidityLevel) &&
+      ['excellent', 'good', ''].includes(pricingLevel) &&
+      !conditionUnknown &&
+      !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel) &&
+      roi <= 150;
+
+    if (!heuristicHasStrongSupport) {
+      reasons.push('Heuristic fallback valuation lacks enough independent support.');
+    }
+  }
+
+  if (conditionUnknown) {
+    const unknownConditionHasSupport =
+      soldCompCount >= 5 &&
+      confidenceScore >= 75 &&
+      marketIntelligenceScore >= 75 &&
+      liquidityScore >= 65 &&
+      priceConsistencyScore >= 65 &&
+      roi <= 100 &&
+      !usesHeuristicFallback &&
+      !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel);
+
+    if (!unknownConditionHasSupport) {
+      reasons.push('Unknown condition does not have enough support to approve.');
+    }
+  }
+
+  if (score >= 80) positives.push(`Listing score is strong (${score}/100).`);
+  if (confidenceScore >= 75) positives.push(`Market confidence is acceptable (${confidenceScore}/100).`);
+  if (marketIntelligenceScore >= 75) positives.push(`Market Intelligence score is acceptable (${marketIntelligenceScore}/100).`);
+  if (liquidityScore >= 70) positives.push(`Liquidity score is acceptable (${liquidityScore}/100).`);
+  if (priceConsistencyScore >= 70) positives.push(`Pricing consistency is acceptable (${priceConsistencyScore}/100).`);
+
+  const buyNowAllowed =
+    reasons.length === 0 &&
+    score >= 75 &&
+    estimatedProfit > 0 &&
+    soldCompCount >= 3 &&
+    confidenceScore >= 75 &&
+    marketIntelligenceScore >= 80 &&
+    liquidityScore >= 65 &&
+    priceConsistencyScore >= 65 &&
+    !['weak', 'unreliable'].includes(marketTrustLevel) &&
+    !['weak', 'poor', 'thin', 'unreliable'].includes(liquidityLevel) &&
+    !['weak', 'poor', 'unreliable'].includes(pricingLevel) &&
+    !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel) &&
+    marketRecommendation !== 'do_not_trust';
 
   return {
-    passed: reasons.length === 0,
-    reasons
+    passed: buyNowAllowed,
+    approved: buyNowAllowed,
+    pass: buyNowAllowed,
+    shouldBuy: buyNowAllowed,
+    buyNowAllowed,
+    decision: buyNowAllowed ? 'BUY_NOW' : 'REJECT',
+    recommendation: buyNowAllowed ? 'buy_now' : 'reject',
+    reasons,
+    rejectionReasons: reasons,
+    positives,
+    gate: {
+      score,
+      estimatedProfit,
+      roi,
+      soldCompCount,
+      confidenceScore,
+      marketIntelligenceScore,
+      marketTrustLevel,
+      marketRecommendation,
+      liquidityScore,
+      liquidityLevel,
+      priceConsistencyScore,
+      pricingLevel,
+      riskLevel,
+      dealGrade,
+      condition: condition || 'unknown',
+      conditionUnknown,
+      compSource,
+      usesHeuristicFallback,
+      estimatedValue,
+      referenceMarketValue
+    }
   };
 }
 
