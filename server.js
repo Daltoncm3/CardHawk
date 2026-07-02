@@ -9,6 +9,7 @@ const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
 const decisionEngine = require("./engines/decisionEngine");
 const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
+const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -693,6 +694,18 @@ function saveScoutedListing(listing, query, lane) {
     alertCreated: existing?.alertCreated || false
   };
 
+  try {
+  learningEngine.recordPrediction({
+    listing: saved,
+    parsed: saved.parsed,
+    scoring,
+    decision: scoring.decision?.decision || scoring.decision?.recommendation || "",
+    dealGrade: scoring.dealGrade?.grade || scoring.dealGrade?.label || scoring.dealGrade || "",
+    observedAt: now
+  });
+} catch (learningError) {
+  console.warn("Learning Engine recordPrediction failed:", learningError.message);
+}
   const gate = dealGate(saved);
   saved.dealGate = gate;
 
@@ -931,6 +944,13 @@ async function runScoutScan(source = "automatic") {
     store.scans = store.scans.slice(0, 100);
     store.alerts = store.alerts.slice(0, 200);
 
+    try {
+  learningEngine.recordScanOutcome(observedListings, {
+    observedAt: scan.finishedAt || new Date().toISOString()
+  });
+} catch (learningError) {
+  console.warn("Learning Engine recordScanOutcome failed:", learningError.message);
+}
     systemHealth.finishScan(scan);
     saveStore();
     scanInProgress = false;
