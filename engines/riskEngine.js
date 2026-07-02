@@ -1,270 +1,427 @@
-// engines/riskEngine.js
-// CardHawk Risk Engine v1
-// Purpose: evaluate purchase risk before CardHawk recommends spending real money.
-// This engine is conservative by design and focuses on avoiding bad buys.
+'use strict';
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-function normalizeText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s/.-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function normalize(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
-function getParsed(listing = {}) {
-  return listing.parsed || {};
+function pickFirstValue(sources, keys, fallback = undefined) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+
+    for (const key of keys) {
+      if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+        return source[key];
+      }
+    }
+  }
+
+  return fallback;
 }
 
-function getFlags(listing = {}) {
-  return getParsed(listing).flags || {};
+function pickFirstNumber(sources, keys, fallback = 0) {
+  const value = pickFirstValue(sources, keys, undefined);
+  return value === undefined ? fallback : toNumber(value, fallback);
 }
 
-function getListingCost(listing = {}) {
-  const totalCost = toNumber(listing.totalCost, NaN);
-  if (Number.isFinite(totalCost) && totalCost > 0) return totalCost;
-  return toNumber(listing.price, 0) + toNumber(listing.shipping, 0);
+function clampRiskScore(score) {
+  return Math.max(0, Math.min(100, Math.round(toNumber(score, 0))));
 }
 
-function addRisk(risks, points, code, message, severity = "medium") {
-  risks.push({
-    points: clamp(Math.round(points), 0, 100),
-    code,
-    message,
-    severity
-  });
+function getRiskLevel(riskScore) {
+  if (riskScore >= 80) return 'critical';
+  if (riskScore >= 55) return 'high';
+  if (riskScore >= 30) return 'medium';
+  return 'low';
 }
 
-function titleRisk(listing = {}, risks = []) {
-  const title = normalizeText(listing.title);
-  const flags = getFlags(listing);
+function getSalePrice(sale = {}) {
+  return pickFirstNumber(
+    [sale],
+    ['price', 'soldPrice', 'salePrice', 'amount', 'totalPrice', 'value'],
+    0
+  );
+}
 
-  if (flags.reprint || /\b(reprint|facsimile|rp|proxy)\b/i.test(title)) {
-    addRisk(risks, 100, "reprint_risk", "Listing appears to be a reprint/proxy/facsimile.", "critical");
+function getListingPrice(listing = {}, roiData = {}) {
+  return pickFirstNumber(
+    [listing, roiData],
+    ['price', 'currentPrice', 'askingPrice', 'listPrice', 'purchasePrice', 'costBasis', 'cost'],
+    0
+  );
+}
+
+function getMedian(values) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (!cleanValues.length) return 0;
+
+  const middle = Math.floor(cleanValues.length / 2);
+
+  if (cleanValues.length % 2) {
+    return cleanValues[middle];
   }
 
-  if (flags.digital || /\b(digital|nft|online only)\b/i.test(title)) {
-    addRisk(risks, 100, "digital_risk", "Listing appears to be digital or non-physical.", "critical");
+  return (cleanValues[middle - 1] + cleanValues[middle]) / 2;
+}
+
+function getAverage(values) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (!cleanValues.length) return 0;
+
+  return cleanValues.reduce((sum, value) => sum + value, 0) / cleanValues.length;
+}
+
+function uniqueMessages(messages) {
+  const seen = new Set();
+
+  return asArray(messages)
+    .filter(Boolean)
+    .map((message) => String(message).trim())
+    .filter((message) => {
+      if (!message || seen.has(message)) return false;
+      seen.add(message);
+      return true;
+    });
+}
+
+function isHeuristicFallback(input = {}) {
+  const listing = input.listing || {};
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+
+  const sourceText = [
+    listing.compSource,
+    listing.valueSource,
+    marketData.source,
+    marketData.compSource,
+    marketData.valueSource,
+    marketData.valuationSource,
+    compData.source,
+    compData.compSource,
+    qualityData.source
+  ].map(normalize).join(' ');
+
+  return sourceText.includes('heuristic') || sourceText.includes('fallback');
+}
+
+function getConfidence(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+  const trendData = input.trendData || {};
+
+  return pickFirstNumber(
+    [input, marketData, compData, qualityData, trendData],
+    ['confidence', 'confidenceScore', 'marketConfidence', 'marketConfidenceScore', 'qualityScore'],
+    0
+  );
+}
+
+function getSoldCompCount(input = {}) {
+  const marketData = input.marketData || {};
+  const soldSales = asArray(input.soldSales);
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+
+  return Math.max(
+    soldSales.length,
+    pickFirstNumber(
+      [marketData, compData, qualityData],
+      ['soldCount', 'recentSoldCount', 'completedSales', 'salesCount', 'compCount', 'usableSoldCompCount'],
+      0
+    )
+  );
+}
+
+function getMarketReference(input = {}) {
+  const marketData = input.marketData || {};
+  const soldSales = asArray(input.soldSales);
+  const compData = input.compData || {};
+
+  const soldPrices = soldSales
+    .map(getSalePrice)
+    .filter((price) => price > 0);
+
+  const averageSoldPrice = getAverage(soldPrices);
+  const medianSoldPrice = getMedian(soldPrices);
+
+  return pickFirstNumber(
+    [marketData, compData],
+    ['referencePrice', 'medianPrice', 'medianSoldPrice', 'averagePrice', 'avgPrice', 'averageSoldPrice', 'marketValue'],
+    medianSoldPrice || averageSoldPrice
+  );
+}
+
+function getPricingSpread(input = {}, referencePrice) {
+  const marketData = input.marketData || {};
+  const soldSales = asArray(input.soldSales);
+  const compData = input.compData || {};
+
+  const soldPrices = soldSales
+    .map(getSalePrice)
+    .filter((price) => price > 0);
+
+  const lowPrice = pickFirstNumber(
+    [marketData, compData],
+    ['lowPrice', 'minPrice', 'lowestSoldPrice'],
+    soldPrices.length ? Math.min(...soldPrices) : 0
+  );
+
+  const highPrice = pickFirstNumber(
+    [marketData, compData],
+    ['highPrice', 'maxPrice', 'highestSoldPrice'],
+    soldPrices.length ? Math.max(...soldPrices) : 0
+  );
+
+  if (!referencePrice || referencePrice <= 0 || !lowPrice || !highPrice || highPrice <= lowPrice) {
+    return 0;
   }
 
-  if (flags.custom || /\b(custom|art card|homemade)\b/i.test(title)) {
-    addRisk(risks, 90, "custom_risk", "Listing appears to be custom/non-standard.", "critical");
-  }
+  return (highPrice - lowPrice) / referencePrice;
+}
 
-  if (flags.lot || /\b(lot|collection|bulk|mystery|repack|break)\b/i.test(title)) {
-    addRisk(risks, 55, "lot_risk", "Listing appears to be a lot/repack/break rather than a clean single-card comp.", "high");
-  }
+function hasSuspiciousListingData(listing = {}) {
+  const title = normalize(listing.title);
+  const sellerFeedback = pickFirstNumber(
+    [listing, listing.seller || {}],
+    ['sellerFeedback', 'feedbackScore', 'feedbackCount', 'sellerFeedbackScore'],
+    NaN
+  );
 
-  if (flags.sealed || /\b(hobby box|blaster|mega box|sealed|unopened|pack)\b/i.test(title)) {
-    addRisk(risks, 70, "sealed_wax_risk", "Listing appears to be sealed wax rather than an individual card.", "high");
-  }
+  const sellerPositivePercent = pickFirstNumber(
+    [listing, listing.seller || {}],
+    ['sellerPositivePercent', 'positiveFeedbackPercent', 'feedbackPercent'],
+    NaN
+  );
 
-  if (/\b(read description|see description|not mint|damaged|creased|poor condition)\b/i.test(title)) {
-    addRisk(risks, 45, "condition_disclaimer", "Title includes a condition/disclaimer phrase that needs manual review.", "high");
-  }
+  const suspiciousTitleTerms = [
+    'reprint',
+    'proxy',
+    'custom',
+    'digital',
+    'not original',
+    'not authentic',
+    'facsimile',
+    'novelty'
+  ];
 
-  if (/\b(no returns|as is)\b/i.test(title)) {
-    addRisk(risks, 25, "return_policy_risk", "Title suggests no returns/as-is terms.", "medium");
+  const suspiciousTitle = suspiciousTitleTerms.some((term) => title.includes(term));
+  const veryLowFeedback = Number.isFinite(sellerFeedback) && sellerFeedback >= 0 && sellerFeedback < 5;
+  const poorFeedbackPercent =
+    Number.isFinite(sellerPositivePercent) &&
+    sellerPositivePercent > 0 &&
+    sellerPositivePercent < 95;
+
+  return {
+    suspiciousTitle,
+    veryLowFeedback,
+    poorFeedbackPercent
+  };
+}
+
+function addRisk(points, message, state) {
+  state.riskScore += points;
+  state.reasons.push(message);
+
+  if (points >= 20) {
+    state.warnings.push(message);
   }
 }
 
-function sellerRisk(listing = {}, risks = []) {
-  const feedbackPercent = toNumber(listing.sellerFeedbackPercentage, 0);
-  const feedbackScore = toNumber(listing.sellerFeedbackScore, 0);
-
-  if (feedbackPercent > 0 && feedbackPercent < 97) {
-    addRisk(risks, 35, "seller_feedback_low", "Seller feedback percentage is below 97%.", "high");
-  } else if (feedbackPercent > 0 && feedbackPercent < 99) {
-    addRisk(risks, 15, "seller_feedback_moderate", "Seller feedback percentage is below preferred level.", "medium");
-  }
-
-  if (feedbackScore > 0 && feedbackScore < 25) {
-    addRisk(risks, 25, "seller_history_thin", "Seller has limited feedback history.", "medium");
-  }
+function addPositive(message, state) {
+  state.positives.push(message);
 }
 
-function compRisk({ marketData = {}, soldSales = {}, compData = {} }, risks = []) {
-  const marketConfidence = toNumber(marketData.confidence, 0);
-  const soldCount = toNumber(marketData.soldCompCount ?? soldSales.saleCount, 0);
-  const activeCount = toNumber(marketData.activeCompCount ?? compData.compCount, 0);
-  const totalCompCount = toNumber(marketData.compCount ?? compData.compCount, 0);
+function summarizeRisk(data = {}) {
+  const riskLevel = data.riskLevel || getRiskLevel(data.riskScore);
+  const riskScore = clampRiskScore(data.riskScore);
 
-  if (marketData.source === "fallback") {
-    addRisk(risks, 45, "fallback_valuation", "Market value is still relying on fallback valuation.", "high");
+  if (riskLevel === 'critical') {
+    return 'Critical risk: the listing has one or more dangerous signals that can materially distort expected profit.';
   }
 
-  if (marketData.source === "active_market") {
-    addRisk(risks, 25, "active_market_only", "Market value is based mainly on active listings instead of sold comps.", "medium");
+  if (riskLevel === 'high') {
+    return 'High risk: the listing may still be viable, but the evidence is not strong enough to trust without manual review.';
   }
 
-  if (soldCount === 0) {
-    addRisk(risks, 35, "no_sold_comps", "No reliable sold comps are supporting this valuation yet.", "high");
-  } else if (soldCount < 3) {
-    addRisk(risks, 20, "thin_sold_comps", "Sold comp evidence is thin.", "medium");
+  if (riskLevel === 'medium') {
+    return 'Medium risk: the listing has some uncertainty, but no clear critical failure signal.';
   }
 
-  if (totalCompCount < 3 && activeCount < 3) {
-    addRisk(risks, 25, "thin_market", "Comparable market appears thin.", "medium");
+  if (riskScore <= 15) {
+    return 'Low risk: available evidence is generally healthy for a card-flipping decision.';
   }
 
-  if (marketConfidence < 35) {
-    addRisk(risks, 35, "low_market_confidence", "Market confidence is low.", "high");
-  } else if (marketConfidence < 55) {
-    addRisk(risks, 18, "moderate_market_confidence", "Market confidence is only moderate.", "medium");
-  }
-
-  if (toNumber(marketData.outliersRemoved, 0) >= 3) {
-    addRisk(risks, 15, "many_outliers", "Several comp outliers were removed, suggesting a noisy market.", "medium");
-  }
-}
-
-function roiRisk({ roiData = {}, listing = {} }, risks = []) {
-  const cost = getListingCost(listing);
-  const netProfit = toNumber(roiData.netProfit, 0);
-  const roi = toNumber(roiData.roi, 0);
-  const marginOfSafetyPercent = toNumber(roiData.marginOfSafetyPercent, 0);
-  const riskAdjustedProfit = toNumber(roiData.riskAdjustedProfit, 0);
-
-  if (netProfit <= 0) {
-    addRisk(risks, 55, "negative_profit", "Expected net profit is not positive.", "critical");
-  }
-
-  if (riskAdjustedProfit <= 0) {
-    addRisk(risks, 35, "weak_risk_adjusted_profit", "Risk-adjusted profit is not positive.", "high");
-  }
-
-  if (roi > 0 && roi < 0.15) {
-    addRisk(risks, 25, "thin_roi", "ROI is thin after costs.", "medium");
-  }
-
-  if (marginOfSafetyPercent < 8) {
-    addRisk(risks, 25, "low_margin_of_safety", "Margin of safety is low.", "medium");
-  }
-
-  if (cost >= 500 && netProfit < 125) {
-    addRisk(risks, 30, "high_dollar_low_profit", "High-dollar listing does not offer enough expected profit.", "high");
-  }
-
-  if (cost >= 1000) {
-    addRisk(risks, 20, "large_capital_commitment", "Large capital commitment requires manual review.", "high");
-  }
-}
-
-function trendRisk({ trendData = {}, soldSales = {} }, risks = []) {
-  const trendDirection = normalizeText(trendData.direction || trendData.trend || soldSales.trend?.direction || "");
-  const trendPercent = toNumber(soldSales.trend?.percentChange, 0);
-
-  if (trendDirection.includes("down") || trendDirection.includes("falling") || trendDirection.includes("cold")) {
-    addRisk(risks, 20, "negative_trend", "Market trend appears negative.", "medium");
-  }
-
-  if (trendPercent <= -15) {
-    addRisk(risks, 25, "sold_price_downtrend", "Sold-sale trend shows a meaningful price decline.", "high");
-  }
-
-  if (trendDirection === "unknown" || (!trendDirection && !trendPercent)) {
-    addRisk(risks, 8, "unknown_trend", "Trend evidence is limited or unknown.", "low");
-  }
-}
-
-function liquidityRisk({ qualityData = {}, soldSales = {} }, risks = []) {
-  const liquidityScore = toNumber(qualityData.liquidityScore, NaN);
-  const recentSaleCount = toNumber(soldSales.recentSaleCount, 0);
-
-  if (Number.isFinite(liquidityScore) && liquidityScore < 35) {
-    addRisk(risks, 25, "low_liquidity", "Liquidity score is low.", "medium");
-  }
-
-  if (recentSaleCount === 0) {
-    addRisk(risks, 18, "no_recent_sales", "No recent sold sales are visible yet.", "medium");
-  }
-}
-
-function classifyRisk(totalRiskScore, criticalCount) {
-  if (criticalCount > 0 || totalRiskScore >= 80) return "critical";
-  if (totalRiskScore >= 60) return "high";
-  if (totalRiskScore >= 35) return "medium";
-  if (totalRiskScore >= 15) return "low";
-  return "minimal";
-}
-
-function recommendationFromRisk(riskLevel, totalRiskScore) {
-  if (riskLevel === "critical") return "do_not_buy";
-  if (riskLevel === "high") return "manual_review_required";
-  if (riskLevel === "medium") return "review";
-  if (riskLevel === "low") return "acceptable";
-  if (totalRiskScore <= 10) return "clean";
-  return "acceptable";
+  return 'Low risk: no major risk signals were found in the available data.';
 }
 
 function evaluateRisk(input = {}) {
   const listing = input.listing || {};
-  const marketData = input.marketData || {};
-  const soldSales = input.soldSales || {};
   const roiData = input.roiData || {};
-  const compData = input.compData || {};
   const trendData = input.trendData || {};
-  const qualityData = input.qualityData || {};
 
-  const risks = [];
+  const state = {
+    riskScore: 0,
+    warnings: [],
+    positives: [],
+    reasons: []
+  };
 
-  titleRisk(listing, risks);
-  sellerRisk(listing, risks);
-  compRisk({ marketData, soldSales, compData }, risks);
-  roiRisk({ roiData, listing }, risks);
-  trendRisk({ trendData, soldSales }, risks);
-  liquidityRisk({ qualityData, soldSales }, risks);
-
-  const totalRiskScore = clamp(
-    risks.reduce((sum, risk) => sum + toNumber(risk.points, 0), 0),
-    0,
-    100
+  const listingPrice = getListingPrice(listing, roiData);
+  const estimatedProfit = pickFirstNumber(
+    [roiData, listing, input],
+    ['estimatedProfit', 'profit', 'netProfit', 'projectedProfit'],
+    0
+  );
+  const roi = pickFirstNumber(
+    [roiData, listing, input],
+    ['roi', 'roiPercent', 'returnOnInvestment'],
+    0
+  );
+  const estimatedValue = pickFirstNumber(
+    [roiData, listing, input.marketData || {}, input.compData || {}],
+    ['estimatedValue', 'estimatedSalePrice', 'targetSalePrice', 'projectedSalePrice', 'marketValue'],
+    0
   );
 
-  const criticalCount = risks.filter(risk => risk.severity === "critical").length;
-  const highCount = risks.filter(risk => risk.severity === "high").length;
-  const riskLevel = classifyRisk(totalRiskScore, criticalCount);
-  const recommendation = recommendationFromRisk(riskLevel, totalRiskScore);
+  const soldCompCount = getSoldCompCount(input);
+  const confidence = getConfidence(input);
+  const referenceMarketValue = getMarketReference(input);
+  const priceSpreadPercent = getPricingSpread(input, referenceMarketValue);
+  const heuristicFallback = isHeuristicFallback(input);
+  const condition = normalize(
+    listing.condition ||
+    (listing.parsed && (listing.parsed.condition || listing.parsed.grade)) ||
+    pickFirstValue([input.qualityData || {}], ['condition', 'grade'], '')
+  );
 
-  return {
-    source: "risk_engine",
-    totalRiskScore,
+  const trendDirection = normalize(
+    pickFirstValue([trendData], ['direction', 'trend', 'trendDirection'], '')
+  );
+
+  if (!listingPrice || listingPrice <= 0) {
+    addRisk(85, 'Invalid or missing listing cost.', state);
+  }
+
+  if (soldCompCount <= 0 && estimatedProfit > 25) {
+    addRisk(45, 'Projected profit exists without sold-comp support.', state);
+  } else if (soldCompCount <= 0) {
+    addRisk(25, 'No sold comps available.', state);
+  } else if (soldCompCount < 3) {
+    addRisk(14, `Only ${soldCompCount} sold comp${soldCompCount === 1 ? '' : 's'} available.`, state);
+  } else if (soldCompCount >= 6) {
+    addPositive(`Sold-comp support is healthy (${soldCompCount} comps).`, state);
+  } else {
+    addPositive(`Sold-comp support is usable (${soldCompCount} comps).`, state);
+  }
+
+  if (heuristicFallback && confidence > 0 && confidence < 60) {
+    addRisk(40, `Heuristic fallback valuation has weak confidence (${confidence}/100).`, state);
+  } else if (heuristicFallback) {
+    addRisk(18, 'Valuation uses heuristic fallback support.', state);
+  }
+
+  if (confidence > 0 && confidence < 45) {
+    addRisk(22, `Market confidence is weak (${confidence}/100).`, state);
+  } else if (confidence >= 70) {
+    addPositive(`Market confidence is acceptable (${confidence}/100).`, state);
+  }
+
+  if (roi > 250) {
+    const hasStrongCompSupport = soldCompCount >= 8 && confidence >= 80 && !heuristicFallback;
+
+    if (!hasStrongCompSupport) {
+      addRisk(40, `ROI appears impossible (${roi}%) without strong comp support.`, state);
+    } else {
+      addRisk(12, `ROI is unusually high (${roi}%) and should be reviewed.`, state);
+    }
+  } else if (roi > 150) {
+    const hasGoodSupport = soldCompCount >= 5 && confidence >= 70 && !heuristicFallback;
+
+    if (!hasGoodSupport) {
+      addRisk(24, `ROI is very high (${roi}%) without enough support.`, state);
+    } else {
+      addRisk(8, `ROI is high (${roi}%) and should be sanity checked.`, state);
+    }
+  } else if (roi > 0) {
+    addPositive(`ROI is within a realistic range (${roi}%).`, state);
+  }
+
+  if (referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 3) {
+    addRisk(38, 'Estimated value is more than 3x supported market value.', state);
+  } else if (referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 2) {
+    addRisk(20, 'Estimated value is more than 2x supported market value.', state);
+  }
+
+  if (priceSpreadPercent > 1.2) {
+    addRisk(35, 'Severe pricing inconsistency across comparable sales.', state);
+  } else if (priceSpreadPercent > 0.75) {
+    addRisk(20, 'Wide pricing spread across comparable sales.', state);
+  } else if (priceSpreadPercent > 0 && priceSpreadPercent <= 0.45) {
+    addPositive('Comparable pricing is reasonably consistent.', state);
+  }
+
+  const suspiciousListing = hasSuspiciousListingData(listing);
+
+  if (suspiciousListing.suspiciousTitle) {
+    addRisk(45, 'Listing title contains authenticity or proxy warning terms.', state);
+  }
+
+  if (suspiciousListing.veryLowFeedback) {
+    addRisk(18, 'Seller has very low feedback history.', state);
+  }
+
+  if (suspiciousListing.poorFeedbackPercent) {
+    addRisk(22, 'Seller feedback percentage is weak.', state);
+  }
+
+  if (['sharp_down', 'strong_down', 'declining', 'down'].includes(trendDirection)) {
+    addRisk(12, 'Market trend appears to be declining.', state);
+  } else if (['up', 'strong_up', 'rising'].includes(trendDirection)) {
+    addPositive('Market trend appears favorable.', state);
+  }
+
+  if (!condition || condition === 'unknown') {
+    addRisk(6, 'Condition is unknown.', state);
+  } else {
+    addPositive('Condition data is present.');
+  }
+
+  if (estimatedProfit > 0 && listingPrice > 0) {
+    addPositive('Projected profit and listing cost are present.');
+  }
+
+  const riskScore = clampRiskScore(state.riskScore);
+  const riskLevel = getRiskLevel(riskScore);
+
+  const result = {
+    riskScore,
     riskLevel,
-    recommendation,
-    criticalCount,
-    highCount,
-    riskCount: risks.length,
-    risks: risks.sort((a, b) => b.points - a.points),
-    blockers: risks.filter(risk => risk.severity === "critical"),
-    warnings: risks.filter(risk => risk.severity !== "critical"),
-    clean: risks.length === 0,
-    note: risks.length
-      ? "Risk Engine found issues that should affect the buy decision."
-      : "Risk Engine found no major issues."
+    warnings: uniqueMessages(state.warnings),
+    positives: uniqueMessages(state.positives),
+    reasons: uniqueMessages(state.reasons),
+    summary: ''
   };
-}
 
-function summarizeRisk(riskData = {}) {
-  return {
-    source: riskData.source || "risk_engine",
-    totalRiskScore: toNumber(riskData.totalRiskScore, 0),
-    riskLevel: riskData.riskLevel || "unknown",
-    recommendation: riskData.recommendation || "review",
-    criticalCount: toNumber(riskData.criticalCount, 0),
-    highCount: toNumber(riskData.highCount, 0),
-    riskCount: toNumber(riskData.riskCount, 0),
-    blockers: riskData.blockers || [],
-    warnings: riskData.warnings || [],
-    note: riskData.note || ""
-  };
+  result.summary = summarizeRisk(result);
+
+  return result;
 }
 
 module.exports = {
