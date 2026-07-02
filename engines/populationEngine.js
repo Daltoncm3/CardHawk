@@ -573,8 +573,13 @@ function evaluatePopulation(input = {}) {
   return result;
 }
 
+function getPopulation(input = {}) {
+  return evaluatePopulation(input);
+}
+
 module.exports = {
   evaluatePopulation,
+  getPopulation,
   summarizePopulation,
   normalizePopulationInput,
   normalizeGradingCompany,
