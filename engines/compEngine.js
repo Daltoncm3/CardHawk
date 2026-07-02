@@ -213,8 +213,8 @@ function extractVariation(item = {}) {
     'white', 'mojo', 'cracked ice', 'fast break', 'optic', 'select', 'mosaic',
     'cosmic', 'zebra', 'tiger', 'checkerboard', 'wave', 'scope', 'disco',
     'sapphire', 'atomic', 'xfractor', 'x-fractor', 'superfractor', 'shimmer',
-    'velocity', 'laser', 'hyper', 'ice', 'scope', 'wave', 'negative',
-    'sepia', 'aqua', 'teal', 'lime', 'bronze', 'purple shock', 'orange ice'
+    'velocity', 'laser', 'hyper', 'ice', 'negative', 'sepia', 'aqua', 'teal',
+    'lime', 'bronze', 'purple shock', 'orange ice'
   ];
 
   return variationTerms.filter((term) => title.includes(term)).join(' ');
@@ -311,8 +311,7 @@ function isRawProfile(profile = {}) {
 
 function isGradedProfile(profile = {}) {
   if (!profile.grader || profile.grader === 'raw') return false;
-  if (profile.grader === 'psa' || profile.grader === 'bgs' || profile.grader === 'sgc' || profile.grader === 'cgc') return true;
-  return false;
+  return profile.grader === 'psa' || profile.grader === 'bgs' || profile.grader === 'sgc' || profile.grader === 'cgc';
 }
 
 function isParallelProfile(profile = {}) {
@@ -742,16 +741,22 @@ function detectOutliers(comps) {
   return { kept, ignored };
 }
 
+function getCompWeight(comp = {}) {
+  if (!comp.soldPrice || comp.soldPrice <= 0) return 0;
+
+  const similarityWeight = Math.max(0.15, Math.pow(comp.similarity / 100, 2.35));
+  const recencyWeight = getRecencyWeight(comp.ageDays);
+  const saleTypeWeight = getSaleTypeWeight(comp.saleType);
+  const capPenalty = comp.similarityCap && comp.similarityCap < 75 ? 0.55 : 1;
+
+  return similarityWeight * recencyWeight * saleTypeWeight * capPenalty;
+}
+
 function getWeightedAverage(comps) {
   const weighted = comps
     .map((comp) => {
-      if (!comp.soldPrice || comp.soldPrice <= 0) return null;
-
-      const similarityWeight = Math.max(0.15, Math.pow(comp.similarity / 100, 2.35));
-      const recencyWeight = getRecencyWeight(comp.ageDays);
-      const saleTypeWeight = getSaleTypeWeight(comp.saleType);
-      const capPenalty = comp.similarityCap && comp.similarityCap < 75 ? 0.55 : 1;
-      const weight = similarityWeight * recencyWeight * saleTypeWeight * capPenalty;
+      const weight = getCompWeight(comp);
+      if (!weight) return null;
 
       return { price: comp.soldPrice, weight };
     })
@@ -766,10 +771,7 @@ function getWeightedAverage(comps) {
 }
 
 function getWeightedCompCount(comps) {
-  return comps.reduce((sum, comp) => {
-    const capPenalty = comp.similarityCap && comp.similarityCap < 75 ? 0.55 : 1;
-    return sum + Math.max(0.15, Math.pow(comp.similarity / 100, 2.35)) * getRecencyWeight(comp.ageDays) * capPenalty;
-  }, 0);
+  return comps.reduce((sum, comp) => sum + getCompWeight(comp), 0);
 }
 
 function getPricingSpread(comps, marketValue) {
@@ -820,6 +822,10 @@ function getConfidence(usableComps, strongCompCount, averageSimilarity, pricingS
   confidence -= Math.min(10, bestOfferCount * 3);
   confidence -= Math.min(16, cappedCount * 4);
 
+  if (usableComps.length < 3) {
+    confidence = Math.min(confidence, usableComps.length === 1 ? 38 : 48);
+  }
+
   return Math.max(0, Math.min(100, Math.round(confidence)));
 }
 
@@ -863,6 +869,48 @@ function summarizeComps(data = {}) {
   return 'Comparable sales are limited, older, volatile, or only moderately similar; valuation should be reviewed conservatively.';
 }
 
+function getCompStatus(comp = {}) {
+  if (comp.rejectedByIdentityGate || comp.similarity < 60) return 'rejected';
+  if (comp.similarityCap && comp.similarityCap < 100) return 'capped';
+  if (comp.similarity >= 90) return 'strong';
+  if (comp.similarity >= 75) return 'usable';
+  return 'directional';
+}
+
+function getAcceptedReason(comp = {}) {
+  const status = getCompStatus(comp);
+
+  if (status === 'strong') return 'Strong comp: high similarity with no major identity cap.';
+  if (status === 'usable') return 'Usable comp: meets similarity threshold for valuation support.';
+  if (status === 'capped') return 'Capped comp: directionally useful but identity mismatch limits trust.';
+  if (status === 'directional') return 'Directional comp: below usable threshold, included only because stronger comps were unavailable.';
+  return 'Rejected comp: identity mismatch or similarity below minimum threshold.';
+}
+
+function getCapReasons(comp = {}) {
+  return uniqueMessages([...(comp.fatalMismatches || []), ...(comp.identityCaps || [])]);
+}
+
+function addContributionMetadata(comps, marketValue) {
+  const weighted = comps.map((comp) => ({
+    comp,
+    weight: getCompWeight(comp)
+  }));
+
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+
+  return weighted.map((item) => {
+    const contributionWeight = totalWeight > 0 ? item.weight / totalWeight : 0;
+    const valueContribution = marketValue > 0 ? item.comp.soldPrice * contributionWeight : 0;
+
+    return {
+      ...item.comp,
+      contributionWeight: Number(contributionWeight.toFixed(4)),
+      valueContribution: Number(valueContribution.toFixed(2))
+    };
+  });
+}
+
 function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   const warnings = [];
   const positives = [];
@@ -901,7 +949,7 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   const usableCandidates = scoredComps.filter((comp) => comp.similarity >= 75);
   const outlierResult = detectOutliers(usableCandidates.length ? usableCandidates : scoredComps);
   const usableComps = outlierResult.kept.filter((comp) => comp.similarity >= 75);
-  const selectedComps = (usableComps.length ? usableComps : outlierResult.kept).slice(0, 12);
+  let selectedComps = (usableComps.length ? usableComps : outlierResult.kept).slice(0, 12);
   const strongCompCount = selectedComps.filter((comp) => comp.similarity >= 90).length;
   const compCount = selectedComps.length;
   const usableCompCount = usableComps.length;
@@ -919,13 +967,16 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   let source = 'comp_engine';
   let method = 'recency_similarity_weighted_sold_comps';
 
-  const weightedCompCount = Number(getWeightedCompCount(selectedComps).toFixed(2));
+  let weightedCompCount = Number(getWeightedCompCount(selectedComps).toFixed(2));
   let pricingSpread = getPricingSpread(selectedComps, marketValue);
   let volatilityScore = getVolatilityScore(pricingSpread);
   let marketConsistency = getMarketConsistency(pricingSpread);
   let confidence = getConfidence(selectedComps, strongCompCount, averageSimilarity, pricingSpread, false);
 
   if (!usableComps.length) warnings.push('No usable comps met the 75 similarity threshold.');
+  if (usableCompCount < 3 && usableCompCount > 0) warnings.push(`Thin comp market: only ${usableCompCount} usable comp${usableCompCount === 1 ? '' : 's'} support this value.`);
+  if (selectedComps.length > 0 && selectedComps.length < 3) warnings.push(`Valuation is driven by only ${selectedComps.length} selected comp${selectedComps.length === 1 ? '' : 's'}.`);
+  if (selectedComps.length < 3 && pricingSpread > 0.65) warnings.push('Selected comps are thin and pricing spread is high; valuation confidence is conservative.');
   if (outlierResult.ignored.length) warnings.push(`${outlierResult.ignored.length} pricing outlier${outlierResult.ignored.length === 1 ? '' : 's'} ignored.`);
   if (rejectedByIdentity.length) warnings.push(`${rejectedByIdentity.length} comp${rejectedByIdentity.length === 1 ? '' : 's'} rejected by identity mismatch gates.`);
   if (cappedComps.length) warnings.push(`${cappedComps.length} comp${cappedComps.length === 1 ? '' : 's'} similarity-capped for identity mismatch risk.`);
@@ -938,6 +989,7 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       source = 'heuristic_fallback';
       method = 'fallback_estimator';
       confidence = getConfidence([], 0, 0, 0, true);
+      weightedCompCount = 0;
       pricingSpread = 0;
       volatilityScore = 25;
       marketConsistency = 'unknown';
@@ -945,9 +997,12 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
     } else {
       marketValue = 0;
       confidence = 0;
+      weightedCompCount = 0;
       warnings.push('No usable comps or fallback estimate were available.');
     }
   }
+
+  selectedComps = addContributionMetadata(selectedComps, marketValue);
 
   if (strongCompCount > 0) positives.push(`${strongCompCount} strong comp${strongCompCount === 1 ? '' : 's'} found.`);
   if (usableCompCount > 0) positives.push(`${usableCompCount} usable comp${usableCompCount === 1 ? '' : 's'} selected.`);
@@ -979,7 +1034,12 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       saleTypeWeight: comp.saleTypeWeight,
       similarityCap: comp.similarityCap,
       identityCaps: comp.identityCaps || [],
-      fatalMismatches: comp.fatalMismatches || []
+      fatalMismatches: comp.fatalMismatches || [],
+      compStatus: getCompStatus(comp),
+      acceptedReason: getAcceptedReason(comp),
+      capReasons: getCapReasons(comp),
+      contributionWeight: comp.contributionWeight,
+      valueContribution: comp.valueContribution
     })),
     averageAgeDays: Number(averageAgeDays.toFixed(1)),
     weightedCompCount,
@@ -994,14 +1054,17 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       outlierReason: comp.outlierReason || 'price_outlier',
       similarityCap: comp.similarityCap,
       identityCaps: comp.identityCaps || [],
-      fatalMismatches: comp.fatalMismatches || []
+      fatalMismatches: comp.fatalMismatches || [],
+      compStatus: 'outlier',
+      rejectionReasons: uniqueMessages([comp.outlierReason || 'price_outlier', ...(comp.fatalMismatches || []), ...(comp.identityCaps || [])])
     })),
     rejectedComps: rejectedByIdentity.slice(0, 20).map((comp) => ({
       title: comp.title || comp.name || '',
       soldPrice: comp.soldPrice,
       similarity: comp.similarity,
       rejectionReasons: uniqueMessages([...(comp.fatalMismatches || []), ...(comp.identityCaps || [])]),
-      similarityDetails: comp.similarityDetails || []
+      similarityDetails: comp.similarityDetails || [],
+      compStatus: 'rejected'
     })),
     cappedCompCount: cappedComps.length,
     rejectedCompCount: rejectedByIdentity.length,
