@@ -1,14 +1,39 @@
 'use strict';
 
-const { analyzeLiquidity } = require('./intelligence/liquidityAnalyzer');
-const { analyzePricing } = require('./intelligence/pricingAnalyzer');
-const { analyzeOutliers } = require('./intelligence/outlierAnalyzer');
-const { analyzeCompQuality } = require('./intelligence/compQualityAnalyzer');
-const { analyzePriceConsistency } = require('./intelligence/priceConsistencyAnalyzer');
-const { calculateConfidence } = require('./intelligence/confidenceCalculator');
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalize(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function pickFirstValue(sources, keys, fallback = undefined) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+
+    for (const key of keys) {
+      if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+        return source[key];
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function pickFirstNumber(sources, keys, fallback = 0) {
+  const value = pickFirstValue(sources, keys, undefined);
+  return value === undefined ? fallback : toNumber(value, fallback);
+}
+
+function clampScore(value) {
+  return Math.max(0, Math.min(100, Math.round(toNumber(value, 0))));
 }
 
 function uniqueMessages(messages) {
@@ -24,104 +49,609 @@ function uniqueMessages(messages) {
     });
 }
 
-function getScore(value, fallback = 0) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(number)));
+function getSalePrice(sale = {}) {
+  return pickFirstNumber(
+    [sale],
+    ['soldPrice', 'salePrice', 'price', 'amount', 'totalPrice', 'value'],
+    0
+  );
 }
 
-function buildFallbackSummary(data = {}) {
-  const score = getScore(data.intelligenceScore || data.confidenceScore);
-  const trustLevel = data.trustLevel || 'unreliable';
-  const recommendation = data.recommendation || 'review';
+function getAverage(values) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  if (recommendation === 'do_not_trust') {
-    return 'Market intelligence is unreliable and should not be trusted without deeper manual validation.';
+  if (!cleanValues.length) return 0;
+
+  return cleanValues.reduce((sum, value) => sum + value, 0) / cleanValues.length;
+}
+
+function getMedian(values) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (!cleanValues.length) return 0;
+
+  const middle = Math.floor(cleanValues.length / 2);
+  if (cleanValues.length % 2) return cleanValues[middle];
+
+  return (cleanValues[middle - 1] + cleanValues[middle]) / 2;
+}
+
+function getStandardDeviation(values, average) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (cleanValues.length < 2 || !average) return 0;
+
+  const variance = cleanValues.reduce((sum, value) => {
+    return sum + Math.pow(value - average, 2);
+  }, 0) / cleanValues.length;
+
+  return Math.sqrt(variance);
+}
+
+function getSoldCompCount(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+  const soldSales = asArray(input.soldSales);
+
+  return Math.max(
+    soldSales.length,
+    pickFirstNumber(
+      [marketData, compData, qualityData],
+      ['soldCount', 'recentSoldCount', 'completedSales', 'salesCount', 'compCount', 'usableSoldCompCount'],
+      0
+    )
+  );
+}
+
+function getActiveCompCount(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+
+  return pickFirstNumber(
+    [marketData, compData],
+    ['activeCount', 'activeListings', 'availableCount', 'listingCount'],
+    0
+  );
+}
+
+function isHeuristicFallback(input = {}) {
+  const listing = input.listing || {};
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+
+  const sourceText = [
+    listing.compSource,
+    listing.valueSource,
+    marketData.source,
+    marketData.compSource,
+    marketData.valueSource,
+    marketData.valuationSource,
+    compData.source,
+    compData.compSource,
+    qualityData.source,
+    qualityData.method
+  ].map(normalize).join(' ');
+
+  return sourceText.includes('heuristic') || sourceText.includes('fallback');
+}
+
+function getMarketReference(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const soldPrices = asArray(input.soldSales).map(getSalePrice).filter((price) => price > 0);
+
+  const averageSoldPrice = getAverage(soldPrices);
+  const medianSoldPrice = getMedian(soldPrices);
+
+  return pickFirstNumber(
+    [marketData, compData],
+    ['referencePrice', 'medianPrice', 'medianSoldPrice', 'marketValue', 'averagePrice', 'avgPrice', 'averageSoldPrice'],
+    medianSoldPrice || averageSoldPrice
+  );
+}
+
+function getEstimatedValue(input = {}) {
+  const listing = input.listing || {};
+  const marketData = input.marketData || {};
+  const roiData = input.roiData || {};
+  const compData = input.compData || {};
+
+  return pickFirstNumber(
+    [roiData, listing, marketData, compData],
+    ['estimatedValue', 'estimatedSalePrice', 'targetSalePrice', 'projectedSalePrice', 'marketValue'],
+    0
+  );
+}
+
+function getProjectedRoi(input = {}) {
+  const listing = input.listing || {};
+  const roiData = input.roiData || {};
+
+  return pickFirstNumber(
+    [roiData, listing],
+    ['roi', 'roiPercent', 'returnOnInvestment'],
+    0
+  );
+}
+
+function scoreSoldDepth(soldCount) {
+  if (soldCount >= 25) return 100;
+  if (soldCount >= 15) return 88;
+  if (soldCount >= 8) return 75;
+  if (soldCount >= 4) return 58;
+  if (soldCount >= 3) return 45;
+  if (soldCount >= 1) return 25;
+  return 5;
+}
+
+function scoreLiquidity(soldCount, activeCount, sellThroughRate) {
+  const depthScore = scoreSoldDepth(soldCount);
+
+  let ratioScore = 45;
+  if (sellThroughRate >= 1.25) ratioScore = 100;
+  else if (sellThroughRate >= 0.8) ratioScore = 88;
+  else if (sellThroughRate >= 0.5) ratioScore = 72;
+  else if (sellThroughRate >= 0.25) ratioScore = 50;
+  else if (sellThroughRate > 0) ratioScore = 28;
+
+  if (!activeCount && soldCount >= 8) ratioScore = 65;
+  if (!soldCount) ratioScore = 5;
+
+  return clampScore(depthScore * 0.6 + ratioScore * 0.4);
+}
+
+function scoreVelocity(input = {}, soldCount) {
+  const marketData = input.marketData || {};
+  const trendData = input.trendData || {};
+
+  const daysToSell = pickFirstNumber(
+    [marketData, trendData],
+    ['averageDaysToSell', 'avgDaysToSell', 'daysToSell', 'medianDaysToSell'],
+    0
+  );
+
+  if (!soldCount) return 5;
+  if (!daysToSell) return soldCount >= 8 ? 65 : 42;
+  if (daysToSell <= 7) return 100;
+  if (daysToSell <= 14) return 86;
+  if (daysToSell <= 30) return 68;
+  if (daysToSell <= 60) return 42;
+  return 20;
+}
+
+function scoreTrend(input = {}) {
+  const trendData = input.trendData || {};
+  const trendDirection = normalize(
+    pickFirstValue([trendData], ['direction', 'trend', 'trendDirection'], '')
+  );
+
+  const trendScore = pickFirstNumber(
+    [trendData],
+    ['score', 'trendScore', 'momentumScore'],
+    NaN
+  );
+
+  if (Number.isFinite(trendScore)) return clampScore(trendScore);
+
+  if (['strong_up', 'up', 'rising', 'positive'].includes(trendDirection)) return 82;
+  if (['flat', 'stable', 'neutral'].includes(trendDirection)) return 68;
+  if (['down', 'declining', 'negative'].includes(trendDirection)) return 42;
+  if (['strong_down', 'sharp_down', 'crashing'].includes(trendDirection)) return 20;
+
+  return 50;
+}
+
+function getPriceStats(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const soldPrices = asArray(input.soldSales).map(getSalePrice).filter((price) => price > 0);
+  const averagePrice = pickFirstNumber(
+    [marketData, compData],
+    ['averagePrice', 'avgPrice', 'averageSoldPrice', 'avgSoldPrice'],
+    getAverage(soldPrices)
+  );
+  const medianPrice = pickFirstNumber(
+    [marketData, compData],
+    ['medianPrice', 'medianSoldPrice'],
+    getMedian(soldPrices) || averagePrice
+  );
+  const lowPrice = pickFirstNumber(
+    [marketData, compData],
+    ['lowPrice', 'minPrice', 'lowestSoldPrice'],
+    soldPrices.length ? Math.min(...soldPrices) : 0
+  );
+  const highPrice = pickFirstNumber(
+    [marketData, compData],
+    ['highPrice', 'maxPrice', 'highestSoldPrice'],
+    soldPrices.length ? Math.max(...soldPrices) : 0
+  );
+  const referencePrice = medianPrice || averagePrice;
+  const standardDeviation = getStandardDeviation(soldPrices, averagePrice || referencePrice);
+  const volatility = referencePrice > 0 ? standardDeviation / referencePrice : 0;
+  const spread = referencePrice > 0 && highPrice > lowPrice ? (highPrice - lowPrice) / referencePrice : 0;
+
+  return {
+    soldPrices,
+    averagePrice,
+    medianPrice,
+    lowPrice,
+    highPrice,
+    referencePrice,
+    standardDeviation,
+    volatility,
+    spread
+  };
+}
+
+function scoreVolatility(volatility, spread, soldCount) {
+  if (soldCount < 3) return 30;
+
+  let volatilityScore = 100;
+  if (volatility > 0.75) volatilityScore = 18;
+  else if (volatility > 0.5) volatilityScore = 35;
+  else if (volatility > 0.35) volatilityScore = 55;
+  else if (volatility > 0.2) volatilityScore = 76;
+
+  let spreadScore = 100;
+  if (spread > 1.2) spreadScore = 12;
+  else if (spread > 0.85) spreadScore = 28;
+  else if (spread > 0.6) spreadScore = 48;
+  else if (spread > 0.4) spreadScore = 70;
+
+  return clampScore(volatilityScore * 0.55 + spreadScore * 0.45);
+}
+
+function scoreCompStrength(input = {}, soldCount) {
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+
+  const strongCompCount = pickFirstNumber(
+    [compData, qualityData],
+    ['strongCompCount', 'highSimilarityCompCount', 'excellentCompCount'],
+    0
+  );
+  const averageSimilarity = pickFirstNumber(
+    [compData, qualityData],
+    ['averageSimilarity', 'avgSimilarity', 'similarityScore'],
+    0
+  );
+  const compConfidence = pickFirstNumber(
+    [compData, qualityData],
+    ['confidence', 'confidenceScore', 'compConfidence', 'qualityScore'],
+    0
+  );
+
+  if (compConfidence > 0) {
+    let score = compConfidence;
+    if (strongCompCount >= 3) score += 10;
+    if (averageSimilarity >= 90) score += 8;
+    if (soldCount < 3) score -= 20;
+    return clampScore(score);
   }
 
-  if (recommendation === 'review') {
-    return 'Market intelligence needs manual review before relying on the valuation.';
+  if (strongCompCount >= 4 && averageSimilarity >= 88) return 95;
+  if (strongCompCount >= 2 && averageSimilarity >= 82) return 82;
+  if (soldCount >= 6) return 68;
+  if (soldCount >= 3) return 48;
+  if (soldCount >= 1) return 25;
+  return 5;
+}
+
+function scorePricingReliability(input = {}, priceStats, soldCount) {
+  const qualityData = input.qualityData || {};
+  const compData = input.compData || {};
+  const referenceValue = getMarketReference(input);
+  const estimatedValue = getEstimatedValue(input);
+  const explicitConfidence = pickFirstNumber(
+    [qualityData, compData, input.marketData || {}],
+    ['pricingConfidence', 'confidence', 'confidenceScore', 'qualityScore'],
+    0
+  );
+
+  let score = explicitConfidence || 55;
+
+  if (soldCount >= 8) score += 16;
+  else if (soldCount >= 3) score += 4;
+  else score -= 25;
+
+  if (priceStats.spread > 0.85) score -= 28;
+  else if (priceStats.spread > 0.6) score -= 16;
+  else if (priceStats.spread > 0 && priceStats.spread <= 0.4) score += 10;
+
+  if (priceStats.volatility > 0.5) score -= 18;
+  else if (priceStats.volatility > 0 && priceStats.volatility <= 0.25) score += 8;
+
+  if (referenceValue > 0 && estimatedValue > 0) {
+    const valueRatio = estimatedValue / referenceValue;
+    if (valueRatio > 2.5) score -= 35;
+    else if (valueRatio > 1.75) score -= 20;
+    else if (valueRatio >= 0.75 && valueRatio <= 1.35) score += 10;
   }
 
-  if (recommendation === 'trust_with_review') {
-    return 'Market intelligence is usable, but conservative review is recommended before making a money decision.';
-  }
+  return clampScore(score);
+}
 
-  if (trustLevel === 'excellent') {
-    return 'Market intelligence is strong across the available liquidity, pricing, comp, and consistency signals.';
-  }
+function scoreMarketDepth(soldCount, activeCount) {
+  if (soldCount >= 15 && activeCount >= 3) return 95;
+  if (soldCount >= 8 && activeCount >= 2) return 82;
+  if (soldCount >= 5) return 68;
+  if (soldCount >= 3) return 50;
+  if (soldCount >= 1) return 25;
+  return 5;
+}
 
-  if (score >= 70) {
-    return 'Market intelligence is generally trustworthy based on the available analyzer signals.';
-  }
+function getTrustLevel(score) {
+  if (score >= 85) return 'excellent';
+  if (score >= 72) return 'good';
+  if (score >= 55) return 'fair';
+  if (score >= 35) return 'weak';
+  return 'unreliable';
+}
 
-  return 'Market intelligence is limited and should be treated conservatively.';
+function getRecommendation(score, soldCount, fallbackUsed, warnings, componentScores) {
+  if (soldCount <= 0) return 'avoid';
+  if (score < 40) return 'avoid';
+  if (fallbackUsed && score < 82) return 'avoid';
+  if (soldCount < 3 && score < 78) return 'avoid';
+  if (soldCount === 2) return 'watch';
+if (soldCount < 2) return 'avoid';
+  if (warnings.length >= 5 && score < 75) return 'watch';
+  if (componentScores.pricingReliability < 45 || componentScores.compStrength < 40) return 'watch';
+  if (score >= 86 && soldCount >= 8 && componentScores.liquidity >= 75 && componentScores.pricingReliability >= 75) {
+    return 'strong_buy';
+  }
+  if (score >= 72 && soldCount >= 4 && componentScores.liquidity >= 65 && componentScores.pricingReliability >= 65) {
+    return 'buy';
+  }
+  if (score >= 50) return 'watch';
+  return 'avoid';
 }
 
 function summarizeMarketIntelligence(data = {}) {
-  if (data.summary && typeof data.summary === 'string') {
-    return data.summary;
+  const recommendation = data.recommendation || 'avoid';
+  const trustLevel = data.trustLevel || 'unreliable';
+
+  if (recommendation === 'strong_buy') {
+    return 'Market is highly investable: demand, comp quality, liquidity, and pricing reliability are all strong.';
   }
 
-  return buildFallbackSummary(data);
+  if (recommendation === 'buy') {
+    return 'Market appears investable, with enough supporting evidence to consider buying at the right price.';
+  }
+
+  if (recommendation === 'watch') {
+    return 'Market has some investable signals, but the evidence is mixed or incomplete and should be reviewed.';
+  }
+
+  if (trustLevel === 'unreliable') {
+    return 'Market is not investable from the available data because trust is too low.';
+  }
+
+  return 'Market does not currently have enough reliable support for an investable recommendation.';
 }
 
 function evaluateMarketIntelligence(input = {}) {
-  const liquidityAnalysis = analyzeLiquidity(input);
-  const pricingAnalysis = analyzePricing(input);
-  const outlierAnalysis = analyzeOutliers(input);
-  const compQualityAnalysis = analyzeCompQuality(input);
-  const priceConsistencyAnalysis = analyzePriceConsistency(input);
+  const soldCount = getSoldCompCount(input);
+  const activeCount = getActiveCompCount(input);
+  const sellThroughRate = activeCount > 0 ? soldCount / activeCount : soldCount > 0 ? 1 : 0;
+  const fallbackUsed = isHeuristicFallback(input);
+  const confidenceRaw = getMarketConfidence(input);
+  const priceStats = getPriceStats(input);
+  const referenceValue = getMarketReference(input);
+  const estimatedValue = getEstimatedValue(input);
+  const projectedRoi = getProjectedRoi(input);
 
-  const confidenceAnalysis = calculateConfidence({
-    liquidityAnalysis,
-    pricingAnalysis,
-    outlierAnalysis,
-    compQualityAnalysis,
-    priceConsistencyAnalysis
-  });
+  const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
+  const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
+  const velocity = scoreVelocity(input, soldCount);
+  const trend = scoreTrend(input);
+  const volatility = scoreVolatility(priceStats.volatility, priceStats.spread, soldCount);
+  const pricingReliability = scorePricingReliability(input, priceStats, soldCount);
+  const compStrength = scoreCompStrength(input, soldCount);
+  const marketDepth = scoreMarketDepth(soldCount, activeCount);
 
-  const warnings = uniqueMessages([
-    ...asArray(confidenceAnalysis.warnings),
-    ...asArray(liquidityAnalysis.warnings),
-    ...asArray(pricingAnalysis.warnings),
-    ...asArray(outlierAnalysis.warnings),
-    ...asArray(compQualityAnalysis.warnings),
-    ...asArray(priceConsistencyAnalysis.warnings)
-  ]);
+  const componentScores = {
+    liquidity,
+    demand,
+    velocity,
+    trend,
+    volatility,
+    pricingReliability,
+    compStrength,
+    marketDepth
+  };
 
-  const positives = uniqueMessages([
-    ...asArray(confidenceAnalysis.positives),
-    ...asArray(liquidityAnalysis.positives),
-    ...asArray(pricingAnalysis.positives),
-    ...asArray(outlierAnalysis.positives),
-    ...asArray(compQualityAnalysis.positives),
-    ...asArray(priceConsistencyAnalysis.positives)
-  ]);
+  let intelligenceScore = clampScore(
+    liquidity * 0.17 +
+    demand * 0.13 +
+    velocity * 0.1 +
+    trend * 0.08 +
+    volatility * 0.13 +
+    pricingReliability * 0.19 +
+    compStrength * 0.14 +
+    marketDepth * 0.06
+  );
 
-  const intelligenceScore = getScore(confidenceAnalysis.confidenceScore);
-  const trustLevel = confidenceAnalysis.trustLevel || 'unreliable';
-  const recommendation = confidenceAnalysis.recommendation || 'review';
+  const warnings = [];
+  const positives = [];
+  const reasons = [];
+
+  if (soldCount <= 0) {
+    warnings.push('No sold comps are available.');
+    reasons.push('Zero sold comps makes the market unproven.');
+    intelligenceScore -= 28;
+  } else if (soldCount < 3) {
+    warnings.push(`Only ${soldCount} sold comp${soldCount === 1 ? '' : 's'} available.`);
+    reasons.push('Very limited sold history reduces investability.');
+    intelligenceScore -= 15;
+  } else {
+    positives.push(`Sold history is present (${soldCount} sold comps).`);
+  }
+
+  if (activeCount > 0) {
+    positives.push(`Active market supply is visible (${activeCount} active comps).`);
+  }
+
+  if (sellThroughRate >= 0.5) {
+    positives.push('Sold-to-active ratio indicates healthy demand.');
+  } else if (activeCount > 0 && sellThroughRate < 0.25) {
+    warnings.push('Sold-to-active ratio suggests weak demand.');
+    reasons.push('Active supply is high relative to sold activity.');
+  }
+
+  if (fallbackUsed) {
+    warnings.push('Market value uses heuristic fallback support.');
+    reasons.push('Fallback valuation lowers trust because it is not sold-comp driven.');
+
+    const fallbackHasStrongSupport =
+      soldCount >= 8 &&
+      liquidity >= 80 &&
+      pricingReliability >= 80 &&
+      compStrength >= 80 &&
+      confidenceRaw >= 80;
+
+    if (!fallbackHasStrongSupport) {
+      intelligenceScore -= 30;
+    } else {
+      intelligenceScore -= 10;
+      positives.push('Heuristic fallback is partially offset by strong independent signals.');
+    }
+  }
+
+  if (confidenceRaw > 0 && confidenceRaw < 50) {
+    warnings.push(`Market data confidence is low (${confidenceRaw}/100).`);
+    intelligenceScore -= 10;
+  } else if (confidenceRaw >= 75) {
+    positives.push(`Market data confidence is strong (${confidenceRaw}/100).`);
+  }
+
+  if (priceStats.spread > 0.85) {
+    warnings.push('Price spread is wide enough to reduce market reliability.');
+    reasons.push('Comparable prices do not cluster tightly.');
+  } else if (priceStats.spread > 0 && priceStats.spread <= 0.4) {
+    positives.push('Comparable prices are reasonably tight.');
+  }
+
+  if (priceStats.volatility > 0.5) {
+    warnings.push('Price volatility is high.');
+  } else if (priceStats.volatility > 0 && priceStats.volatility <= 0.25) {
+    positives.push('Price volatility is controlled.');
+  }
+
+  if (referenceValue > 0 && estimatedValue > 0) {
+    const estimatedValueRatio = estimatedValue / referenceValue;
+
+    if (estimatedValueRatio > 2.5) {
+      warnings.push('Estimated value is not defensible against current market support.');
+      reasons.push('Estimated value is more than 2.5x the supported market reference.');
+      intelligenceScore -= 22;
+    } else if (estimatedValueRatio >= 0.75 && estimatedValueRatio <= 1.35) {
+      positives.push('Estimated value is supported by the market reference.');
+    }
+  } else if (!referenceValue) {
+    warnings.push('No defensible market reference value was available.');
+    reasons.push('Market value cannot be validated from available data.');
+    intelligenceScore -= 15;
+  }
+
+  if (projectedRoi > 150) {
+    const roiBelievable =
+      soldCount >= 8 &&
+      compStrength >= 80 &&
+      pricingReliability >= 75 &&
+      liquidity >= 75 &&
+      !fallbackUsed;
+
+    if (!roiBelievable) {
+      warnings.push(`Projected ROI is unusually high (${projectedRoi}%) without enough support.`);
+      reasons.push('High ROI can indicate bad comps or an inflated value estimate.');
+      intelligenceScore -= 18;
+    } else {
+      positives.push('High ROI is backed by strong market evidence.');
+    }
+  }
+
+  if (liquidity >= 75) positives.push('Liquidity is strong.');
+  if (pricingReliability >= 75) positives.push('Pricing reliability is strong.');
+  if (compStrength >= 75) positives.push('Comp strength is good.');
+  if (marketDepth >= 75) positives.push('Market depth is healthy.');
+
+  intelligenceScore = clampScore(intelligenceScore);
+
+  const trustLevel = fallbackUsed && intelligenceScore < 82
+    ? getTrustLevel(Math.min(intelligenceScore, 45))
+    : getTrustLevel(intelligenceScore);
+
+  const recommendation = getRecommendation(
+    intelligenceScore,
+    soldCount,
+    fallbackUsed,
+    warnings,
+    componentScores
+  );
+
+  const confidenceScore = clampScore(
+    (confidenceRaw || intelligenceScore) * 0.35 +
+    compStrength * 0.25 +
+    pricingReliability * 0.25 +
+    marketDepth * 0.15
+  );
 
   const result = {
-    source: 'market_intelligence_engine',
+    source: fallbackUsed ? 'market_intelligence_v2_heuristic_fallback' : 'market_intelligence_v2',
     intelligenceScore,
     trustLevel,
-    liquidity: liquidityAnalysis,
-    pricing: pricingAnalysis,
-    outlier: outlierAnalysis,
-    compQuality: compQualityAnalysis,
-    priceConsistency: priceConsistencyAnalysis,
-    confidence: confidenceAnalysis,
-    warnings,
-    positives,
     recommendation,
-    summary: confidenceAnalysis.summary
+    confidenceScore,
+    liquidity,
+    demand,
+    velocity,
+    trend,
+    volatility,
+    pricingReliability,
+    compStrength,
+    marketDepth,
+    warnings: uniqueMessages(warnings),
+    positives: uniqueMessages(positives),
+    reasons: uniqueMessages(reasons),
+    summary: '',
+    componentScores,
+    soldCompCount: soldCount,
+    activeCompCount: activeCount,
+    soldToActiveRatio: Number(sellThroughRate.toFixed(3)),
+    priceVolatility: Number(priceStats.volatility.toFixed(3)),
+    priceSpread: Number(priceStats.spread.toFixed(3)),
+    referenceMarketValue: Number(referenceValue.toFixed(2)),
+    estimatedValue: Number(estimatedValue.toFixed(2)),
+    projectedRoi,
+    heuristicFallbackUsed: fallbackUsed
   };
 
   result.summary = summarizeMarketIntelligence(result);
 
   return result;
+}
+
+function getMarketConfidence(input = {}) {
+  const marketData = input.marketData || {};
+  const compData = input.compData || {};
+  const qualityData = input.qualityData || {};
+  const trendData = input.trendData || {};
+
+  return pickFirstNumber(
+    [input, marketData, compData, qualityData, trendData],
+    ['marketConfidence', 'confidence', 'confidenceScore', 'marketConfidenceScore', 'qualityScore'],
+    0
+  );
 }
 
 module.exports = {
