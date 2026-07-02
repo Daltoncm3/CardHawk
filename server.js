@@ -8,6 +8,7 @@ const soldSalesEngine = require("./engines/soldSalesEngine");
 const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
 const decisionEngine = require("./engines/decisionEngine");
+const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const populationEngine = require("./engines/populationEngine");
@@ -548,6 +549,15 @@ const roi = roiData.roi;
     trendData,
     qualityData
 });
+
+  const marketIntelligenceData =
+    marketIntelligenceEngine.evaluateMarketIntelligence({
+        listing: { ...listing, parsed },
+        marketData,
+        soldSales: soldSalesSummary.sales,
+        roiData,
+        compData
+    });
   
 const decisionData = decisionEngine.makeDecision({
   listing: { ...listing, parsed },
@@ -605,6 +615,10 @@ const decisionData = decisionEngine.makeDecision({
     liquidityScore: qualityData.liquidityScore,
     riskLevel: riskData.riskLevel,
 riskData,
+    marketIntelligenceData,
+marketIntelligenceScore: marketIntelligenceData.intelligenceScore,
+marketTrustLevel: marketIntelligenceData.trustLevel,
+marketRecommendation: marketIntelligenceData.recommendation,
     decision: decisionData,
     qualityReasons: qualityData.positives,
     qualityWarnings: qualityData.warnings,
