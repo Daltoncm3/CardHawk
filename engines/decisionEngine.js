@@ -64,7 +64,7 @@ function getCompData(input = {}) {
 }
 
 function getMarketValueData(input = {}) {
-  return getNested(input, ['marketValueData', 'valueData', 'marketValue', 'valuation']);
+  return getNested(input, ['marketValueData', 'marketData', 'valueData', 'marketValue', 'valuation']);
 }
 
 function getConfidenceData(input = {}) {
@@ -141,13 +141,13 @@ function getSoldCompCount(input = {}) {
     pickFirstNumber(
       [
         input,
+        pricingVerificationData,
         compData,
         marketValueData,
         marketIntelligenceData,
-        marketIntelligenceData.compQuality,
-        pricingVerificationData
+        marketIntelligenceData.compQuality
       ],
-      ['soldCompCount', 'soldCount', 'recentSoldCount', 'completedSales', 'salesCount', 'compCount', 'usableSoldCompCount'],
+      ['soldCompCount', 'soldCount', 'recentSoldCount', 'completedSales', 'salesCount'],
       0
     )
   );
@@ -157,11 +157,94 @@ function getUsableCompCount(input = {}) {
   const compData = getCompData(input);
   const marketValueData = getMarketValueData(input);
   const pricingVerificationData = getPricingVerificationData(input);
+  const marketIntelligenceData = getMarketIntelligenceData(input);
+
+  const trueUsableCount = pickFirstNumber(
+    [pricingVerificationData, compData, marketValueData, marketValueData.compEngine, marketIntelligenceData.compQuality],
+    ['usableCompCount', 'usableSoldCompCount', 'selectedCompCount'],
+    NaN
+  );
+
+  if (Number.isFinite(trueUsableCount)) return Math.max(0, Math.round(trueUsableCount));
+
+  const selectedComps = asArray(compData.selectedComps || marketValueData.selectedComps || pricingVerificationData.selectedComps);
+  if (selectedComps.length) {
+    return selectedComps.filter((comp) => {
+      const status = normalize(comp.compStatus);
+      const similarity = toNumber(comp.similarity, 0);
+      return status === 'usable' || status === 'strong' || similarity >= 75;
+    }).length;
+  }
+
+  return 0;
+}
+
+function getStrongCompCount(input = {}) {
+  const compData = getCompData(input);
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
+
+  const explicit = pickFirstNumber(
+    [pricingVerificationData, compData, marketValueData, marketValueData.compEngine],
+    ['strongCompCount', 'eliteCompCount', 'highSimilarityCompCount'],
+    NaN
+  );
+
+  if (Number.isFinite(explicit)) return Math.max(0, Math.round(explicit));
+
+  const selectedComps = asArray(compData.selectedComps || marketValueData.selectedComps || pricingVerificationData.selectedComps);
+  return selectedComps.filter((comp) => normalize(comp.compStatus) === 'strong' || toNumber(comp.similarity, 0) >= 90).length;
+}
+
+function getCappedCompCount(input = {}) {
+  const compData = getCompData(input);
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
 
   return pickFirstNumber(
-    [pricingVerificationData, compData, marketValueData],
-    ['usableCompCount', 'usableSoldCompCount', 'selectedCompCount', 'compCount'],
-    getSoldCompCount(input)
+    [pricingVerificationData, compData, marketValueData, marketValueData.compEngine],
+    ['cappedCompCount', 'similarityCappedCompCount'],
+    0
+  );
+}
+
+function getRejectedCompCount(input = {}) {
+  const compData = getCompData(input);
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
+
+  return pickFirstNumber(
+    [pricingVerificationData, compData, marketValueData, marketValueData.compEngine],
+    ['rejectedCompCount', 'identityRejectedCompCount'],
+    Array.isArray(compData.rejectedComps) ? compData.rejectedComps.length : 0
+  );
+}
+
+function getPricingSpread(input = {}) {
+  const compData = getCompData(input);
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
+  const marketIntelligenceData = getMarketIntelligenceData(input);
+
+  return pickFirstNumber(
+    [pricingVerificationData, marketValueData, marketValueData.compEngine, compData, marketIntelligenceData],
+    ['pricingSpread', 'priceSpread', 'spread', 'rangePercent'],
+    0
+  );
+}
+
+function getMarketConsistency(input = {}) {
+  const compData = getCompData(input);
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
+  const marketIntelligenceData = getMarketIntelligenceData(input);
+
+  return normalize(
+    pickFirstValue(
+      [pricingVerificationData, marketValueData, marketValueData.compEngine, compData, marketIntelligenceData],
+      ['marketConsistency', 'pricingConsistency', 'consistency'],
+      ''
+    )
   );
 }
 
@@ -174,6 +257,7 @@ function usesFallbackPricing(input = {}) {
   if (pricingVerificationData.fallbackUsed === true) return true;
   if (compData.heuristicFallbackUsed === true || compData.fallbackUsed === true) return true;
   if (marketValueData.heuristicFallbackUsed === true || marketValueData.fallbackUsed === true) return true;
+  if (marketValueData.compEngine && marketValueData.compEngine.heuristicFallbackUsed === true) return true;
   if (marketIntelligenceData.heuristicFallbackUsed === true) return true;
 
   const sourceText = [
@@ -184,12 +268,99 @@ function usesFallbackPricing(input = {}) {
     marketValueData.source,
     marketValueData.method,
     marketValueData.valueSource,
+    marketValueData.compEngine && marketValueData.compEngine.source,
+    marketValueData.compEngine && marketValueData.compEngine.method,
     marketIntelligenceData.source,
     pricingVerificationData.source,
     pricingVerificationData.method
   ].map(normalize).join(' ');
 
   return sourceText.includes('heuristic') || sourceText.includes('fallback');
+}
+
+function getListingCost(input = {}) {
+  const listing = input.listing || {};
+  const roiData = getRoiData(input);
+
+  const explicitCost = pickFirstNumber(
+    [input, listing, roiData],
+    ['totalCost', 'listingPrice', 'purchasePrice', 'costBasis', 'cost'],
+    NaN
+  );
+
+  if (Number.isFinite(explicitCost) && explicitCost > 0) return explicitCost;
+
+  const price = pickFirstNumber([listing, input], ['price', 'currentPrice', 'askingPrice', 'listPrice'], 0);
+  const shipping = pickFirstNumber([listing, input], ['shipping', 'shippingCost'], 0);
+
+  return price + shipping;
+}
+
+function getExpectedValues(input = {}) {
+  const marketValueData = getMarketValueData(input);
+  const pricingVerificationData = getPricingVerificationData(input);
+  const roiData = getRoiData(input);
+
+  const expectedValue = pickFirstNumber(
+    [pricingVerificationData, marketValueData, roiData, input],
+    ['expectedValue', 'verifiedMarketValue', 'marketValue', 'estimatedValue', 'estimatedSalePrice', 'targetSalePrice'],
+    0
+  );
+
+  const expectedValueLow = pickFirstNumber(
+    [pricingVerificationData, marketValueData],
+    ['expectedValueLow'],
+    expectedValue
+  );
+
+  const expectedValueHigh = pickFirstNumber(
+    [pricingVerificationData, marketValueData],
+    ['expectedValueHigh'],
+    expectedValue
+  );
+
+  return {
+    expectedValueLow,
+    expectedValue,
+    expectedValueHigh
+  };
+}
+
+function calculateConservativeProfit(input = {}) {
+  const roiData = getRoiData(input);
+  const cost = getListingCost(input);
+  const values = getExpectedValues(input);
+  const fees = pickFirstNumber(
+    [roiData, input],
+    ['ebayFees', 'fees', 'estimatedFees', 'totalFees'],
+    0
+  );
+
+  if (values.expectedValueLow > 0 && cost > 0) {
+    return values.expectedValueLow - cost - fees;
+  }
+
+  return pickFirstNumber(
+    [input, roiData],
+    ['estimatedProfit', 'profit', 'netProfit', 'projectedProfit'],
+    0
+  );
+}
+
+function calculateConservativeRoi(input = {}) {
+  const roiData = getRoiData(input);
+  const cost = getListingCost(input);
+  const conservativeProfit = calculateConservativeProfit(input);
+
+  if (cost > 0 && getExpectedValues(input).expectedValueLow > 0) {
+    return (conservativeProfit / cost) * 100;
+  }
+
+  return pickFirstNumber(
+    [input, roiData],
+    ['roi', 'roiPercent', 'returnOnInvestment'],
+    0
+  );
 }
 
 function scoreEvidenceStrength(input = {}) {
@@ -200,6 +371,9 @@ function scoreEvidenceStrength(input = {}) {
 
   const soldCompCount = getSoldCompCount(input);
   const usableCompCount = getUsableCompCount(input);
+  const strongCompCount = getStrongCompCount(input);
+  const cappedCompCount = getCappedCompCount(input);
+  const rejectedCompCount = getRejectedCompCount(input);
   const averageSimilarity = pickFirstNumber(
     [pricingVerificationData, compData, marketValueData, qualityData],
     ['averageSimilarity', 'avgSimilarity', 'similarityScore'],
@@ -222,6 +396,10 @@ function scoreEvidenceStrength(input = {}) {
   else if (soldCompCount >= 5) score += 12;
   else if (soldCompCount >= 3) score += 7;
 
+  if (strongCompCount >= 4) score += 16;
+  else if (strongCompCount >= 2) score += 10;
+  else if (strongCompCount >= 1) score += 5;
+
   if (averageSimilarity >= 90) score += 24;
   else if (averageSimilarity >= 82) score += 18;
   else if (averageSimilarity >= 75) score += 10;
@@ -231,6 +409,8 @@ function scoreEvidenceStrength(input = {}) {
   else if (compConfidence >= 65) score += 12;
   else if (compConfidence > 0 && compConfidence < 45) score -= 12;
 
+  if (cappedCompCount > 0) score -= Math.min(18, cappedCompCount * 4);
+  if (rejectedCompCount > 0) score -= Math.min(12, rejectedCompCount * 2);
   if (usesFallbackPricing(input)) score -= 24;
 
   return clampScore(score);
@@ -251,6 +431,8 @@ function scorePricingConfidence(input = {}) {
   const valueTrusted = pricingVerificationData.valueTrusted === true || marketValueData.valueTrusted === true;
   const fallbackUsed = usesFallbackPricing(input);
   const usableCompCount = getUsableCompCount(input);
+  const pricingSpread = getPricingSpread(input);
+  const marketConsistency = getMarketConsistency(input);
 
   let score = explicitPricingScore || pickFirstNumber(
     [confidenceData, marketIntelligenceData],
@@ -262,33 +444,33 @@ function scorePricingConfidence(input = {}) {
   if (usableCompCount < 3) score -= 22;
   if (fallbackUsed) score -= 28;
 
+  if (pricingSpread > 1) score = Math.min(score - 18, 45);
+  else if (pricingSpread > 0.65) score = Math.min(score - 12, 55);
+  else if (pricingSpread > 0.45) score -= 6;
+
+  if (marketConsistency === 'volatile_market' || marketConsistency === 'volatile') {
+    score = Math.min(score - 12, 55);
+  } else if (marketConsistency === 'tight_market') {
+    score += 4;
+  }
+
   return clampScore(score);
 }
 
 function scoreExpectedProfit(input = {}) {
-  const roiData = getRoiData(input);
-  const estimatedProfit = pickFirstNumber(
-    [input, roiData],
-    ['estimatedProfit', 'profit', 'netProfit', 'projectedProfit'],
-    0
-  );
+  const conservativeProfit = calculateConservativeProfit(input);
 
-  if (estimatedProfit >= 150) return 100;
-  if (estimatedProfit >= 100) return 86;
-  if (estimatedProfit >= 60) return 72;
-  if (estimatedProfit >= 35) return 58;
-  if (estimatedProfit >= 15) return 42;
-  if (estimatedProfit > 0) return 25;
+  if (conservativeProfit >= 150) return 100;
+  if (conservativeProfit >= 100) return 86;
+  if (conservativeProfit >= 60) return 72;
+  if (conservativeProfit >= 35) return 58;
+  if (conservativeProfit >= 15) return 42;
+  if (conservativeProfit > 0) return 25;
   return 5;
 }
 
 function scoreRoi(input = {}) {
-  const roiData = getRoiData(input);
-  const roi = pickFirstNumber(
-    [input, roiData],
-    ['roi', 'roiPercent', 'returnOnInvestment'],
-    0
-  );
+  const roi = calculateConservativeRoi(input);
 
   if (roi > 250) return 55;
   if (roi > 150) return 70;
@@ -313,9 +495,14 @@ function scoreInvestmentQuality(input = {}) {
     0
   );
 
-  const baseScore = marginScore > 0
+  let baseScore = marginScore > 0
     ? marginScore * 0.4 + roiScore * 0.3 + profitScore * 0.3
     : roiScore * 0.55 + profitScore * 0.45;
+
+  if (getExpectedValues(input).expectedValueLow > 0) {
+    if (calculateConservativeProfit(input) <= 0) baseScore = Math.min(baseScore, 35);
+    else if (calculateConservativeRoi(input) < 15) baseScore = Math.min(baseScore, 45);
+  }
 
   return clampScore(baseScore);
 }
@@ -426,6 +613,8 @@ function getBlockingFactors(input = {}, matrix = {}) {
   const fallbackUsed = usesFallbackPricing(input);
   const pricingConfidence = matrix.pricingConfidence;
   const evidenceStrength = matrix.evidenceStrength;
+  const pricingSpread = getPricingSpread(input);
+  const marketConsistency = getMarketConsistency(input);
 
   if (soldCompCount <= 0) {
     blockingFactors.push('No sold-comp evidence is available.');
@@ -455,6 +644,18 @@ function getBlockingFactors(input = {}, matrix = {}) {
     blockingFactors.push(`Evidence strength is weak (${evidenceStrength}/100).`);
   }
 
+  if (pricingSpread > 0.85) {
+    blockingFactors.push(`Pricing spread is too wide for a buy-now decision (${pricingSpread}).`);
+  }
+
+  if (marketConsistency === 'volatile_market' || marketConsistency === 'volatile') {
+    blockingFactors.push('Market consistency is volatile.');
+  }
+
+  if (getExpectedValues(input).expectedValueLow > 0 && calculateConservativeProfit(input) <= 0) {
+    blockingFactors.push('Deal is not profitable at conservative expected value.');
+  }
+
   if (pricingVerificationData.valueTrusted === false) {
     blockingFactors.push('Pricing verification does not trust the estimated market value.');
   }
@@ -474,19 +675,21 @@ function buildPositives(input = {}, matrix = {}) {
   const positives = [];
   const soldCompCount = getSoldCompCount(input);
   const usableCompCount = getUsableCompCount(input);
+  const strongCompCount = getStrongCompCount(input);
 
   if (matrix.evidenceStrength >= 70) positives.push('Evidence strength is strong.');
   if (matrix.pricingConfidence >= 70) positives.push('Pricing confidence is strong.');
-  if (matrix.investmentQuality >= 70) positives.push('Investment quality is attractive.');
+  if (matrix.investmentQuality >= 70) positives.push('Investment quality is attractive at conservative value.');
   if (matrix.risk >= 70) positives.push('Risk profile is acceptable.');
   if (matrix.marketQuality >= 70) positives.push('Market quality is healthy.');
   if (matrix.trend >= 70) positives.push('Trend signal is favorable or stable.');
   if (matrix.liquidity >= 70) positives.push('Liquidity appears healthy.');
   if (matrix.populationScarcity >= 75) positives.push('Population scarcity adds upside support.');
-  if (matrix.expectedProfit >= 70) positives.push('Expected profit is meaningful.');
-  if (matrix.roi >= 70) positives.push('ROI is attractive.');
+  if (matrix.expectedProfit >= 70) positives.push('Expected profit is meaningful at conservative value.');
+  if (matrix.roi >= 70) positives.push('ROI is attractive at conservative value.');
   if (soldCompCount >= 5) positives.push(`${soldCompCount} sold comps support the decision.`);
   if (usableCompCount >= 3) positives.push(`${usableCompCount} usable comps support the valuation.`);
+  if (strongCompCount > 0) positives.push(`${strongCompCount} strong comp${strongCompCount === 1 ? '' : 's'} support the valuation.`);
 
   return positives;
 }
@@ -496,18 +699,26 @@ function buildWarnings(input = {}, matrix = {}) {
   const riskLevel = getRiskLevel(input);
   const soldCompCount = getSoldCompCount(input);
   const usableCompCount = getUsableCompCount(input);
+  const cappedCompCount = getCappedCompCount(input);
+  const rejectedCompCount = getRejectedCompCount(input);
+  const pricingSpread = getPricingSpread(input);
+  const marketConsistency = getMarketConsistency(input);
 
   if (matrix.evidenceStrength < 50) warnings.push('Evidence strength is limited.');
   if (matrix.pricingConfidence < 55) warnings.push('Pricing confidence is not strong enough for an aggressive buy.');
-  if (matrix.investmentQuality < 45) warnings.push('Investment quality is weak even if the listing is real.');
+  if (matrix.investmentQuality < 45) warnings.push('Investment quality is weak at conservative value.');
   if (matrix.risk < 45) warnings.push(`Risk profile is concerning${riskLevel ? ` (${riskLevel})` : ''}.`);
   if (matrix.marketQuality < 50) warnings.push('Market quality is not strong.');
   if (matrix.trend < 40) warnings.push('Trend signal is unfavorable or volatile.');
   if (matrix.liquidity < 45) warnings.push('Liquidity is weak.');
-  if (matrix.expectedProfit < 35) warnings.push('Expected profit is low.');
-  if (matrix.roi < 35) warnings.push('ROI is low.');
+  if (matrix.expectedProfit < 35) warnings.push('Expected profit is low at conservative value.');
+  if (matrix.roi < 35) warnings.push('ROI is low at conservative value.');
   if (soldCompCount < 3) warnings.push('Sold-comp history is too thin for a buy-now decision.');
   if (usableCompCount < 3) warnings.push('Usable comp support is thin.');
+  if (cappedCompCount > 0) warnings.push(`${cappedCompCount} comp${cappedCompCount === 1 ? '' : 's'} were similarity-capped.`);
+  if (rejectedCompCount > 0) warnings.push(`${rejectedCompCount} comp${rejectedCompCount === 1 ? '' : 's'} were rejected by identity checks.`);
+  if (pricingSpread > 0.65) warnings.push('Pricing spread is wide.');
+  if (marketConsistency === 'volatile_market' || marketConsistency === 'volatile') warnings.push('Market consistency is volatile.');
   if (usesFallbackPricing(input)) warnings.push('Fallback pricing prevents high-conviction approval.');
 
   return warnings;
@@ -559,6 +770,8 @@ function getRecommendation(input = {}, matrix = {}, finalScore = 0, blockingFact
     matrix.evidenceStrength >= 72 &&
     matrix.pricingConfidence >= 72 &&
     matrix.investmentQuality >= 70 &&
+    matrix.expectedProfit >= 58 &&
+    matrix.roi >= 50 &&
     matrix.risk >= 60 &&
     matrix.marketQuality >= 65 &&
     matrix.liquidity >= 55 &&
@@ -633,7 +846,7 @@ function summarizeDecision(data = {}) {
   const blockingFactors = asArray(data.blockingFactors);
 
   if (recommendation === 'BUY_NOW') {
-    return 'BUY_NOW: the opportunity is attractive and the evidence is strong enough to trust the valuation, risk, market quality, and liquidity.';
+    return 'BUY_NOW: the opportunity is attractive even at conservative value, and the evidence is strong enough to trust the valuation, risk, market quality, and liquidity.';
   }
 
   if (recommendation === 'STRONG_WATCH') {
@@ -657,7 +870,7 @@ function summarizeDecision(data = {}) {
   }
 
   if (matrix.evidenceStrength >= 65 && matrix.investmentQuality < 45) {
-    return 'PASS: the evidence is acceptable, but the profit and ROI are not attractive enough.';
+    return 'PASS: the evidence is acceptable, but the profit and ROI are not attractive enough at conservative value.';
   }
 
   return 'PASS: the combined evidence, pricing confidence, risk, market quality, and opportunity do not justify action.';
@@ -717,6 +930,9 @@ function evaluateDecision(input = {}) {
     confidence: decisionConfidence,
     decisionMatrix,
     componentScores: decisionMatrix,
+    conservativeValue: getExpectedValues(input).expectedValueLow,
+    conservativeProfit: Number(calculateConservativeProfit(input).toFixed(2)),
+    conservativeRoi: Number(calculateConservativeRoi(input).toFixed(2)),
     positives,
     warnings,
     blockingFactors,
