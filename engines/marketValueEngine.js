@@ -30,6 +30,14 @@ function average(numbers = []) {
   return roundMoney(clean.reduce((sum, value) => sum + value, 0) / clean.length);
 }
 
+function percentile(numbers = [], percentileValue = 50) {
+  const clean = numbers.map(Number).filter(Number.isFinite).filter(value => value > 0).sort((a, b) => a - b);
+  if (!clean.length) return 0;
+
+  const index = clamp(Math.floor((percentileValue / 100) * clean.length), 0, clean.length - 1);
+  return roundMoney(clean[index]);
+}
+
 function weightedAverage(items = []) {
   const clean = items
     .map(item => ({ value: toNumber(item.value, 0), weight: toNumber(item.weight, 0) }))
@@ -430,19 +438,80 @@ function calculateEvidenceConfidence({ soldEvidence, activeEvidence, source, out
   return clamp(Math.round(confidence), 0, 100);
 }
 
-function buildPriceRange(value, confidence) {
-  if (!value || value <= 0) return { low: 0, high: 0 };
-
+function getRangeSpread(confidence, source, compMetrics, evidenceCount) {
   let spread = 0.25;
+
   if (confidence >= 85) spread = 0.08;
   else if (confidence >= 75) spread = 0.12;
   else if (confidence >= 60) spread = 0.18;
   else if (confidence >= 40) spread = 0.25;
   else spread = 0.35;
 
+  if (source === "fallback") spread = Math.max(spread, 0.45);
+  if (evidenceCount > 0 && evidenceCount < 3) spread = Math.max(spread, evidenceCount === 1 ? 0.45 : 0.35);
+
+  if (compMetrics) {
+    if (compMetrics.usableCompCount > 0 && compMetrics.usableCompCount < 3) {
+      spread = Math.max(spread, compMetrics.usableCompCount === 1 ? 0.45 : 0.35);
+    }
+
+    if (compMetrics.pricingSpread > 1) spread = Math.max(spread, 0.5);
+    else if (compMetrics.pricingSpread > 0.65) spread = Math.max(spread, 0.4);
+
+    if (compMetrics.marketConsistency === "volatile_market") spread = Math.max(spread, 0.42);
+  }
+
+  return clamp(spread, 0.08, 0.6);
+}
+
+function buildPriceRange(value, confidence) {
+  if (!value || value <= 0) return { low: 0, high: 0 };
+
+  const spread = getRangeSpread(confidence, "", null, 0);
+
   return {
     low: roundMoney(value * (1 - spread)),
     high: roundMoney(value * (1 + spread))
+  };
+}
+
+function buildExpectedValueRange({ value, baseValue, confidence, source, soldEvidence, activeEvidence, compMetrics }) {
+  if (!value || value <= 0) {
+    return {
+      expectedValueLow: 0,
+      expectedValue: 0,
+      expectedValueHigh: 0,
+      priceRange: { low: 0, high: 0 }
+    };
+  }
+
+  const evidence = [...soldEvidence, ...activeEvidence].filter(item => item.price > 0);
+  const evidencePrices = evidence.map(item => item.price);
+  const spread = getRangeSpread(confidence, source, compMetrics, evidence.length);
+
+  let expectedValueLow = roundMoney(value * (1 - spread));
+  let expectedValueHigh = roundMoney(value * (1 + spread));
+
+  if (evidencePrices.length >= 2 && source !== "fallback") {
+    const adjustmentRatio = baseValue > 0 ? value / baseValue : 1;
+    const evidenceLow = roundMoney(percentile(evidencePrices, 20) * adjustmentRatio);
+    const evidenceHigh = roundMoney(percentile(evidencePrices, 80) * adjustmentRatio);
+
+    if (evidenceLow > 0) expectedValueLow = roundMoney(Math.min(expectedValueLow, evidenceLow));
+    if (evidenceHigh > 0) expectedValueHigh = roundMoney(Math.max(expectedValueHigh, evidenceHigh));
+  }
+
+  if (expectedValueLow > value) expectedValueLow = roundMoney(value * (1 - spread));
+  if (expectedValueHigh < value) expectedValueHigh = roundMoney(value * (1 + spread));
+
+  return {
+    expectedValueLow: roundMoney(expectedValueLow),
+    expectedValue: roundMoney(value),
+    expectedValueHigh: roundMoney(expectedValueHigh),
+    priceRange: {
+      low: roundMoney(expectedValueLow),
+      high: roundMoney(expectedValueHigh)
+    }
   };
 }
 
@@ -515,21 +584,32 @@ function calculateMarketValue(input = {}) {
   });
 
   const marketValue = roundMoney(adjustedValue);
-  const priceRange = buildPriceRange(marketValue, confidence);
+  const valueRange = buildExpectedValueRange({
+    value: marketValue,
+    baseValue,
+    confidence,
+    source,
+    soldEvidence,
+    activeEvidence,
+    compMetrics
+  });
   const discountAmount = marketValue > 0 && listingPrice > 0 ? roundMoney(marketValue - listingPrice) : 0;
   const discountPercent = marketValue > 0 && listingPrice > 0 ? Math.round((discountAmount / marketValue) * 1000) / 10 : 0;
 
   return {
     source,
     method,
-    marketValue,
+    marketValue: valueRange.expectedValue,
+    expectedValueLow: valueRange.expectedValueLow,
+    expectedValue: valueRange.expectedValue,
+    expectedValueHigh: valueRange.expectedValueHigh,
     baseMarketValue: roundMoney(baseValue),
     confidence,
     compCount: soldEvidence.length + activeEvidence.length,
     soldCompCount: soldEvidence.length,
     activeCompCount: activeEvidence.length,
     outliersRemoved,
-    priceRange,
+    priceRange: valueRange.priceRange,
     listingPrice,
     discountAmount,
     discountPercent,
@@ -568,7 +648,10 @@ function summarizeMarketValue(marketData = {}) {
   return {
     source: marketData.source || "fallback",
     method: marketData.method || "unknown",
-    marketValue: roundMoney(marketData.marketValue || 0),
+    marketValue: roundMoney(marketData.marketValue || marketData.expectedValue || 0),
+    expectedValueLow: roundMoney(marketData.expectedValueLow || marketData.priceRange?.low || 0),
+    expectedValue: roundMoney(marketData.expectedValue || marketData.marketValue || 0),
+    expectedValueHigh: roundMoney(marketData.expectedValueHigh || marketData.priceRange?.high || 0),
     confidence: toNumber(marketData.confidence, 0),
     compCount: toNumber(marketData.compCount, 0),
     soldCompCount: toNumber(marketData.soldCompCount, 0),
