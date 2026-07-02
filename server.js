@@ -1327,6 +1327,13 @@ try {
     });
   }
 
+  decisionValidationEngine.recordOutcome(id, {
+  outcomeType: "price_dropped",
+  finalPrice: drop.currentPrice || drop.newPrice || drop.price || 0,
+  outcomeAt,
+  notes: "Listing price dropped during scan history tracking"
+});
+
   for (const gone of historyResult.disappeared || []) {
     const id = gone.ebayItemId || gone.itemId || gone.listingId || gone.id || gone;
     if (!id) continue;
@@ -1336,9 +1343,15 @@ try {
       outcomeAt,
       notes: "Listing disappeared from observed scan results"
     });
+    decisionValidationEngine.recordOutcome(id, {
+  outcomeType: "disappeared",
+  disappeared: true,
+  outcomeAt,
+  notes: "Listing disappeared from observed scan results"
+});
   }
 } catch (learningOutcomeError) {
-  console.warn("Learning Engine history outcome recording failed:", learningOutcomeError.message);
+  console.warn("Learning/Decision Validation outcome recording failed:", learningOutcomeError.message);
 }
 
     systemHealth.recordScanEngine("history", "ok", scan.history);
