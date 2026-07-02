@@ -20,14 +20,10 @@ function normalize(value) {
 function pickFirstValue(sources, keys, fallback = undefined) {
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;
-
     for (const key of keys) {
-      if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
-        return source[key];
-      }
+      if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
     }
   }
-
   return fallback;
 }
 
@@ -38,7 +34,6 @@ function pickFirstNumber(sources, keys, fallback = 0) {
 
 function uniqueMessages(messages) {
   const seen = new Set();
-
   return asArray(messages)
     .filter(Boolean)
     .map((message) => String(message).trim())
@@ -62,15 +57,12 @@ function hasText(value) {
 }
 
 function tokenize(value) {
-  return normalize(value)
-    .split(' ')
-    .filter((token) => token.length > 1);
+  return normalize(value).split(' ').filter((token) => token.length > 1);
 }
 
 function tokenOverlapScore(a, b) {
   const aTokens = new Set(tokenize(a));
   const bTokens = new Set(tokenize(b));
-
   if (!aTokens.size || !bTokens.size) return 0;
 
   let overlap = 0;
@@ -81,10 +73,23 @@ function tokenOverlapScore(a, b) {
   return overlap / Math.max(aTokens.size, bTokens.size);
 }
 
+function getMedian(values) {
+  const cleanValues = values
+    .map((value) => toNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (!cleanValues.length) return 0;
+
+  const middle = Math.floor(cleanValues.length / 2);
+  return cleanValues.length % 2
+    ? cleanValues[middle]
+    : (cleanValues[middle - 1] + cleanValues[middle]) / 2;
+}
+
 function extractYear(item = {}) {
   const parsed = getParsed(item);
   const title = getTitle(item);
-
   const explicitYear = pickFirstValue([parsed, item], ['year', 'season'], '');
   if (explicitYear) return String(explicitYear).trim();
 
@@ -95,12 +100,7 @@ function extractYear(item = {}) {
 function extractCardNumber(item = {}) {
   const parsed = getParsed(item);
   const title = getTitle(item);
-
-  const explicitNumber = pickFirstValue(
-    [parsed, item],
-    ['cardNumber', 'cardNo', 'number', 'card_num'],
-    ''
-  );
+  const explicitNumber = pickFirstValue([parsed, item], ['cardNumber', 'cardNo', 'number', 'card_num'], '');
 
   if (explicitNumber) return normalize(explicitNumber).replace(/^#/, '');
 
@@ -111,12 +111,7 @@ function extractCardNumber(item = {}) {
 function extractSerialNumbered(item = {}) {
   const parsed = getParsed(item);
   const title = normalize(getTitle(item));
-
-  const explicitSerial = pickFirstValue(
-    [parsed, item],
-    ['serialNumbered', 'numbered', 'isNumbered'],
-    undefined
-  );
+  const explicitSerial = pickFirstValue([parsed, item], ['serialNumbered', 'numbered', 'isNumbered'], undefined);
 
   if (typeof explicitSerial === 'boolean') return explicitSerial;
 
@@ -126,78 +121,77 @@ function extractSerialNumbered(item = {}) {
 function extractGrade(item = {}) {
   const parsed = getParsed(item);
   const title = normalize(getTitle(item));
-
   const explicitGrade = pickFirstValue([parsed, item], ['grade', 'conditionGrade'], '');
   if (explicitGrade) return normalize(explicitGrade).replace(/^grade\s*/, '');
 
-  const match = title.match(/\b(?:psa|bgs|sgc|cgc|csg)\s*(10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5)\b/i);
-  return match ? match[1] : '';
+  const match = title.match(/\b(?:psa|bgs|sgc|cgc|csg|raw)\s*(10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5)?\b/i);
+  if (match && match[1]) return match[1];
+
+  if (/\braw\b|\bungraded\b/.test(title)) return 'raw';
+  if (/\bdamaged\b|\bdmg\b/.test(title)) return 'damaged';
+  if (/\bmp\b|\bmoderately played\b/.test(title)) return 'mp';
+  if (/\blp\b|\blightly played\b/.test(title)) return 'lp';
+  if (/\bnm\b|\bnear mint\b/.test(title)) return 'nm';
+
+  return '';
 }
 
 function extractGrader(item = {}) {
   const parsed = getParsed(item);
   const title = normalize(getTitle(item));
-
-  const explicitGrader = pickFirstValue(
-    [parsed, item],
-    ['gradingCompany', 'grader', 'grading', 'slabCompany'],
-    ''
-  );
+  const explicitGrader = pickFirstValue([parsed, item], ['gradingCompany', 'grader', 'grading', 'slabCompany'], '');
 
   if (explicitGrader) return normalize(explicitGrader);
-
   if (/\bpsa\b/.test(title)) return 'psa';
   if (/\bbgs\b|\bbeckett\b/.test(title)) return 'bgs';
   if (/\bsgc\b/.test(title)) return 'sgc';
   if (/\bcgc\b|\bcsg\b/.test(title)) return 'cgc';
+  if (/\braw\b|\bungraded\b/.test(title)) return 'raw';
 
   return '';
 }
 
 function extractSubject(item = {}) {
   const parsed = getParsed(item);
-
-  return normalize(
-    pickFirstValue(
-      [parsed, item],
-      ['player', 'subject', 'playerName', 'character', 'name'],
-      ''
-    )
-  );
+  return normalize(pickFirstValue([parsed, item], ['player', 'subject', 'playerName', 'character', 'name'], ''));
 }
 
 function extractSport(item = {}) {
   const parsed = getParsed(item);
   const title = normalize(getTitle(item));
-
-  const explicitSport = pickFirstValue(
-    [parsed, item],
-    ['sport', 'category', 'game', 'franchise'],
-    ''
-  );
+  const explicitSport = pickFirstValue([parsed, item], ['sport', 'category', 'game', 'franchise'], '');
 
   if (explicitSport) return normalize(explicitSport);
-
   if (/\bpokemon\b|\bpikachu\b|\bcharizard\b|\bsquirtle\b|\bblastoise\b|\bvenusaur\b/.test(title)) return 'pokemon';
   if (/\bbaseball\b|\bmlb\b/.test(title)) return 'baseball';
   if (/\bbasketball\b|\bnba\b/.test(title)) return 'basketball';
   if (/\bfootball\b|\bnfl\b/.test(title)) return 'football';
   if (/\bhockey\b|\bnhl\b/.test(title)) return 'hockey';
   if (/\bsoccer\b|\bfutbol\b/.test(title)) return 'soccer';
+  if (/\bufc\b|\bmma\b/.test(title)) return 'ufc';
+  if (/\bracing\b|\bnascar\b|\bf1\b|\bformula 1\b/.test(title)) return 'racing';
 
   return '';
 }
 
 function extractSetName(item = {}) {
   const parsed = getParsed(item);
+  return normalize(pickFirstValue([parsed, item], ['set', 'cardSet', 'series', 'product', 'brand'], ''));
+}
 
-  return normalize(
-    pickFirstValue(
-      [parsed, item],
-      ['set', 'cardSet', 'series', 'product', 'brand'],
-      ''
-    )
-  );
+function extractVariation(item = {}) {
+  const parsed = getParsed(item);
+  const title = normalize(getTitle(item));
+  const explicit = pickFirstValue([parsed, item], ['variation', 'parallel', 'color', 'insert'], '');
+  if (explicit) return normalize(explicit);
+
+  const variationTerms = [
+    'silver', 'gold', 'green', 'red', 'blue', 'pink', 'purple', 'orange', 'black',
+    'white', 'mojo', 'cracked ice', 'fast break', 'optic', 'select', 'mosaic',
+    'cosmic', 'zebra', 'tiger', 'checkerboard', 'wave', 'scope', 'disco'
+  ];
+
+  return variationTerms.filter((term) => title.includes(term)).join(' ');
 }
 
 function hasFeature(item = {}, feature) {
@@ -214,8 +208,7 @@ function hasFeature(item = {}, feature) {
     reprint: ['reprint', 'proxy', 'custom', 'digital', 'facsimile', 'novelty']
   };
 
-  const keys = featureKeys[feature] || [];
-  const explicitValue = pickFirstValue([parsed, item], keys, undefined);
+  const explicitValue = pickFirstValue([parsed, item], featureKeys[feature] || [], undefined);
 
   if (typeof explicitValue === 'boolean') return explicitValue;
   if (typeof explicitValue === 'string' && explicitValue.trim()) {
@@ -236,11 +229,54 @@ function hasFeature(item = {}, feature) {
 }
 
 function getSoldPrice(comp = {}) {
-  return pickFirstNumber(
-    [comp],
-    ['soldPrice', 'salePrice', 'price', 'amount', 'totalPrice', 'value'],
-    0
+  return pickFirstNumber([comp], ['soldPrice', 'salePrice', 'price', 'amount', 'totalPrice', 'value'], 0);
+}
+
+function getSoldDate(comp = {}) {
+  const value = pickFirstValue([comp], ['soldDate', 'saleDate', 'dateSold', 'endedAt', 'endDate', 'timestamp'], '');
+  const timestamp = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
+
+function getAgeDays(comp = {}) {
+  const explicitAge = pickFirstNumber([comp], ['ageDays', 'daysOld', 'daysSinceSale', 'soldDaysAgo'], NaN);
+  if (Number.isFinite(explicitAge)) return Math.max(0, explicitAge);
+
+  const soldDate = getSoldDate(comp);
+  if (!soldDate) return 365;
+
+  const ageMs = Date.now() - soldDate.getTime();
+  return ageMs > 0 ? Math.floor(ageMs / 86400000) : 0;
+}
+
+function getRecencyWeight(ageDays) {
+  if (ageDays <= 14) return 1.18;
+  if (ageDays <= 30) return 1.08;
+  if (ageDays <= 60) return 1;
+  if (ageDays <= 90) return 0.88;
+  if (ageDays <= 180) return 0.7;
+  if (ageDays <= 365) return 0.5;
+  return 0.32;
+}
+
+function getSaleType(comp = {}) {
+  const source = normalize(
+    pickFirstValue([comp], ['saleType', 'format', 'listingType', 'purchaseType', 'type'], '')
   );
+  const title = normalize(getTitle(comp));
+
+  if (source.includes('auction') || title.includes('auction')) return 'auction';
+  if (source.includes('best') || source.includes('offer') || title.includes('best offer')) return 'best_offer';
+  if (source.includes('buy') || source.includes('bin') || source.includes('fixed')) return 'buy_it_now';
+
+  return 'unknown';
+}
+
+function getSaleTypeWeight(saleType) {
+  if (saleType === 'auction') return 1.08;
+  if (saleType === 'best_offer') return 0.78;
+  if (saleType === 'buy_it_now') return 0.92;
+  return 0.88;
 }
 
 function getComparableProfile(item = {}) {
@@ -257,6 +293,7 @@ function getComparableProfile(item = {}) {
     patch: hasFeature(item, 'patch'),
     refractor: hasFeature(item, 'refractor'),
     serialNumbered: extractSerialNumbered(item),
+    variation: extractVariation(item),
     grader: extractGrader(item),
     grade: extractGrade(item),
     sealed: hasFeature(item, 'sealed'),
@@ -273,10 +310,52 @@ function compareExactFeature(listingValue, compValue, weight, label, details) {
 
   if (listingValue || compValue) {
     details.push(`${label} mismatch`);
-    return -Math.round(weight * 0.9);
+    return -Math.round(weight * 1.1);
   }
 
   return 0;
+}
+
+function gradePenalty(listingGrade, compGrade, details) {
+  if (!listingGrade || !compGrade) return 0;
+
+  if (listingGrade === compGrade) {
+    details.push('grade matched');
+    return 10;
+  }
+
+  if (listingGrade === 'raw' || compGrade === 'raw') {
+    details.push('raw/slab grade mismatch');
+    return -22;
+  }
+
+  const weakGrades = ['lp', 'mp', 'hp', 'damaged', 'dmg'];
+  if (weakGrades.includes(listingGrade) || weakGrades.includes(compGrade)) {
+    details.push('condition quality mismatch');
+    return -18;
+  }
+
+  const listingNumeric = toNumber(listingGrade, NaN);
+  const compNumeric = toNumber(compGrade, NaN);
+
+  if (Number.isFinite(listingNumeric) && Number.isFinite(compNumeric)) {
+    const difference = Math.abs(listingNumeric - compNumeric);
+
+    if (difference <= 0.5) {
+      details.push('grade very close');
+      return 6;
+    }
+
+    if (difference <= 1) {
+      details.push('grade close');
+      return 2;
+    }
+
+    details.push('grade mismatch');
+    return -14;
+  }
+
+  return -6;
 }
 
 function compareSimilarity(listingProfile, compProfile) {
@@ -291,7 +370,7 @@ function compareSimilarity(listingProfile, compProfile) {
       const overlap = tokenOverlapScore(listingProfile.subject, compProfile.subject);
       score += Math.round(12 * overlap);
       if (overlap < 0.5) {
-        score -= 18;
+        score -= 22;
         details.push('subject mismatch');
       }
     }
@@ -300,107 +379,52 @@ function compareSimilarity(listingProfile, compProfile) {
   }
 
   if (listingProfile.year && compProfile.year) {
-    if (listingProfile.year === compProfile.year) {
-      score += 10;
-      details.push('year matched');
-    } else {
-      score -= 10;
-      details.push('year mismatch');
-    }
+    if (listingProfile.year === compProfile.year) score += 10;
+    else score -= 11;
   }
 
-  if (hasText(listingProfile.sport) && hasText(compProfile.sport)) {
-    if (listingProfile.sport === compProfile.sport) {
-      score += 8;
-      details.push('category matched');
-    } else {
-      score -= 16;
-      details.push('category mismatch');
-    }
+  if (listingProfile.sport && compProfile.sport) {
+    if (listingProfile.sport === compProfile.sport) score += 8;
+    else score -= 18;
   }
 
-  if (hasText(listingProfile.setName) && hasText(compProfile.setName)) {
+  if (listingProfile.setName && compProfile.setName) {
     const setOverlap = tokenOverlapScore(listingProfile.setName, compProfile.setName);
-    score += Math.round(12 * setOverlap);
-    if (setOverlap >= 0.65) details.push('set matched');
-    if (setOverlap < 0.35) {
-      score -= 8;
-      details.push('set mismatch');
-    }
+    score += Math.round(14 * setOverlap);
+    if (setOverlap < 0.35) score -= 9;
   }
 
   if (listingProfile.cardNumber && compProfile.cardNumber) {
-    if (listingProfile.cardNumber === compProfile.cardNumber) {
-      score += 9;
-      details.push('card number matched');
-    } else {
-      score -= 9;
-      details.push('card number mismatch');
-    }
+    if (listingProfile.cardNumber === compProfile.cardNumber) score += 10;
+    else score -= 10;
   }
 
-  score += compareExactFeature(listingProfile.rookie, compProfile.rookie, 7, 'rookie/RC', details);
-  score += compareExactFeature(listingProfile.autograph, compProfile.autograph, 9, 'autograph', details);
-  score += compareExactFeature(listingProfile.patch, compProfile.patch, 7, 'patch/relic', details);
-  score += compareExactFeature(listingProfile.refractor, compProfile.refractor, 7, 'parallel/refractor', details);
-  score += compareExactFeature(listingProfile.serialNumbered, compProfile.serialNumbered, 6, 'serial-numbered', details);
+  score += compareExactFeature(listingProfile.rookie, compProfile.rookie, 8, 'rookie/RC', details);
+  score += compareExactFeature(listingProfile.autograph, compProfile.autograph, 12, 'autograph', details);
+  score += compareExactFeature(listingProfile.patch, compProfile.patch, 8, 'patch/relic', details);
+  score += compareExactFeature(listingProfile.refractor, compProfile.refractor, 8, 'refractor/prizm/chrome', details);
+  score += compareExactFeature(listingProfile.serialNumbered, compProfile.serialNumbered, 8, 'serial-numbered', details);
+
+  if (listingProfile.variation && compProfile.variation) {
+    const variationOverlap = tokenOverlapScore(listingProfile.variation, compProfile.variation);
+    score += Math.round(8 * variationOverlap);
+    if (variationOverlap < 0.35) score -= 8;
+  } else if (listingProfile.variation || compProfile.variation) {
+    score -= 5;
+  }
 
   if (listingProfile.grader && compProfile.grader) {
-    if (listingProfile.grader === compProfile.grader) {
-      score += 5;
-      details.push('grading company matched');
-    } else {
-      score -= 7;
-      details.push('grading company mismatch');
-    }
+    if (listingProfile.grader === compProfile.grader) score += 7;
+    else score -= 10;
   }
 
-  if (listingProfile.grade && compProfile.grade) {
-    const listingGrade = toNumber(listingProfile.grade, NaN);
-    const compGrade = toNumber(compProfile.grade, NaN);
+  score += gradePenalty(listingProfile.grade, compProfile.grade, details);
 
-    if (Number.isFinite(listingGrade) && Number.isFinite(compGrade)) {
-      const difference = Math.abs(listingGrade - compGrade);
-      if (difference === 0) {
-        score += 8;
-        details.push('grade matched');
-      } else if (difference <= 1) {
-        score += 3;
-        details.push('grade close');
-      } else {
-        score -= 8;
-        details.push('grade mismatch');
-      }
-    } else if (listingProfile.grade === compProfile.grade) {
-      score += 6;
-      details.push('grade matched');
-    }
-  }
+  if (listingProfile.reprint !== compProfile.reprint) score -= 35;
+  if (listingProfile.sealed !== compProfile.sealed) score -= 20;
+  if (listingProfile.lot !== compProfile.lot) score -= 20;
 
-  const listingTypeFlags = [listingProfile.sealed, listingProfile.lot, listingProfile.reprint];
-  const compTypeFlags = [compProfile.sealed, compProfile.lot, compProfile.reprint];
-
-  if (listingTypeFlags.some(Boolean) !== compTypeFlags.some(Boolean)) {
-    score -= 18;
-    details.push('product type mismatch');
-  }
-
-  if (compProfile.reprint && !listingProfile.reprint) {
-    score -= 35;
-    details.push('comp appears reprint/custom/digital');
-  }
-
-  if (compProfile.sealed !== listingProfile.sealed) {
-    score -= 18;
-    details.push('sealed/wax mismatch');
-  }
-
-  if (compProfile.lot !== listingProfile.lot) {
-    score -= 18;
-    details.push('lot/single-card mismatch');
-  }
-
-  score += Math.round(12 * tokenOverlapScore(listingProfile.title, compProfile.title));
+  score += Math.round(10 * tokenOverlapScore(listingProfile.title, compProfile.title));
 
   return {
     similarity: Math.max(0, Math.min(100, Math.round(score))),
@@ -408,17 +432,47 @@ function compareSimilarity(listingProfile, compProfile) {
   };
 }
 
+function detectOutliers(comps) {
+  if (comps.length < 5) return { kept: comps, ignored: [] };
+
+  const prices = comps.map((comp) => comp.soldPrice).filter((price) => price > 0);
+  const median = getMedian(prices);
+
+  if (!median) return { kept: comps, ignored: [] };
+
+  const deviations = prices.map((price) => Math.abs(price - median));
+  const medianDeviation = getMedian(deviations) || median * 0.25;
+
+  const kept = [];
+  const ignored = [];
+
+  for (const comp of comps) {
+    const ratio = comp.soldPrice / median;
+    const robustDeviation = Math.abs(comp.soldPrice - median) / medianDeviation;
+
+    const isOutlier =
+      ratio >= 2.75 ||
+      ratio <= 0.32 ||
+      (robustDeviation > 4.5 && (ratio >= 1.9 || ratio <= 0.52));
+
+    if (isOutlier) ignored.push({ ...comp, outlierReason: 'price_outlier' });
+    else kept.push(comp);
+  }
+
+  return { kept, ignored };
+}
+
 function getWeightedAverage(comps) {
   const weighted = comps
     .map((comp) => {
-      const price = getSoldPrice(comp);
-      if (!price || price <= 0) return null;
+      if (!comp.soldPrice || comp.soldPrice <= 0) return null;
 
-      const weight = Math.max(1, Math.pow(comp.similarity / 100, 2));
-      return {
-        price,
-        weight
-      };
+      const similarityWeight = Math.max(0.15, Math.pow(comp.similarity / 100, 2.35));
+      const recencyWeight = getRecencyWeight(comp.ageDays);
+      const saleTypeWeight = getSaleTypeWeight(comp.saleType);
+      const weight = similarityWeight * recencyWeight * saleTypeWeight;
+
+      return { price: comp.soldPrice, weight };
     })
     .filter(Boolean);
 
@@ -430,15 +484,57 @@ function getWeightedAverage(comps) {
   return totalWeight > 0 ? weightedValue / totalWeight : 0;
 }
 
-function getConfidence(usableComps, strongCompCount, averageSimilarity, fallbackUsed) {
+function getWeightedCompCount(comps) {
+  return comps.reduce((sum, comp) => {
+    return sum + Math.max(0.15, Math.pow(comp.similarity / 100, 2.35)) * getRecencyWeight(comp.ageDays);
+  }, 0);
+}
+
+function getPricingSpread(comps, marketValue) {
+  if (!comps.length || !marketValue) return 0;
+
+  const prices = comps.map((comp) => comp.soldPrice).filter((price) => price > 0);
+  if (!prices.length) return 0;
+
+  return (Math.max(...prices) - Math.min(...prices)) / marketValue;
+}
+
+function getMarketConsistency(pricingSpread) {
+  if (pricingSpread <= 0) return 'unknown';
+  if (pricingSpread <= 0.28) return 'tight_market';
+  if (pricingSpread <= 0.65) return 'normal_market';
+  return 'volatile_market';
+}
+
+function getVolatilityScore(pricingSpread) {
+  if (pricingSpread <= 0) return 45;
+  if (pricingSpread <= 0.28) return 95;
+  if (pricingSpread <= 0.45) return 78;
+  if (pricingSpread <= 0.65) return 60;
+  if (pricingSpread <= 0.9) return 38;
+  return 20;
+}
+
+function getConfidence(usableComps, strongCompCount, averageSimilarity, pricingSpread, fallbackUsed) {
   if (fallbackUsed) return 25;
   if (!usableComps.length) return 0;
 
-  let confidence = 30;
+  const averageAgeDays = usableComps.reduce((sum, comp) => sum + comp.ageDays, 0) / usableComps.length;
+  const auctionCount = usableComps.filter((comp) => comp.saleType === 'auction').length;
+  const bestOfferCount = usableComps.filter((comp) => comp.saleType === 'best_offer').length;
 
-  confidence += Math.min(25, usableComps.length * 4);
-  confidence += Math.min(25, strongCompCount * 7);
-  confidence += Math.max(0, Math.min(20, (averageSimilarity - 75) * 1.3));
+  let confidence = 24;
+  confidence += Math.min(24, usableComps.length * 4);
+  confidence += Math.min(22, strongCompCount * 7);
+  confidence += Math.max(0, Math.min(18, (averageSimilarity - 75) * 1.1));
+  confidence += Math.max(0, Math.min(12, getVolatilityScore(pricingSpread) / 8));
+
+  if (averageAgeDays <= 30) confidence += 8;
+  else if (averageAgeDays <= 90) confidence += 4;
+  else if (averageAgeDays > 180) confidence -= 8;
+
+  confidence += Math.min(6, auctionCount * 2);
+  confidence -= Math.min(10, bestOfferCount * 3);
 
   return Math.max(0, Math.min(100, Math.round(confidence)));
 }
@@ -450,17 +546,10 @@ function runFallbackEstimator(listing, options) {
     const fallback = options.fallbackEstimator(listing);
     if (!fallback || typeof fallback !== 'object') return null;
 
-    const value = toNumber(
-      fallback.marketValue || fallback.value || fallback.estimatedValue,
-      0
-    );
-
+    const value = toNumber(fallback.marketValue || fallback.value || fallback.estimatedValue, 0);
     if (!value || value <= 0) return null;
 
-    return {
-      marketValue: value,
-      fallback
-    };
+    return { marketValue: value, fallback };
   } catch (error) {
     return null;
   }
@@ -471,24 +560,23 @@ function summarizeComps(data = {}) {
   const confidence = toNumber(data.confidence, 0);
   const compCount = toNumber(data.compCount, 0);
   const strongCompCount = toNumber(data.strongCompCount, 0);
+  const marketConsistency = data.marketConsistency || 'unknown';
 
   if (source === 'heuristic_fallback') {
     return 'No usable sold comps were found; valuation uses a low-confidence heuristic fallback.';
   }
 
-  if (compCount <= 0) {
-    return 'No usable comparable sales were found.';
-  }
+  if (compCount <= 0) return 'No usable comparable sales were found.';
 
-  if (strongCompCount >= 3 && confidence >= 75) {
-    return 'Comparable sales are strong and closely matched to the listing.';
+  if (strongCompCount >= 3 && confidence >= 75 && marketConsistency === 'tight_market') {
+    return 'Comparable sales are strong, recent, and tightly clustered.';
   }
 
   if (strongCompCount >= 1 && confidence >= 60) {
-    return 'Comparable sales are usable, with at least one strong match.';
+    return 'Comparable sales are usable, with enough similarity to support a cautious market value.';
   }
 
-  return 'Comparable sales are limited or only moderately similar; valuation should be reviewed conservatively.';
+  return 'Comparable sales are limited, older, volatile, or only moderately similar; valuation should be reviewed conservatively.';
 }
 
 function evaluateListing(listing = {}, compUniverse = [], options = {}) {
@@ -500,43 +588,52 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
     .map((comp) => {
       const comparison = compareSimilarity(listingProfile, getComparableProfile(comp));
       const soldPrice = getSoldPrice(comp);
+      const ageDays = getAgeDays(comp);
+      const saleType = getSaleType(comp);
 
       return {
         ...comp,
         soldPrice,
+        ageDays,
+        saleType,
+        recencyWeight: Number(getRecencyWeight(ageDays).toFixed(3)),
+        saleTypeWeight: getSaleTypeWeight(saleType),
         similarity: comparison.similarity,
         similarityDetails: comparison.details
       };
     })
-    .filter((comp) => {
-      if (!comp.soldPrice || comp.soldPrice <= 0) return false;
-      if (comp.similarity < 60) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (b.similarity !== a.similarity) return b.similarity - a.similarity;
-      return b.soldPrice - a.soldPrice;
-    });
+    .filter((comp) => comp.soldPrice > 0 && comp.similarity >= 60)
+    .sort((a, b) => b.similarity - a.similarity || a.ageDays - b.ageDays);
 
-  const usableComps = scoredComps.filter((comp) => comp.similarity >= 75);
-  const strongComps = scoredComps.filter((comp) => comp.similarity >= 90);
-  const selectedComps = usableComps.length ? usableComps : scoredComps.slice(0, 5);
-
+  const usableCandidates = scoredComps.filter((comp) => comp.similarity >= 75);
+  const outlierResult = detectOutliers(usableCandidates.length ? usableCandidates : scoredComps);
+  const usableComps = outlierResult.kept.filter((comp) => comp.similarity >= 75);
+  const selectedComps = (usableComps.length ? usableComps : outlierResult.kept).slice(0, 12);
+  const strongCompCount = selectedComps.filter((comp) => comp.similarity >= 90).length;
   const compCount = selectedComps.length;
-  const strongCompCount = strongComps.length;
+  const usableCompCount = usableComps.length;
+
   const averageSimilarity = compCount
     ? selectedComps.reduce((sum, comp) => sum + comp.similarity, 0) / compCount
     : 0;
+
   const bestSimilarity = selectedComps.length ? selectedComps[0].similarity : 0;
+  const averageAgeDays = compCount
+    ? selectedComps.reduce((sum, comp) => sum + comp.ageDays, 0) / compCount
+    : 0;
 
   let marketValue = getWeightedAverage(selectedComps);
   let source = 'comp_engine';
-  let method = 'weighted_similarity_sold_comps';
-  let confidence = getConfidence(selectedComps, strongCompCount, averageSimilarity, false);
+  let method = 'recency_similarity_weighted_sold_comps';
 
-  if (!usableComps.length) {
-    warnings.push('No usable comps met the 75 similarity threshold.');
-  }
+  const weightedCompCount = Number(getWeightedCompCount(selectedComps).toFixed(2));
+  let pricingSpread = getPricingSpread(selectedComps, marketValue);
+  let volatilityScore = getVolatilityScore(pricingSpread);
+  let marketConsistency = getMarketConsistency(pricingSpread);
+  let confidence = getConfidence(selectedComps, strongCompCount, averageSimilarity, pricingSpread, false);
+
+  if (!usableComps.length) warnings.push('No usable comps met the 75 similarity threshold.');
+  if (outlierResult.ignored.length) warnings.push(`${outlierResult.ignored.length} pricing outlier${outlierResult.ignored.length === 1 ? '' : 's'} ignored.`);
 
   if (!selectedComps.length) {
     const fallbackResult = runFallbackEstimator(listing, options);
@@ -545,7 +642,10 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       marketValue = fallbackResult.marketValue;
       source = 'heuristic_fallback';
       method = 'fallback_estimator';
-      confidence = getConfidence([], 0, 0, true);
+      confidence = getConfidence([], 0, 0, 0, true);
+      pricingSpread = 0;
+      volatilityScore = 25;
+      marketConsistency = 'unknown';
       warnings.push('Using heuristic fallback because no usable sold comps were available.');
     } else {
       marketValue = 0;
@@ -554,21 +654,14 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
     }
   }
 
-  if (strongCompCount > 0) {
-    positives.push(`${strongCompCount} strong comp${strongCompCount === 1 ? '' : 's'} found.`);
-  }
+  if (strongCompCount > 0) positives.push(`${strongCompCount} strong comp${strongCompCount === 1 ? '' : 's'} found.`);
+  if (usableCompCount > 0) positives.push(`${usableCompCount} usable comp${usableCompCount === 1 ? '' : 's'} selected.`);
+  if (averageAgeDays > 0 && averageAgeDays <= 60) positives.push('Selected comps are recent.');
+  if (marketConsistency === 'tight_market') positives.push('Market spread is tight.');
+  if (marketConsistency === 'volatile_market') warnings.push('Market spread is volatile.');
+  if (selectedComps.some((comp) => comp.saleType === 'best_offer')) warnings.push('Best Offer comps were discounted for confidence.');
 
-  if (compCount > 0) {
-    positives.push(`${compCount} usable comp${compCount === 1 ? '' : 's'} selected.`);
-  }
-
-  if (averageSimilarity >= 85) {
-    positives.push('Selected comps are highly similar on average.');
-  } else if (averageSimilarity > 0 && averageSimilarity < 75) {
-    warnings.push('Selected comps are below the normal usable similarity threshold.');
-  }
-
-  return {
+  const result = {
     compCount,
     strongCompCount,
     averageSimilarity: Number(averageSimilarity.toFixed(1)),
@@ -584,10 +677,29 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       soldPrice: comp.soldPrice,
       similarity: comp.similarity,
       similarityDetails: comp.similarityDetails || [],
-      source: comp.source || comp.marketplace || comp.platform || ''
+      source: comp.source || comp.marketplace || comp.platform || '',
+      ageDays: comp.ageDays,
+      saleType: comp.saleType,
+      recencyWeight: comp.recencyWeight,
+      saleTypeWeight: comp.saleTypeWeight
+    })),
+    averageAgeDays: Number(averageAgeDays.toFixed(1)),
+    weightedCompCount,
+    pricingSpread: Number(pricingSpread.toFixed(3)),
+    volatilityScore,
+    marketConsistency,
+    usableCompCount,
+    ignoredOutliers: outlierResult.ignored.map((comp) => ({
+      title: comp.title || comp.name || '',
+      soldPrice: comp.soldPrice,
+      similarity: comp.similarity,
+      outlierReason: comp.outlierReason || 'price_outlier'
     })),
     summary: ''
   };
+
+  result.summary = summarizeComps(result);
+  return result;
 }
 
 module.exports = {
