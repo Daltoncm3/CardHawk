@@ -1035,20 +1035,29 @@ function saveScoutedListing(listing, query, lane) {
     alertCreated: existing?.alertCreated || false
   };
 
+  const gate = dealGate(saved);
+  saved.dealGate = gate;
   try {
   learningEngine.recordPrediction({
     listing: saved,
     parsed: saved.parsed,
     scoring,
-    decision: scoring.decision?.decision || scoring.decision?.recommendation || "",
+    decisionData: scoring.decision,
+    decision: gate.decision || gate.recommendation || scoring.decision?.decision || scoring.decision?.recommendation || "",
+    dealGate: gate,
+    compData: scoring.compData,
+    marketData: scoring.marketData,
+    roiData: scoring.roiData,
+    riskData: scoring.riskData,
+    marketIntelligenceData: scoring.marketIntelligenceData,
+    trendData: scoring.trendData,
+    qualityData: scoring.qualityData,
     dealGrade: scoring.dealGrade?.grade || scoring.dealGrade?.label || scoring.dealGrade || "",
     observedAt: now
   });
 } catch (learningError) {
   console.warn("Learning Engine recordPrediction failed:", learningError.message);
 }
-  const gate = dealGate(saved);
-  saved.dealGate = gate;
 
   store.listings[listing.ebayItemId] = saved;
 
@@ -1272,6 +1281,34 @@ async function runScoutScan(source = "automatic") {
       priceDropCount: historyResult.priceDrops.length,
       disappearedCount: historyResult.disappeared.length
     };
+    const outcomeAt = scan.finishedAt || new Date().toISOString();
+
+try {
+  for (const drop of historyResult.priceDrops || []) {
+    const id = drop.ebayItemId || drop.itemId || drop.listingId || drop.id;
+    if (!id) continue;
+
+    learningEngine.recordListingOutcome(id, {
+      outcomeType: "price_dropped",
+      finalPrice: drop.currentPrice || drop.newPrice || drop.price || 0,
+      outcomeAt,
+      notes: "Listing price dropped during scan history tracking"
+    });
+  }
+
+  for (const gone of historyResult.disappeared || []) {
+    const id = gone.ebayItemId || gone.itemId || gone.listingId || gone.id || gone;
+    if (!id) continue;
+
+    learningEngine.recordListingOutcome(id, {
+      outcomeType: "disappeared",
+      outcomeAt,
+      notes: "Listing disappeared from observed scan results"
+    });
+  }
+} catch (learningOutcomeError) {
+  console.warn("Learning Engine history outcome recording failed:", learningOutcomeError.message);
+}
 
     systemHealth.recordScanEngine("history", "ok", scan.history);
   } catch (historyError) {
@@ -1285,10 +1322,18 @@ async function runScoutScan(source = "automatic") {
     store.scans = store.scans.slice(0, 100);
     store.alerts = store.alerts.slice(0, 200);
 
-    try {
-  learningEngine.recordScanOutcome(observedListings, {
+   try {
+  const learningScanResult = learningEngine.recordScanOutcome(observedListings, {
     observedAt: scan.finishedAt || new Date().toISOString()
   });
+
+  for (const id of learningScanResult.stale || []) {
+    learningEngine.recordListingOutcome(id, {
+      outcomeType: "stale",
+      outcomeAt: scan.finishedAt || new Date().toISOString(),
+      notes: "Listing became stale after not appearing in recent scans"
+    });
+  }
 } catch (learningError) {
   console.warn("Learning Engine recordScanOutcome failed:", learningError.message);
 }
