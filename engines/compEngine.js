@@ -118,11 +118,34 @@ function extractSerialNumbered(item = {}) {
   return /\/\d{1,5}\b|\bnumbered\b|\bserial\b|\bssp\b|\bsp\b/.test(title);
 }
 
+function extractSerialPrintRun(item = {}) {
+  const parsed = getParsed(item);
+  const explicitRun = pickFirstNumber(
+    [parsed, item],
+    ['printRun', 'serialPrintRun', 'numberedTo', 'serialNumberTotal'],
+    0
+  );
+
+  if (explicitRun > 0) return explicitRun;
+
+  const title = getTitle(item);
+  const match = title.match(/(?:^|\s|#)\d{1,5}\s*\/\s*(\d{1,5})(?:\s|$)/);
+  return match ? toNumber(match[1], 0) : 0;
+}
+
 function extractGrade(item = {}) {
   const parsed = getParsed(item);
   const title = normalize(getTitle(item));
   const explicitGrade = pickFirstValue([parsed, item], ['grade', 'conditionGrade'], '');
-  if (explicitGrade) return normalize(explicitGrade).replace(/^grade\s*/, '');
+  if (explicitGrade) {
+    const normalizedGrade = normalize(explicitGrade).replace(/^grade\s*/, '');
+    if (normalizedGrade.includes('black label')) return 'black_label';
+    if (normalizedGrade.includes('pristine')) return 'pristine';
+    return normalizedGrade;
+  }
+
+  if (/\bblack label\b/.test(title)) return 'black_label';
+  if (/\bpristine\b/.test(title)) return 'pristine';
 
   const match = title.match(/\b(?:psa|bgs|sgc|cgc|csg|raw)\s*(10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5)?\b/i);
   if (match && match[1]) return match[1];
@@ -188,7 +211,10 @@ function extractVariation(item = {}) {
   const variationTerms = [
     'silver', 'gold', 'green', 'red', 'blue', 'pink', 'purple', 'orange', 'black',
     'white', 'mojo', 'cracked ice', 'fast break', 'optic', 'select', 'mosaic',
-    'cosmic', 'zebra', 'tiger', 'checkerboard', 'wave', 'scope', 'disco'
+    'cosmic', 'zebra', 'tiger', 'checkerboard', 'wave', 'scope', 'disco',
+    'sapphire', 'atomic', 'xfractor', 'x-fractor', 'superfractor', 'shimmer',
+    'velocity', 'laser', 'hyper', 'ice', 'scope', 'wave', 'negative',
+    'sepia', 'aqua', 'teal', 'lime', 'bronze', 'purple shock', 'orange ice'
   ];
 
   return variationTerms.filter((term) => title.includes(term)).join(' ');
@@ -220,7 +246,7 @@ function hasFeature(item = {}, feature) {
   if (feature === 'rookie') return /\brc\b|\brookie\b/.test(title);
   if (feature === 'autograph') return /\bauto\b|\bautograph\b|\bsigned\b/.test(title);
   if (feature === 'patch') return /\bpatch\b|\brelic\b|\bjersey\b|\bmemorabilia\b/.test(title);
-  if (feature === 'refractor') return /\brefractor\b|\bparallel\b|\bprizm\b|\bholo\b|\bfoil\b|\bchrome\b|\bsilver\b|\bgold\b|\bcracked ice\b|\bmojo\b/.test(title);
+  if (feature === 'refractor') return /\brefractor\b|\bparallel\b|\bprizm\b|\bholo\b|\bfoil\b|\bchrome\b|\bsilver\b|\bgold\b|\bcracked ice\b|\bmojo\b|\bsapphire\b|\bsuperfractor\b|\bshimmer\b/.test(title);
   if (feature === 'sealed') return /\bsealed\b|\bwax\b|\bbox\b|\bpack\b|\bcase\b|\bbooster\b/.test(title);
   if (feature === 'lot') return /\blot\b|\bbulk\b|\bcollection\b|\b\d+\s*cards\b/.test(title);
   if (feature === 'reprint') return /\breprint\b|\bproxy\b|\bcustom\b|\bdigital\b|\bfacsimile\b|\bnovelty\b/.test(title);
@@ -279,6 +305,26 @@ function getSaleTypeWeight(saleType) {
   return 0.88;
 }
 
+function isRawProfile(profile = {}) {
+  return profile.grader === 'raw' || profile.grade === 'raw' || profile.grade === 'nm' || profile.grade === 'lp' || profile.grade === 'mp' || profile.grade === 'hp' || profile.grade === 'damaged' || profile.grade === 'dmg';
+}
+
+function isGradedProfile(profile = {}) {
+  if (!profile.grader || profile.grader === 'raw') return false;
+  if (profile.grader === 'psa' || profile.grader === 'bgs' || profile.grader === 'sgc' || profile.grader === 'cgc') return true;
+  return false;
+}
+
+function isParallelProfile(profile = {}) {
+  return Boolean(profile.refractor || profile.variation || profile.serialNumbered);
+}
+
+function normalizeGradeValue(profile = {}) {
+  if (profile.grade === 'black_label') return 10.2;
+  if (profile.grade === 'pristine') return profile.grader === 'bgs' ? 10.1 : 10;
+  return toNumber(profile.grade, NaN);
+}
+
 function getComparableProfile(item = {}) {
   return {
     title: getTitle(item),
@@ -293,12 +339,148 @@ function getComparableProfile(item = {}) {
     patch: hasFeature(item, 'patch'),
     refractor: hasFeature(item, 'refractor'),
     serialNumbered: extractSerialNumbered(item),
+    serialPrintRun: extractSerialPrintRun(item),
     variation: extractVariation(item),
     grader: extractGrader(item),
     grade: extractGrade(item),
     sealed: hasFeature(item, 'sealed'),
     lot: hasFeature(item, 'lot'),
     reprint: hasFeature(item, 'reprint')
+  };
+}
+
+function applySimilarityCap(currentCap, newCap) {
+  return Math.min(currentCap, newCap);
+}
+
+function evaluateIdentityGates(listingProfile, compProfile) {
+  let cap = 100;
+  const reasons = [];
+  const fatal = [];
+
+  if (listingProfile.reprint !== compProfile.reprint) {
+    cap = applySimilarityCap(cap, 20);
+    fatal.push('original/reprint-custom-digital mismatch');
+  }
+
+  if (listingProfile.lot !== compProfile.lot) {
+    cap = applySimilarityCap(cap, 45);
+    fatal.push('single-card/lot mismatch');
+  }
+
+  if (listingProfile.cardNumber && compProfile.cardNumber && listingProfile.cardNumber !== compProfile.cardNumber) {
+    cap = applySimilarityCap(cap, 45);
+    fatal.push('card number mismatch');
+  }
+
+  const listingRaw = isRawProfile(listingProfile);
+  const compRaw = isRawProfile(compProfile);
+  const listingGraded = isGradedProfile(listingProfile);
+  const compGraded = isGradedProfile(compProfile);
+
+  if ((listingRaw && compGraded) || (listingGraded && compRaw)) {
+    cap = applySimilarityCap(cap, 45);
+    fatal.push('raw/slabbed mismatch');
+  }
+
+  if (listingProfile.autograph !== compProfile.autograph) {
+    cap = applySimilarityCap(cap, 55);
+    fatal.push('autograph mismatch');
+  }
+
+  if (listingProfile.serialNumbered !== compProfile.serialNumbered) {
+    cap = applySimilarityCap(cap, 55);
+    fatal.push('numbered/unnumbered mismatch');
+  }
+
+  const listingParallel = isParallelProfile(listingProfile);
+  const compParallel = isParallelProfile(compProfile);
+
+  if (listingParallel !== compParallel) {
+    cap = applySimilarityCap(cap, 58);
+    reasons.push('base/parallel mismatch');
+  }
+
+  if (listingProfile.variation && compProfile.variation) {
+    const overlap = tokenOverlapScore(listingProfile.variation, compProfile.variation);
+    if (overlap < 0.35) {
+      cap = applySimilarityCap(cap, 62);
+      reasons.push('parallel/variation mismatch');
+    }
+  } else if (listingProfile.variation || compProfile.variation) {
+    cap = applySimilarityCap(cap, 64);
+    reasons.push('parallel/variation missing on one side');
+  }
+
+  if (listingProfile.serialPrintRun > 0 && compProfile.serialPrintRun > 0) {
+    const lowRun = Math.min(listingProfile.serialPrintRun, compProfile.serialPrintRun);
+    const highRun = Math.max(listingProfile.serialPrintRun, compProfile.serialPrintRun);
+    const runRatio = highRun / lowRun;
+
+    if (runRatio >= 5) {
+      cap = applySimilarityCap(cap, 52);
+      fatal.push(`serial print-run mismatch /${listingProfile.serialPrintRun} vs /${compProfile.serialPrintRun}`);
+    } else if (runRatio >= 2) {
+      cap = applySimilarityCap(cap, 65);
+      reasons.push(`serial print-run differs /${listingProfile.serialPrintRun} vs /${compProfile.serialPrintRun}`);
+    } else if (listingProfile.serialPrintRun !== compProfile.serialPrintRun) {
+      cap = applySimilarityCap(cap, 78);
+      reasons.push(`serial print-run slightly differs /${listingProfile.serialPrintRun} vs /${compProfile.serialPrintRun}`);
+    }
+  }
+
+  if (listingGraded && compGraded && listingProfile.grader !== compProfile.grader) {
+    cap = applySimilarityCap(cap, 82);
+    reasons.push('grading company mismatch');
+  }
+
+  if (listingGraded && compGraded && listingProfile.grade && compProfile.grade) {
+    if (listingProfile.grader === 'bgs' || compProfile.grader === 'bgs') {
+      if (listingProfile.grade !== compProfile.grade) {
+        if (listingProfile.grade === 'black_label' || compProfile.grade === 'black_label') {
+          cap = applySimilarityCap(cap, 62);
+          reasons.push('BGS Black Label mismatch');
+        } else if (listingProfile.grade === 'pristine' || compProfile.grade === 'pristine') {
+          cap = applySimilarityCap(cap, 68);
+          reasons.push('BGS pristine grade mismatch');
+        } else if (
+          (listingProfile.grade === '10' && compProfile.grade === '9.5') ||
+          (listingProfile.grade === '9.5' && compProfile.grade === '10')
+        ) {
+          cap = applySimilarityCap(cap, 72);
+          reasons.push('BGS 10/BGS 9.5 mismatch');
+        }
+      }
+    }
+
+    const listingGradeValue = normalizeGradeValue(listingProfile);
+    const compGradeValue = normalizeGradeValue(compProfile);
+
+    if (Number.isFinite(listingGradeValue) && Number.isFinite(compGradeValue)) {
+      const gradeDifference = Math.abs(listingGradeValue - compGradeValue);
+
+      if (gradeDifference >= 1) {
+        cap = applySimilarityCap(cap, 68);
+        reasons.push('graded-card numeric grade mismatch');
+      }
+
+      if (
+        listingProfile.grader === 'psa' &&
+        compProfile.grader === 'psa' &&
+        ((listingProfile.grade === '10' && compProfile.grade === '9') ||
+          (listingProfile.grade === '9' && compProfile.grade === '10'))
+      ) {
+        cap = applySimilarityCap(cap, 62);
+        reasons.push('PSA 10/PSA 9 mismatch');
+      }
+    }
+  }
+
+  return {
+    cap,
+    fatal,
+    reasons,
+    applied: cap < 100 || fatal.length > 0 || reasons.length > 0
   };
 }
 
@@ -316,51 +498,89 @@ function compareExactFeature(listingValue, compValue, weight, label, details) {
   return 0;
 }
 
-function gradePenalty(listingGrade, compGrade, details) {
+function gradePenalty(listingProfile, compProfile, details) {
+  const listingGrade = listingProfile.grade;
+  const compGrade = compProfile.grade;
+
   if (!listingGrade || !compGrade) return 0;
+
+  if (listingGrade === compGrade && listingProfile.grader === compProfile.grader) {
+    details.push('grade and grader matched');
+    return 12;
+  }
 
   if (listingGrade === compGrade) {
     details.push('grade matched');
-    return 10;
+    return 7;
   }
 
-  if (listingGrade === 'raw' || compGrade === 'raw') {
+  if (isRawProfile(listingProfile) || isRawProfile(compProfile)) {
     details.push('raw/slab grade mismatch');
-    return -22;
+    return -28;
   }
 
   const weakGrades = ['lp', 'mp', 'hp', 'damaged', 'dmg'];
   if (weakGrades.includes(listingGrade) || weakGrades.includes(compGrade)) {
     details.push('condition quality mismatch');
-    return -18;
+    return -22;
   }
 
-  const listingNumeric = toNumber(listingGrade, NaN);
-  const compNumeric = toNumber(compGrade, NaN);
+  if (listingProfile.grader === 'bgs' || compProfile.grader === 'bgs') {
+    if (listingGrade === 'black_label' || compGrade === 'black_label') {
+      details.push('BGS Black Label mismatch');
+      return -24;
+    }
+
+    if (listingGrade === 'pristine' || compGrade === 'pristine') {
+      details.push('BGS pristine mismatch');
+      return -18;
+    }
+
+    if (
+      (listingGrade === '10' && compGrade === '9.5') ||
+      (listingGrade === '9.5' && compGrade === '10')
+    ) {
+      details.push('BGS 10/BGS 9.5 mismatch');
+      return -15;
+    }
+  }
+
+  const listingNumeric = normalizeGradeValue(listingProfile);
+  const compNumeric = normalizeGradeValue(compProfile);
 
   if (Number.isFinite(listingNumeric) && Number.isFinite(compNumeric)) {
     const difference = Math.abs(listingNumeric - compNumeric);
 
-    if (difference <= 0.5) {
-      details.push('grade very close');
-      return 6;
+    if (
+      listingProfile.grader === 'psa' &&
+      compProfile.grader === 'psa' &&
+      ((listingGrade === '10' && compGrade === '9') || (listingGrade === '9' && compGrade === '10'))
+    ) {
+      details.push('PSA 10/PSA 9 mismatch');
+      return -22;
     }
 
-    if (difference <= 1) {
+    if (difference <= 0.5) {
       details.push('grade close');
       return 2;
     }
 
+    if (difference <= 1) {
+      details.push('grade differs by one point');
+      return -10;
+    }
+
     details.push('grade mismatch');
-    return -14;
+    return -18;
   }
 
-  return -6;
+  return -8;
 }
 
 function compareSimilarity(listingProfile, compProfile) {
   let score = 0;
   const details = [];
+  const gate = evaluateIdentityGates(listingProfile, compProfile);
 
   if (hasText(listingProfile.subject) && hasText(compProfile.subject)) {
     if (listingProfile.subject === compProfile.subject) {
@@ -380,55 +600,115 @@ function compareSimilarity(listingProfile, compProfile) {
 
   if (listingProfile.year && compProfile.year) {
     if (listingProfile.year === compProfile.year) score += 10;
-    else score -= 11;
+    else {
+      score -= 11;
+      details.push('year mismatch');
+    }
   }
 
   if (listingProfile.sport && compProfile.sport) {
     if (listingProfile.sport === compProfile.sport) score += 8;
-    else score -= 18;
+    else {
+      score -= 18;
+      details.push('category mismatch');
+    }
   }
 
   if (listingProfile.setName && compProfile.setName) {
     const setOverlap = tokenOverlapScore(listingProfile.setName, compProfile.setName);
     score += Math.round(14 * setOverlap);
-    if (setOverlap < 0.35) score -= 9;
+    if (setOverlap < 0.35) {
+      score -= 9;
+      details.push('set mismatch');
+    }
   }
 
   if (listingProfile.cardNumber && compProfile.cardNumber) {
-    if (listingProfile.cardNumber === compProfile.cardNumber) score += 10;
-    else score -= 10;
+    if (listingProfile.cardNumber === compProfile.cardNumber) {
+      score += 10;
+      details.push('card number matched');
+    } else {
+      score -= 24;
+      details.push('card number mismatch');
+    }
   }
 
   score += compareExactFeature(listingProfile.rookie, compProfile.rookie, 8, 'rookie/RC', details);
-  score += compareExactFeature(listingProfile.autograph, compProfile.autograph, 12, 'autograph', details);
+  score += compareExactFeature(listingProfile.autograph, compProfile.autograph, 16, 'autograph', details);
   score += compareExactFeature(listingProfile.patch, compProfile.patch, 8, 'patch/relic', details);
-  score += compareExactFeature(listingProfile.refractor, compProfile.refractor, 8, 'refractor/prizm/chrome', details);
-  score += compareExactFeature(listingProfile.serialNumbered, compProfile.serialNumbered, 8, 'serial-numbered', details);
+  score += compareExactFeature(listingProfile.refractor, compProfile.refractor, 10, 'refractor/prizm/chrome', details);
+  score += compareExactFeature(listingProfile.serialNumbered, compProfile.serialNumbered, 12, 'serial-numbered', details);
 
   if (listingProfile.variation && compProfile.variation) {
     const variationOverlap = tokenOverlapScore(listingProfile.variation, compProfile.variation);
-    score += Math.round(8 * variationOverlap);
-    if (variationOverlap < 0.35) score -= 8;
+    score += Math.round(10 * variationOverlap);
+    if (variationOverlap < 0.35) {
+      score -= 12;
+      details.push('parallel/variation mismatch');
+    } else {
+      details.push('parallel/variation matched');
+    }
   } else if (listingProfile.variation || compProfile.variation) {
-    score -= 5;
+    score -= 10;
+    details.push('parallel/variation missing on one side');
+  }
+
+  if (listingProfile.serialPrintRun > 0 && compProfile.serialPrintRun > 0) {
+    if (listingProfile.serialPrintRun === compProfile.serialPrintRun) {
+      score += 8;
+      details.push('serial print-run matched');
+    } else {
+      const lowRun = Math.min(listingProfile.serialPrintRun, compProfile.serialPrintRun);
+      const highRun = Math.max(listingProfile.serialPrintRun, compProfile.serialPrintRun);
+      const runRatio = highRun / lowRun;
+      score -= runRatio >= 5 ? 20 : runRatio >= 2 ? 14 : 7;
+      details.push(`serial print-run mismatch /${listingProfile.serialPrintRun} vs /${compProfile.serialPrintRun}`);
+    }
   }
 
   if (listingProfile.grader && compProfile.grader) {
-    if (listingProfile.grader === compProfile.grader) score += 7;
-    else score -= 10;
+    if (listingProfile.grader === compProfile.grader) {
+      score += 8;
+      details.push('grading company matched');
+    } else {
+      score -= 12;
+      details.push('grading company mismatch');
+    }
   }
 
-  score += gradePenalty(listingProfile.grade, compProfile.grade, details);
+  score += gradePenalty(listingProfile, compProfile, details);
 
-  if (listingProfile.reprint !== compProfile.reprint) score -= 35;
-  if (listingProfile.sealed !== compProfile.sealed) score -= 20;
-  if (listingProfile.lot !== compProfile.lot) score -= 20;
+  if (listingProfile.reprint !== compProfile.reprint) {
+    score -= 45;
+    details.push('original/reprint-custom-digital mismatch');
+  }
+
+  if (listingProfile.sealed !== compProfile.sealed) {
+    score -= 20;
+    details.push('sealed/wax mismatch');
+  }
+
+  if (listingProfile.lot !== compProfile.lot) {
+    score -= 28;
+    details.push('single-card/lot mismatch');
+  }
 
   score += Math.round(10 * tokenOverlapScore(listingProfile.title, compProfile.title));
 
+  let similarity = Math.max(0, Math.min(100, Math.round(score)));
+
+  if (gate.cap < 100) {
+    similarity = Math.min(similarity, gate.cap);
+    details.push(`similarity capped at ${gate.cap}: ${uniqueMessages([...gate.fatal, ...gate.reasons]).join('; ')}`);
+  }
+
   return {
-    similarity: Math.max(0, Math.min(100, Math.round(score))),
-    details
+    similarity,
+    details: uniqueMessages(details),
+    identityCaps: uniqueMessages(gate.reasons),
+    fatalMismatches: uniqueMessages(gate.fatal),
+    similarityCap: gate.cap,
+    rejectedByIdentityGate: similarity < 60 && gate.applied
   };
 }
 
@@ -470,7 +750,8 @@ function getWeightedAverage(comps) {
       const similarityWeight = Math.max(0.15, Math.pow(comp.similarity / 100, 2.35));
       const recencyWeight = getRecencyWeight(comp.ageDays);
       const saleTypeWeight = getSaleTypeWeight(comp.saleType);
-      const weight = similarityWeight * recencyWeight * saleTypeWeight;
+      const capPenalty = comp.similarityCap && comp.similarityCap < 75 ? 0.55 : 1;
+      const weight = similarityWeight * recencyWeight * saleTypeWeight * capPenalty;
 
       return { price: comp.soldPrice, weight };
     })
@@ -486,7 +767,8 @@ function getWeightedAverage(comps) {
 
 function getWeightedCompCount(comps) {
   return comps.reduce((sum, comp) => {
-    return sum + Math.max(0.15, Math.pow(comp.similarity / 100, 2.35)) * getRecencyWeight(comp.ageDays);
+    const capPenalty = comp.similarityCap && comp.similarityCap < 75 ? 0.55 : 1;
+    return sum + Math.max(0.15, Math.pow(comp.similarity / 100, 2.35)) * getRecencyWeight(comp.ageDays) * capPenalty;
   }, 0);
 }
 
@@ -522,6 +804,7 @@ function getConfidence(usableComps, strongCompCount, averageSimilarity, pricingS
   const averageAgeDays = usableComps.reduce((sum, comp) => sum + comp.ageDays, 0) / usableComps.length;
   const auctionCount = usableComps.filter((comp) => comp.saleType === 'auction').length;
   const bestOfferCount = usableComps.filter((comp) => comp.saleType === 'best_offer').length;
+  const cappedCount = usableComps.filter((comp) => comp.similarityCap && comp.similarityCap < 100).length;
 
   let confidence = 24;
   confidence += Math.min(24, usableComps.length * 4);
@@ -535,6 +818,7 @@ function getConfidence(usableComps, strongCompCount, averageSimilarity, pricingS
 
   confidence += Math.min(6, auctionCount * 2);
   confidence -= Math.min(10, bestOfferCount * 3);
+  confidence -= Math.min(16, cappedCount * 4);
 
   return Math.max(0, Math.min(100, Math.round(confidence)));
 }
@@ -584,7 +868,7 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   const positives = [];
   const listingProfile = getComparableProfile(listing);
 
-  const scoredComps = asArray(compUniverse)
+  const allScoredComps = asArray(compUniverse)
     .map((comp) => {
       const comparison = compareSimilarity(listingProfile, getComparableProfile(comp));
       const soldPrice = getSoldPrice(comp);
@@ -599,9 +883,18 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
         recencyWeight: Number(getRecencyWeight(ageDays).toFixed(3)),
         saleTypeWeight: getSaleTypeWeight(saleType),
         similarity: comparison.similarity,
-        similarityDetails: comparison.details
+        similarityDetails: comparison.details,
+        similarityCap: comparison.similarityCap,
+        identityCaps: comparison.identityCaps,
+        fatalMismatches: comparison.fatalMismatches,
+        rejectedByIdentityGate: comparison.rejectedByIdentityGate
       };
-    })
+    });
+
+  const rejectedByIdentity = allScoredComps.filter((comp) => comp.soldPrice > 0 && comp.rejectedByIdentityGate);
+  const cappedComps = allScoredComps.filter((comp) => comp.soldPrice > 0 && comp.similarityCap && comp.similarityCap < 100 && !comp.rejectedByIdentityGate);
+
+  const scoredComps = allScoredComps
     .filter((comp) => comp.soldPrice > 0 && comp.similarity >= 60)
     .sort((a, b) => b.similarity - a.similarity || a.ageDays - b.ageDays);
 
@@ -634,6 +927,8 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
 
   if (!usableComps.length) warnings.push('No usable comps met the 75 similarity threshold.');
   if (outlierResult.ignored.length) warnings.push(`${outlierResult.ignored.length} pricing outlier${outlierResult.ignored.length === 1 ? '' : 's'} ignored.`);
+  if (rejectedByIdentity.length) warnings.push(`${rejectedByIdentity.length} comp${rejectedByIdentity.length === 1 ? '' : 's'} rejected by identity mismatch gates.`);
+  if (cappedComps.length) warnings.push(`${cappedComps.length} comp${cappedComps.length === 1 ? '' : 's'} similarity-capped for identity mismatch risk.`);
 
   if (!selectedComps.length) {
     const fallbackResult = runFallbackEstimator(listing, options);
@@ -681,7 +976,10 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       ageDays: comp.ageDays,
       saleType: comp.saleType,
       recencyWeight: comp.recencyWeight,
-      saleTypeWeight: comp.saleTypeWeight
+      saleTypeWeight: comp.saleTypeWeight,
+      similarityCap: comp.similarityCap,
+      identityCaps: comp.identityCaps || [],
+      fatalMismatches: comp.fatalMismatches || []
     })),
     averageAgeDays: Number(averageAgeDays.toFixed(1)),
     weightedCompCount,
@@ -693,8 +991,20 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       title: comp.title || comp.name || '',
       soldPrice: comp.soldPrice,
       similarity: comp.similarity,
-      outlierReason: comp.outlierReason || 'price_outlier'
+      outlierReason: comp.outlierReason || 'price_outlier',
+      similarityCap: comp.similarityCap,
+      identityCaps: comp.identityCaps || [],
+      fatalMismatches: comp.fatalMismatches || []
     })),
+    rejectedComps: rejectedByIdentity.slice(0, 20).map((comp) => ({
+      title: comp.title || comp.name || '',
+      soldPrice: comp.soldPrice,
+      similarity: comp.similarity,
+      rejectionReasons: uniqueMessages([...(comp.fatalMismatches || []), ...(comp.identityCaps || [])]),
+      similarityDetails: comp.similarityDetails || []
+    })),
+    cappedCompCount: cappedComps.length,
+    rejectedCompCount: rejectedByIdentity.length,
     summary: ''
   };
 
