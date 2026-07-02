@@ -400,11 +400,11 @@ function evaluateRisk(input = {}) {
   if (!condition || condition === 'unknown') {
     addRisk(6, 'Condition is unknown.', state);
   } else {
-    addPositive('Condition data is present.');
+    addPositive('Condition data is present.', state);
   }
 
   if (estimatedProfit > 0 && listingPrice > 0) {
-    addPositive('Projected profit and listing cost are present.');
+    addPositive('Projected profit and listing cost are present.', state);
   }
 
   const riskScore = clampRiskScore(state.riskScore);
