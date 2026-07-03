@@ -9,6 +9,8 @@ const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
 const decisionEngine = require("./engines/decisionEngine");
 const decisionValidationEngine = require("./engines/decisionValidationEngine");
+const calibrationReportEngine = require("./engines/calibrationReportEngine");
+const validationHarness = require("./engines/validationHarness");
 const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
 const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
@@ -1756,6 +1758,40 @@ app.get("/scans", (req, res) => {
   `));
 });
 
+app.get("/validation", (req, res) => {
+  try {
+    const listings = Object.values(store.listings || {});
+    const historySummary = historyEngine.summarizeHistory?.() || {};
+    const learningSummary = learningEngine.summarizeLearning?.() || {};
+    const recentPredictions = learningEngine.getRecentPredictions?.(100) || [];
+    const decisionSummary = decisionValidationEngine.summarizeDecisionValidation?.() || {};
+    const recentDecisions = decisionValidationEngine.getRecentDecisions?.(100) || [];
+    const validationReport = validationHarness.evaluateBatch(listings);
+    const calibrationReport = calibrationReportEngine.generateCalibrationReport({
+      decisionValidationSummary: decisionSummary,
+      decisionRecords: recentDecisions,
+      learningSummary,
+      learningRecords: recentPredictions,
+      historySummary
+    });
+
+    res.send(layout("CardHawk Validation", `
+      <h2>Validation</h2>
+      <pre>${escapeHtml(JSON.stringify({
+        calibrationReport,
+        validationReport
+      }, null, 2))}</pre>
+    `));
+  } catch (error) {
+    res.status(500).send(layout("Validation Error", `<pre>${escapeHtml(error.message)}</pre>`));
+  }
+});
+
+    res.json({ validationReport, calibrationReport });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 app.get("/search", async (req, res) => {
   try {
     const query = req.query.q || "";
