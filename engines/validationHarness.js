@@ -104,6 +104,86 @@ function getCompData(listing = {}) {
   return asObject(listing.compData || listing.scoring?.compData || {});
 }
 
+function getSalesVelocityData(listing = {}) {
+  return asObject(listing.salesVelocityData || listing.scoring?.salesVelocityData || {});
+}
+
+function hasSalesVelocityData(listing = {}) {
+  const data = listing.salesVelocityData || listing.scoring?.salesVelocityData;
+  return Boolean(data && typeof data === 'object' && !Array.isArray(data));
+}
+
+function getSalesVelocitySummary(listing = {}) {
+  return String(listing.salesVelocity || listing.scoring?.salesVelocity || '');
+}
+
+function getSalesVelocityScore(listing = {}) {
+  const salesVelocityData = getSalesVelocityData(listing);
+
+  return pickNumber([
+    salesVelocityData,
+    listing,
+    listing.scoring || {}
+  ], [
+    'salesVelocityScore',
+    'velocityScore'
+  ], null);
+}
+
+function getSalesVelocityConfidence(listing = {}) {
+  const salesVelocityData = getSalesVelocityData(listing);
+
+  return pickNumber([
+    salesVelocityData,
+    listing,
+    listing.scoring || {}
+  ], [
+    'confidence',
+    'salesVelocityConfidence',
+    'velocityConfidence'
+  ], null);
+}
+
+function getLiquidityRating(listing = {}) {
+  const salesVelocityData = getSalesVelocityData(listing);
+
+  return pickString([
+    salesVelocityData,
+    listing,
+    listing.scoring || {}
+  ], [
+    'liquidityRating',
+    'salesVelocityLiquidityRating',
+    'velocityLiquidityRating'
+  ], '');
+}
+
+function getDemandStrength(listing = {}) {
+  const salesVelocityData = getSalesVelocityData(listing);
+
+  return pickString([
+    salesVelocityData,
+    listing,
+    listing.scoring || {}
+  ], [
+    'demandStrength',
+    'salesVelocityDemandStrength'
+  ], '');
+}
+
+function getEstimatedDaysToSell(listing = {}) {
+  const salesVelocityData = getSalesVelocityData(listing);
+
+  return pickNumber([
+    salesVelocityData,
+    listing,
+    listing.scoring || {}
+  ], [
+    'estimatedDaysToSell',
+    'daysToSell'
+  ], null);
+}
+
 function getFinalRecommendation(listing = {}) {
   const gate = getDealGate(listing);
   const decisionData = getDecisionData(listing);
@@ -252,6 +332,7 @@ function collectWarnings(listing = {}) {
   const qualityData = asObject(listing.qualityData || listing.scoring?.qualityData || {});
   const riskData = asObject(listing.riskData || listing.scoring?.riskData || {});
   const marketIntelligenceData = asObject(listing.marketIntelligenceData || listing.scoring?.marketIntelligenceData || {});
+  const salesVelocityData = getSalesVelocityData(listing);
 
   const warnings = [
     ...asArray(gate.reasons),
@@ -263,7 +344,8 @@ function collectWarnings(listing = {}) {
     ...asArray(marketData.warnings),
     ...asArray(qualityData.warnings),
     ...asArray(riskData.warnings),
-    ...asArray(marketIntelligenceData.warnings)
+    ...asArray(marketIntelligenceData.warnings),
+    ...asArray(salesVelocityData.warnings)
   ];
 
   return dedupeStrings(warnings).slice(0, 10);
@@ -365,6 +447,10 @@ function buildFlags(listing = {}, report = {}) {
   const confidence = toNumber(report.decisionConfidence, 0);
   const usableCompCount = getUsableCompCount(listing);
   const marketConsistency = getMarketConsistency(listing);
+  const velocityScore = toNullableNumber(report.salesVelocityScore);
+  const velocityConfidence = toNullableNumber(report.salesVelocityConfidence);
+  const liquidityRating = String(report.liquidityRating || '').trim().toLowerCase();
+  const velocityMissing = !hasSalesVelocityData(listing);
 
   if (isBuyNow && confidence > 0 && confidence < 70) {
     flags.push({
@@ -398,6 +484,32 @@ function buildFlags(listing = {}, report = {}) {
     });
   }
 
+  if (isBuyNow && (
+    liquidityRating === 'thin' ||
+    liquidityRating === 'illiquid' ||
+    (velocityScore !== null && velocityScore < 40)
+  )) {
+    flags.push({
+      type: 'low_liquidity_buy_now',
+      severity: 'high',
+      message: `BUY_NOW has weak sales velocity support${velocityScore !== null ? ` (${velocityScore}/100)` : ''}.`
+    });
+  }
+
+  if (isBuyNow && (
+    velocityMissing ||
+    velocityScore === null ||
+    velocityScore <= 0 ||
+    velocityConfidence === null ||
+    velocityConfidence < 30
+  )) {
+    flags.push({
+      type: 'unknown_velocity_buy_now',
+      severity: 'medium',
+      message: 'BUY_NOW has missing, unknown, or very low-confidence sales velocity data.'
+    });
+  }
+
   return flags;
 }
 
@@ -415,6 +527,12 @@ function evaluateListing(listing = {}) {
     listingCost: getListingCost(listing),
     projectedROI: getProjectedROI(listing),
     projectedProfit: getProjectedProfit(listing),
+    salesVelocityScore: getSalesVelocityScore(listing),
+    salesVelocityConfidence: getSalesVelocityConfidence(listing),
+    liquidityRating: getLiquidityRating(listing),
+    demandStrength: getDemandStrength(listing),
+    estimatedDaysToSell: getEstimatedDaysToSell(listing),
+    salesVelocity: getSalesVelocitySummary(listing),
     keyReasons: collectReasons(listing),
     keyWarnings: collectWarnings(listing)
   };
@@ -461,7 +579,9 @@ function buildAggregateStats(reports = []) {
     ...counts,
     averageConfidence: average(reports.map((report) => report.decisionConfidence)),
     averageProjectedROI: average(reports.map((report) => report.projectedROI)),
-    averageProjectedProfit: average(reports.map((report) => report.projectedProfit))
+    averageProjectedProfit: average(reports.map((report) => report.projectedProfit)),
+    averageSalesVelocityScore: average(reports.map((report) => report.salesVelocityScore)),
+    averageVelocityConfidence: average(reports.map((report) => report.salesVelocityConfidence))
   };
 }
 
@@ -470,7 +590,9 @@ function summarizeFlags(flaggedListings = []) {
     lowConfidenceBuyNow: 0,
     thinMarketBuyNow: 0,
     fallbackValuationBuyNow: 0,
-    widePricingSpreadBuyNow: 0
+    widePricingSpreadBuyNow: 0,
+    lowLiquidityBuyNow: 0,
+    unknownVelocityBuyNow: 0
   };
 
   for (const report of asArray(flaggedListings)) {
@@ -479,6 +601,8 @@ function summarizeFlags(flaggedListings = []) {
       if (flag.type === 'thin_market_buy_now') counts.thinMarketBuyNow += 1;
       if (flag.type === 'fallback_valuation_buy_now') counts.fallbackValuationBuyNow += 1;
       if (flag.type === 'wide_pricing_spread_buy_now') counts.widePricingSpreadBuyNow += 1;
+      if (flag.type === 'low_liquidity_buy_now') counts.lowLiquidityBuyNow += 1;
+      if (flag.type === 'unknown_velocity_buy_now') counts.unknownVelocityBuyNow += 1;
     }
   }
 
