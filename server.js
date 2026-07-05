@@ -5,6 +5,7 @@ const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const marketValueEngine = require("./engines/marketValueEngine");
 const soldSalesEngine = require("./engines/soldSalesEngine");
+const salesVelocityEngine = require("./engines/salesVelocityEngine");
 const roiEngine = require("./engines/roiEngine");
 const riskEngine = require("./engines/riskEngine");
 const decisionEngine = require("./engines/decisionEngine");
@@ -459,6 +460,26 @@ const marketData = marketValueEngine.calculateMarketValue({
     }
 });
 
+  let salesVelocityData = null;
+let salesVelocity = "";
+
+try {
+  salesVelocityData = salesVelocityEngine.evaluateSalesVelocity({
+    listing: { ...listing, parsed },
+    parsed,
+    soldSales: soldSalesSummary.sales,
+    compData,
+    marketData,
+    activeCount: compData.activeCompCount || marketData.activeCompCount || marketData.activeCount,
+    asOfDate: new Date().toISOString()
+  });
+  salesVelocity = salesVelocityEngine.summarizeSalesVelocity(salesVelocityData);
+} catch (salesVelocityError) {
+  console.warn("Sales Velocity Engine failed:", salesVelocityError.message);
+  salesVelocityData = null;
+  salesVelocity = "";
+}
+
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
 
  const estimatedValue = marketData.marketValue || compData.marketValue;
@@ -603,6 +624,8 @@ const decisionData = decisionEngine.makeDecision({
     ebayFees,
     compData,
     marketData,
+    salesVelocityData,
+    salesVelocity,
     soldSales: soldSalesSummary,
     roiData,
     confidenceData,
@@ -1019,6 +1042,8 @@ function saveScoutedListing(listing, query, lane) {
     roi: scoring.roi,
     ebayFees: scoring.ebayFees,
     compData: scoring.compData,
+    salesVelocityData: scoring.salesVelocityData,
+    salesVelocity: scoring.salesVelocity,
     marketConfidence: scoring.marketConfidence,
     confidenceReasons: scoring.confidenceReasons,
     confidenceCap: scoring.confidenceCap,
