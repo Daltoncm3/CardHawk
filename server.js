@@ -1820,6 +1820,7 @@ app.get("/validation", (req, res) => {
     const decisionSummary = decisionValidationEngine.summarizeDecisionValidation?.() || {};
     const recentDecisions = decisionValidationEngine.getRecentDecisions?.(100) || [];
     const validationReport = validationHarness.evaluateBatch(listings);
+    const predictionAccuracyReport = predictionAccuracyEngine.summarizePredictionAccuracy?.() || {};
     const calibrationReport = calibrationReportEngine.generateCalibrationReport({
       decisionValidationSummary: decisionSummary,
       decisionRecords: recentDecisions,
@@ -1832,7 +1833,8 @@ app.get("/validation", (req, res) => {
       <h2>Validation</h2>
       <pre>${escapeHtml(JSON.stringify({
         calibrationReport,
-        validationReport
+        validationReport,
+        predictionAccuracyReport
       }, null, 2))}</pre>
     `));
   } catch (error) {
