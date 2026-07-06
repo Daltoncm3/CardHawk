@@ -4,6 +4,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const stateStore = require("../utils/stateStore");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const HISTORY_FILE = path.join(DATA_DIR, "listingHistory.json");
@@ -43,8 +44,7 @@ function createEmptyHistory() {
 function loadHistory() {
   try {
     ensureHistoryFile();
-    const raw = fs.readFileSync(HISTORY_FILE, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = stateStore.loadJsonState(HISTORY_FILE, createEmptyHistory());
 
     return {
       ...createEmptyHistory(),
@@ -60,9 +60,8 @@ function loadHistory() {
 }
 
 function saveHistory(history) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   history.updatedAt = nowIso();
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
+  stateStore.saveJsonState(HISTORY_FILE, history);
 }
 
 function toNumber(value, fallback = 0) {
