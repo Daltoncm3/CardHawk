@@ -1,6 +1,11 @@
 'use strict';
 
+const path = require('path');
+const stateStore = require('../utils/stateStore');
+
 const SOURCE = 'prediction_accuracy_engine';
+const STATE_VERSION = 1;
+const STATE_FILE = path.join(__dirname, '..', 'data', 'predictionAccuracy.json');
 
 const recordsByPredictionId = new Map();
 const recordsByListingId = new Map();
@@ -11,6 +16,15 @@ const RECOMMENDATIONS = ['BUY_NOW', 'STRONG_WATCH', 'WATCH', 'MONITOR', 'PASS'];
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function createEmptyState() {
+  return {
+    version: STATE_VERSION,
+    savedAt: null,
+    predictionHistory: [],
+    outcomeHistory: []
+  };
 }
 
 function asObject(value) {
@@ -342,6 +356,65 @@ function attachDerived(record) {
   return record;
 }
 
+function indexPrediction(prediction) {
+  if (!prediction || !prediction.predictionId) return;
+
+  recordsByPredictionId.set(prediction.predictionId, prediction);
+
+  if (!prediction.listingId) return;
+
+  if (!recordsByListingId.has(prediction.listingId)) {
+    recordsByListingId.set(prediction.listingId, []);
+  }
+
+  recordsByListingId.get(prediction.listingId).push(prediction.predictionId);
+}
+
+function restoreState(state = {}) {
+  recordsByPredictionId.clear();
+  recordsByListingId.clear();
+  predictionHistory.length = 0;
+  outcomeHistory.length = 0;
+
+  for (const prediction of asArray(state.predictionHistory)) {
+    if (!prediction || typeof prediction !== 'object') continue;
+
+    prediction.outcomes = asArray(prediction.outcomes);
+    prediction.latestOutcome = prediction.latestOutcome || null;
+    attachDerived(prediction);
+    predictionHistory.push(prediction);
+    indexPrediction(prediction);
+  }
+
+  for (const outcome of asArray(state.outcomeHistory)) {
+    if (outcome && typeof outcome === 'object') {
+      outcomeHistory.push(outcome);
+    }
+  }
+}
+
+function getPersistableState() {
+  return {
+    version: STATE_VERSION,
+    savedAt: nowIso(),
+    predictionHistory,
+    outcomeHistory
+  };
+}
+
+function persistState() {
+  try {
+    stateStore.saveJsonState(STATE_FILE, getPersistableState());
+  } catch (error) {
+    console.warn('Prediction Accuracy Engine failed to persist state:', error.message);
+  }
+}
+
+function loadPersistedState() {
+  const state = stateStore.loadJsonState(STATE_FILE, createEmptyState());
+  restoreState(state);
+}
+
 function recordPrediction(input = {}) {
   const prediction = buildPrediction(input);
 
@@ -353,17 +426,9 @@ function recordPrediction(input = {}) {
     };
   }
 
-  recordsByPredictionId.set(prediction.predictionId, prediction);
-
-  if (prediction.listingId) {
-    if (!recordsByListingId.has(prediction.listingId)) {
-      recordsByListingId.set(prediction.listingId, []);
-    }
-
-    recordsByListingId.get(prediction.listingId).push(prediction.predictionId);
-  }
-
+  indexPrediction(prediction);
   predictionHistory.push(prediction);
+  persistState();
 
   return {
     ok: true,
@@ -416,6 +481,7 @@ function recordOutcome(identifier, outcome = {}) {
     listingId: record.listingId,
     ...normalizedOutcome
   });
+  persistState();
 
   return {
     ok: true,
@@ -555,6 +621,7 @@ function resetPredictionAccuracy() {
   recordsByListingId.clear();
   predictionHistory.length = 0;
   outcomeHistory.length = 0;
+  persistState();
 
   return {
     ok: true,
@@ -575,3 +642,5 @@ module.exports = {
   summarizeGroups,
   normalizeRecommendation
 };
+
+loadPersistedState();

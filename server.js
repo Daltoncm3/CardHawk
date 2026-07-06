@@ -1382,7 +1382,7 @@ try {
 
   predictionAccuracyEngine.recordOutcome(id, {
   outcomeType: "price_dropped",
-  finalPrice: drop.currentPrice || drop.newPrice || drop.price || 0,
+  finalPrice: drop.toPrice || drop.currentPrice || drop.newPrice || drop.price || 0,
   outcomeAt,
   priceDropped: true,
   notes: "Listing price dropped during scan history tracking"
