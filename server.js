@@ -12,6 +12,7 @@ const decisionEngine = require("./engines/decisionEngine");
 const decisionValidationEngine = require("./engines/decisionValidationEngine");
 const calibrationReportEngine = require("./engines/calibrationReportEngine");
 const validationHarness = require("./engines/validationHarness");
+const predictionAccuracyEngine = require("./engines/predictionAccuracyEngine");
 const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
 const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
@@ -1066,6 +1067,25 @@ function saveScoutedListing(listing, query, lane) {
   const gate = dealGate(saved);
   saved.dealGate = gate;
   try {
+  predictionAccuracyEngine.recordPrediction({
+    listingId: saved.ebayItemId,
+    title: saved.title,
+    recommendation: gate.passed ? "BUY_NOW" : "PASS",
+    decisionScore: scoring.score,
+    decisionConfidence: scoring.marketConfidence,
+    projectedROI: scoring.roi,
+    projectedProfit: scoring.estimatedProfit,
+    expectedValue: scoring.estimatedValue,
+    expectedValueLow: scoring.marketData?.expectedValueLow,
+    expectedValueHigh: scoring.marketData?.expectedValueHigh,
+    salesVelocityData: scoring.salesVelocityData,
+    lane: detectedLane,
+    gradingCompany: saved.parsed?.gradingCompany || saved.parsed?.grader || listing.parsed?.gradingCompany || listing.parsed?.grader
+  });
+} catch (predictionAccuracyError) {
+  console.warn("Prediction Accuracy Engine failed:", predictionAccuracyError.message);
+}
+  try {
   decisionValidationEngine.recordDecision({
     listingId: saved.ebayItemId,
     title: saved.title,
@@ -1358,6 +1378,14 @@ try {
   outcomeType: "price_dropped",
   finalPrice: drop.currentPrice || drop.newPrice || drop.price || 0,
   outcomeAt,
+  notes: "Listing price dropped during scan history tracking"
+});
+
+  predictionAccuracyEngine.recordOutcome(id, {
+  outcomeType: "price_dropped",
+  finalPrice: drop.currentPrice || drop.newPrice || drop.price || 0,
+  outcomeAt,
+  priceDropped: true,
   notes: "Listing price dropped during scan history tracking"
 });
 
