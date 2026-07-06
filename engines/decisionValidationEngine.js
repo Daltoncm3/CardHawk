@@ -1,6 +1,11 @@
 'use strict';
 
+const path = require('path');
+const stateStore = require('../utils/stateStore');
+
 const SOURCE = 'decision_validation_engine';
+const STATE_VERSION = 1;
+const STATE_FILE = path.join(__dirname, '..', 'data', 'decisionValidation.json');
 
 const recordsById = new Map();
 const decisionHistory = [];
@@ -30,6 +35,16 @@ const VALID_OUTCOMES = new Set([
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function createEmptyState() {
+  return {
+    version: STATE_VERSION,
+    savedAt: null,
+    records: [],
+    decisionHistory: [],
+    outcomeHistory: []
+  };
 }
 
 function clamp(value, min, max) {
@@ -366,6 +381,55 @@ function attachDerivedMetrics(record) {
   return record;
 }
 
+function restoreState(state = {}) {
+  recordsById.clear();
+  decisionHistory.length = 0;
+  outcomeHistory.length = 0;
+
+  for (const record of Array.isArray(state.records) ? state.records : []) {
+    if (!record || typeof record !== 'object' || !record.listingId) continue;
+
+    record.decisionSnapshots = Array.isArray(record.decisionSnapshots) ? record.decisionSnapshots : [];
+    record.outcomeHistory = Array.isArray(record.outcomeHistory) ? record.outcomeHistory : [];
+    recordsById.set(record.listingId, attachDerivedMetrics(record));
+  }
+
+  for (const decision of Array.isArray(state.decisionHistory) ? state.decisionHistory : []) {
+    if (decision && typeof decision === 'object') {
+      decisionHistory.push(decision);
+    }
+  }
+
+  for (const outcome of Array.isArray(state.outcomeHistory) ? state.outcomeHistory : []) {
+    if (outcome && typeof outcome === 'object') {
+      outcomeHistory.push(outcome);
+    }
+  }
+}
+
+function getPersistableState() {
+  return {
+    version: STATE_VERSION,
+    savedAt: nowIso(),
+    records: Array.from(recordsById.values()),
+    decisionHistory,
+    outcomeHistory
+  };
+}
+
+function persistState() {
+  try {
+    stateStore.saveJsonState(STATE_FILE, getPersistableState());
+  } catch (error) {
+    console.warn('Decision Validation Engine failed to persist state:', error.message);
+  }
+}
+
+function loadPersistedState() {
+  const state = stateStore.loadJsonState(STATE_FILE, createEmptyState());
+  restoreState(state);
+}
+
 function recordDecision(input = {}) {
   const snapshot = buildPredictionSnapshot(input);
 
@@ -396,6 +460,7 @@ function recordDecision(input = {}) {
 
   recordsById.set(snapshot.listingId, attachDerivedMetrics(record));
   decisionHistory.push(snapshot);
+  persistState();
 
   return {
     ok: true,
@@ -450,6 +515,7 @@ function recordOutcome(listingId, outcome = {}) {
   });
 
   recordsById.set(id, attachDerivedMetrics(record));
+  persistState();
 
   return {
     ok: true,
@@ -585,6 +651,7 @@ function resetDecisionValidation() {
   recordsById.clear();
   decisionHistory.length = 0;
   outcomeHistory.length = 0;
+  persistState();
 
   return {
     ok: true,
@@ -604,3 +671,5 @@ module.exports = {
   getRecentDecisions,
   resetDecisionValidation
 };
+
+loadPersistedState();
