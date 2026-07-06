@@ -316,6 +316,10 @@ function normalizeEbayItem(item) {
   const parsed = parseCardTitle(item.title || "");
 
   return {
+    listingId: item.itemId,
+    marketplace: "ebay",
+    marketplaceListingId: item.itemId,
+    marketplaceLabel: "eBay",
     ebayItemId: item.itemId,
     title: item.title || "Untitled",
     price,
