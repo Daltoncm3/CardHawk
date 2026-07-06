@@ -1372,7 +1372,6 @@ try {
       outcomeAt,
       notes: "Listing price dropped during scan history tracking"
     });
-  }
 
   decisionValidationEngine.recordOutcome(id, {
   outcomeType: "price_dropped",
@@ -1388,6 +1387,7 @@ try {
   priceDropped: true,
   notes: "Listing price dropped during scan history tracking"
 });
+}
 
   for (const gone of historyResult.disappeared || []) {
     const id = gone.ebayItemId || gone.itemId || gone.listingId || gone.id || gone;
@@ -1399,6 +1399,12 @@ try {
       notes: "Listing disappeared from observed scan results"
     });
     decisionValidationEngine.recordOutcome(id, {
+  outcomeType: "disappeared",
+  disappeared: true,
+  outcomeAt,
+  notes: "Listing disappeared from observed scan results"
+});
+    predictionAccuracyEngine.recordOutcome(id, {
   outcomeType: "disappeared",
   disappeared: true,
   outcomeAt,
