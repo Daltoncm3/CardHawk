@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const appStore = require('../utils/appStore');
+const configReadiness = require('../utils/configReadiness');
 const engineMetricsEngine = require('../engines/engineMetricsEngine');
 const listingIdentity = require('../utils/listingIdentity');
 const mockMarketplace = require('../marketplaces/mockMarketplace');
@@ -205,6 +206,81 @@ test('notificationEngine persists non-forced sent alert keys for idempotency', a
 
     notificationEngine.__setResendPosterForTests(null);
   }
+});
+
+test('configReadiness reports valid production config without exposing secret values', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_USER: 'operator',
+    CARDHAWK_PASS: 'super-secret-password',
+    EBAY_APP_ID: 'ebay-app-id',
+    EBAY_CERT_ID: 'ebay-cert-id',
+    CARDHAWK_ALERTS_ENABLED: 'true',
+    RESEND_API_KEY: 'resend-secret',
+    ALERT_TO: 'alerts@example.invalid'
+  }, {
+    scoutEnabled: true,
+    alertsEnabled: true
+  });
+
+  assert.equal(readiness.status, 'ready');
+  assert.deepEqual(readiness.criticalIssues, []);
+  assert.deepEqual(readiness.warnings, []);
+  assert.equal(readiness.checks.auth, 'ok');
+  assert.equal(readiness.checks.ebay, 'ok');
+  assert.equal(readiness.checks.notifications, 'ok');
+  assert.equal(readiness.config.hasAuthPassword, true);
+  assert.equal(JSON.stringify(readiness).includes('super-secret-password'), false);
+  assert.equal(JSON.stringify(readiness).includes('resend-secret'), false);
+});
+
+test('configReadiness reports missing auth and scout credentials as critical when scout is enabled', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({}, {
+    scoutEnabled: true,
+    alertsEnabled: false
+  });
+
+  assert.equal(readiness.status, 'failed');
+  assert.equal(readiness.checks.auth, 'missing');
+  assert.equal(readiness.checks.ebay, 'missing');
+  assert.ok(readiness.criticalIssues.some((issue) => issue.variable === 'CARDHAWK_USER'));
+  assert.ok(readiness.criticalIssues.some((issue) => issue.variable === 'CARDHAWK_PASS'));
+  assert.ok(readiness.criticalIssues.some((issue) => issue.variable === 'EBAY_APP_ID'));
+  assert.ok(readiness.criticalIssues.some((issue) => issue.variable === 'EBAY_CERT_ID'));
+});
+
+test('configReadiness treats missing eBay credentials as warning when scout is disabled', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_USER: 'operator',
+    CARDHAWK_PASS: 'password'
+  }, {
+    scoutEnabled: false,
+    alertsEnabled: false
+  });
+
+  assert.equal(readiness.status, 'warning');
+  assert.equal(readiness.checks.auth, 'ok');
+  assert.equal(readiness.checks.ebay, 'disabled');
+  assert.equal(readiness.criticalIssues.length, 0);
+  assert.ok(readiness.warnings.some((issue) => issue.area === 'ebay'));
+});
+
+test('configReadiness reports notification warnings when alerts are enabled without delivery config', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_USER: 'operator',
+    CARDHAWK_PASS: 'password',
+    EBAY_APP_ID: 'ebay-app-id',
+    EBAY_CERT_ID: 'ebay-cert-id',
+    CARDHAWK_ALERTS_ENABLED: 'true'
+  }, {
+    scoutEnabled: true,
+    alertsEnabled: true
+  });
+
+  assert.equal(readiness.status, 'warning');
+  assert.equal(readiness.checks.notifications, 'missing');
+  assert.equal(readiness.criticalIssues.length, 0);
+  assert.ok(readiness.warnings.some((issue) => issue.variable === 'RESEND_API_KEY'));
+  assert.ok(readiness.warnings.some((issue) => issue.variable === 'ALERT_TO'));
 });
 
 test('server route-method hardening remains in place without importing server.js', () => {

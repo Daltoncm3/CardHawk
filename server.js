@@ -25,6 +25,7 @@ const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const appStore = require("./utils/appStore");
+const configReadiness = require("./utils/configReadiness");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
@@ -119,6 +120,10 @@ const LANES = {
 
 const SCOUT_INTERVAL_MINUTES = Number(process.env.SCOUT_INTERVAL_MINUTES || 10);
 const SCOUT_ENABLED = String(process.env.SCOUT_ENABLED || "true").toLowerCase() === "true";
+const CONFIG_READINESS = configReadiness.evaluateConfigReadiness(process.env, {
+  scoutEnabled: SCOUT_ENABLED,
+  alertsEnabled: notificationEngine.getStatus()?.enabled
+});
 
 let store = appStore.createDefaultStore();
 
@@ -1787,7 +1792,7 @@ app.get("/api/notifications/test", (req, res) => {
 
 
 function healthClass(status) {
-  if (status === "ok" || status === "healthy" || status === "completed") return "health-ok";
+  if (status === "ok" || status === "ready" || status === "healthy" || status === "completed") return "health-ok";
   if (status === "running" || status === "scanning") return "health-running";
   if (status === "warning" || status === "rate_limited" || status === "skipped") return "health-warning";
   if (status === "failed" || status === "degraded") return "health-failed";
@@ -1813,6 +1818,7 @@ app.get("/health", (req, res) => {
 
   const engines = Object.values(health.engines || {});
   const lastScan = health.lastScan || {};
+  const readiness = CONFIG_READINESS;
 
   res.send(layout("CardHawk Health", `
     <h2>System Health</h2>
@@ -1822,6 +1828,36 @@ app.get("/health", (req, res) => {
       <div class="stat"><div class="number">${health.data.totalAlerts}</div><div>Total Alerts</div></div>
       <div class="stat"><div class="number">${health.data.recentFailures}</div><div>Recent Failed/Rate-Limited Scans</div></div>
     </div>
+
+    <h2 class="table-title">Config Readiness</h2>
+    <div class="stats">
+      <div class="stat"><div class="number ${healthClass(readiness.status)}">${escapeHtml(readiness.status)}</div><div>Readiness Status</div></div>
+      <div class="stat"><div class="number">${readiness.criticalIssues.length}</div><div>Critical Issues</div></div>
+      <div class="stat"><div class="number">${readiness.warnings.length}</div><div>Warnings</div></div>
+    </div>
+    <table>
+      <tr><th>Check</th><th>Status</th></tr>
+      ${Object.entries(readiness.checks || {}).map(([name, status]) => `
+        <tr>
+          <td>${escapeHtml(name)}</td>
+          <td class="${healthClass(status === "ok" ? "ok" : status === "disabled" ? "warning" : "failed")}">${escapeHtml(status)}</td>
+        </tr>
+      `).join("")}
+    </table>
+    ${(readiness.criticalIssues.length || readiness.warnings.length) ? `
+      <h2 class="table-title">Config Notes</h2>
+      <table>
+        <tr><th>Severity</th><th>Area</th><th>Variable</th><th>Message</th></tr>
+        ${[...readiness.criticalIssues, ...readiness.warnings].map(issue => `
+          <tr>
+            <td class="${healthClass(issue.severity === "critical" ? "failed" : "warning")}">${escapeHtml(issue.severity)}</td>
+            <td>${escapeHtml(issue.area)}</td>
+            <td>${escapeHtml(issue.variable)}</td>
+            <td>${escapeHtml(issue.message)}</td>
+          </tr>
+        `).join("")}
+      </table>
+    ` : ""}
 
     <h2>Engines</h2>
     <table>
@@ -1978,6 +2014,7 @@ app.get("/api/status", (req, res) => {
     totalAlerts: store.alerts.length,
     totalScans: store.scans.length,
     scanInProgress: scoutScanner.isScanInProgress(),
+    configReadiness: CONFIG_READINESS,
     rateLimitProtection: {
       ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
       ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
@@ -2051,6 +2088,7 @@ systemHealth.setEngine("confidence", "ok");
 systemHealth.setEngine("grading", "ok");
 systemHealth.setEngine("quality", "ok");
 systemHealth.setEngine("notifications", notificationEngine.getStatus()?.enabled ? "ok" : "warning", notificationEngine.getStatus());
+systemHealth.setEngine("config", CONFIG_READINESS.status === "ready" ? "ok" : CONFIG_READINESS.status, CONFIG_READINESS);
 
 app.listen(PORT, () => {
   console.log(`CardHawk running on port ${PORT}`);

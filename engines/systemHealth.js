@@ -198,7 +198,8 @@ function summarizeRuntime(store = {}, options = {}) {
       confidence: state.engines.confidence || { name: "confidence", status: "ok", updatedAt: nowIso() },
       grading: state.engines.grading || { name: "grading", status: "ok", updatedAt: nowIso() },
       quality: state.engines.quality || { name: "quality", status: "ok", updatedAt: nowIso() },
-      notifications: state.engines.notifications || { name: "notifications", status: "unknown", updatedAt: nowIso() }
+      notifications: state.engines.notifications || { name: "notifications", status: "unknown", updatedAt: nowIso() },
+      config: state.engines.config || { name: "config", status: "unknown", updatedAt: nowIso() }
     },
     rateLimitProtection: options.rateLimitProtection || {},
     recentEvents: state.events.slice(0, 25)
