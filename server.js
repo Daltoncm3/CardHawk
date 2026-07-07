@@ -204,6 +204,17 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function getStoredListingById(id) {
+  const listingId = listingIdentity.getListingId(id);
+  if (!listingId) return null;
+
+  if (store.listings[listingId]) return store.listings[listingId];
+
+  return Object.values(store.listings || {}).find((listing) =>
+    listingIdentity.getListingId(listing) === listingId
+  ) || null;
+}
+
 function detectLane(title, fallbackLane = "all") {
   const lower = title.toLowerCase();
 
@@ -1779,7 +1790,7 @@ app.get("/api/history/listing/:itemId", (req, res) => {
 
 
 app.get("/api/comps/listing/:itemId", (req, res) => {
-  const listing = store.listings[req.params.itemId];
+  const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
 
   const compData = compEngine.evaluateListing(listing, Object.values(store.listings), {
@@ -1809,7 +1820,7 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
 
 
 app.get("/api/grades/listing/:itemId", (req, res) => {
-  const listing = store.listings[req.params.itemId];
+  const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
 
   const scoring = scoreListing(listing, Object.values(store.listings));
@@ -1827,7 +1838,7 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
 });
 
 app.get("/api/quality/listing/:itemId", (req, res) => {
-  const listing = store.listings[req.params.itemId];
+  const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
 
   const scoring = scoreListing(listing, Object.values(store.listings));
