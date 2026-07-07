@@ -24,7 +24,7 @@ const systemHealth = require("./engines/systemHealth");
 const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
-const { loadJsonState, saveJsonState } = require("./utils/stateStore");
+const appStore = require("./utils/appStore");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
@@ -121,33 +121,11 @@ const SCOUT_ENABLED = String(process.env.SCOUT_ENABLED || "true").toLowerCase() 
 
 let scanInProgress = false;
 
-let store = {
-  listings: {},
-  alerts: [],
-  scans: [],
-  rejections: [],
-  settings: {
-    minDealScore: 85,
-    minProfit: 20,
-    minRoi: 0.25
-  }
-};
+let store = appStore.createDefaultStore();
 
 function loadStore() {
   try {
-    const loaded = loadJsonState(DATA_FILE, store);
-
-    store = {
-      listings: loaded.listings || {},
-      alerts: loaded.alerts || [],
-      scans: loaded.scans || [],
-      rejections: loaded.rejections || [],
-      settings: {
-        minDealScore: loaded.settings?.minDealScore || 85,
-        minProfit: loaded.settings?.minProfit || 20,
-        minRoi: loaded.settings?.minRoi || 0.25
-      }
-    };
+    store = appStore.loadStore(DATA_FILE, store);
 
     rescoreExistingData();
     saveStore();
@@ -158,7 +136,7 @@ function loadStore() {
 }
 
 function saveStore() {
-  saveJsonState(DATA_FILE, store);
+  appStore.saveStore(DATA_FILE, store);
 }
 
 function requireLogin(req, res, next) {
@@ -198,14 +176,7 @@ function sleep(ms) {
 }
 
 function getStoredListingById(id) {
-  const listingId = listingIdentity.getListingId(id);
-  if (!listingId) return null;
-
-  if (store.listings[listingId]) return store.listings[listingId];
-
-  return Object.values(store.listings || {}).find((listing) =>
-    listingIdentity.getListingId(listing) === listingId
-  ) || null;
+  return appStore.getStoredListingById(store, id);
 }
 
 function detectLane(title, fallbackLane = "all") {
