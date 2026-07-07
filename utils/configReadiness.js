@@ -15,12 +15,20 @@ function addIssue(result, severity, area, variable, message) {
   else result.warnings.push(issue);
 }
 
+function normalizeMode(value) {
+  const mode = String(value || 'paper').trim().toLowerCase();
+  return ['paper', 'production'].includes(mode) ? mode : 'paper';
+}
+
 function evaluateConfigReadiness(env = process.env, options = {}) {
   const scoutEnabled = options.scoutEnabled ?? isEnabled(env.SCOUT_ENABLED, true);
   const alertsEnabled = options.alertsEnabled ?? isEnabled(env.CARDHAWK_ALERTS_ENABLED, false);
+  const mode = normalizeMode(env.CARDHAWK_MODE);
+  const rawMode = String(env.CARDHAWK_MODE || '').trim().toLowerCase();
 
   const result = {
     status: 'ready',
+    mode,
     criticalIssues: [],
     warnings: [],
     checks: {
@@ -29,6 +37,7 @@ function evaluateConfigReadiness(env = process.env, options = {}) {
       notifications: alertsEnabled ? 'ok' : 'disabled'
     },
     config: {
+      mode,
       scoutEnabled: Boolean(scoutEnabled),
       alertsEnabled: Boolean(alertsEnabled),
       hasAuthUser: hasValue(env, 'CARDHAWK_USER'),
@@ -39,6 +48,10 @@ function evaluateConfigReadiness(env = process.env, options = {}) {
       hasAlertTo: hasValue(env, 'ALERT_TO')
     }
   };
+
+  if (rawMode && rawMode !== mode) {
+    addIssue(result, 'warning', 'mode', 'CARDHAWK_MODE', 'Invalid CardHawk mode configured; falling back to paper mode.');
+  }
 
   if (!result.config.hasAuthUser) {
     result.checks.auth = 'missing';

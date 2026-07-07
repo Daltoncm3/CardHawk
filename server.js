@@ -1237,12 +1237,17 @@ function layout(title, content) {
           .health-failed { color: #f87171; font-weight: bold; }
           .health-running { color: #38bdf8; font-weight: bold; }
           .table-title { margin-top: 28px; }
+          .guardrail { margin: 0 0 22px 0; padding: 14px 16px; border-radius: 12px; background: #1e293b; border: 1px solid #334155; color: #cbd5e1; }
+          .guardrail strong { color: #e2e8f0; }
         </style>
       </head>
       <body>
         <div class="container">
           <h1>🦅 CardHawk</h1>
           <div class="subtitle">Private scouting engine. Built to find cards that can actually make money.</div>
+          <div class="guardrail">
+            <strong>Mode: ${escapeHtml(CONFIG_READINESS.mode.toUpperCase())}</strong> — CardHawk provides scouting recommendations only. BUY_NOW means high-priority scouting candidate for human review, not an automated purchase.
+          </div>
 
           <nav>
             <a href="/">Dashboard</a>
@@ -1930,6 +1935,7 @@ app.get("/health", (req, res) => {
 
     <h2 class="table-title">Config Readiness</h2>
     <div class="stats">
+      <div class="stat"><div class="number">${escapeHtml(readiness.mode.toUpperCase())}</div><div>Operating Mode</div></div>
       <div class="stat"><div class="number ${healthClass(readiness.status)}">${escapeHtml(readiness.status)}</div><div>Readiness Status</div></div>
       <div class="stat"><div class="number">${readiness.criticalIssues.length}</div><div>Critical Issues</div></div>
       <div class="stat"><div class="number">${readiness.warnings.length}</div><div>Warnings</div></div>
@@ -2107,6 +2113,7 @@ app.get("/api/status", (req, res) => {
 
   res.json({
     scoutEnabled: SCOUT_ENABLED,
+    cardhawkMode: CONFIG_READINESS.mode,
     systemHealth: health.status,
     scoutIntervalMinutes: SCOUT_INTERVAL_MINUTES,
     totalListings: Object.keys(store.listings).length,

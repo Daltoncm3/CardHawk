@@ -211,6 +211,7 @@ test('notificationEngine persists non-forced sent alert keys for idempotency', a
 
 test('configReadiness reports valid production config without exposing secret values', () => {
   const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_MODE: 'production',
     CARDHAWK_USER: 'operator',
     CARDHAWK_PASS: 'super-secret-password',
     EBAY_APP_ID: 'ebay-app-id',
@@ -224,6 +225,8 @@ test('configReadiness reports valid production config without exposing secret va
   });
 
   assert.equal(readiness.status, 'ready');
+  assert.equal(readiness.mode, 'production');
+  assert.equal(readiness.config.mode, 'production');
   assert.deepEqual(readiness.criticalIssues, []);
   assert.deepEqual(readiness.warnings, []);
   assert.equal(readiness.checks.auth, 'ok');
@@ -232,6 +235,38 @@ test('configReadiness reports valid production config without exposing secret va
   assert.equal(readiness.config.hasAuthPassword, true);
   assert.equal(JSON.stringify(readiness).includes('super-secret-password'), false);
   assert.equal(JSON.stringify(readiness).includes('resend-secret'), false);
+});
+
+test('configReadiness defaults to paper mode', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_USER: 'operator',
+    CARDHAWK_PASS: 'password',
+    EBAY_APP_ID: 'ebay-app-id',
+    EBAY_CERT_ID: 'ebay-cert-id'
+  }, {
+    scoutEnabled: true,
+    alertsEnabled: false
+  });
+
+  assert.equal(readiness.mode, 'paper');
+  assert.equal(readiness.config.mode, 'paper');
+});
+
+test('configReadiness falls back to paper mode with warning for invalid mode', () => {
+  const readiness = configReadiness.evaluateConfigReadiness({
+    CARDHAWK_MODE: 'live-money',
+    CARDHAWK_USER: 'operator',
+    CARDHAWK_PASS: 'password',
+    EBAY_APP_ID: 'ebay-app-id',
+    EBAY_CERT_ID: 'ebay-cert-id'
+  }, {
+    scoutEnabled: true,
+    alertsEnabled: false
+  });
+
+  assert.equal(readiness.mode, 'paper');
+  assert.equal(readiness.status, 'warning');
+  assert.ok(readiness.warnings.some((issue) => issue.variable === 'CARDHAWK_MODE'));
 });
 
 test('configReadiness reports missing auth and scout credentials as critical when scout is enabled', () => {
@@ -348,4 +383,6 @@ test('server route-method hardening remains in place without importing server.js
   assert.match(serverSource, /app\.get\("\/api\/operator-audit", \(req, res\) => \{/);
   assert.match(serverSource, /app\.post\("\/api\/notifications\/test", async \(req, res\) => \{/);
   assert.match(serverSource, /app\.get\("\/api\/notifications\/test", \(req, res\) => \{\s+res\.setHeader\("Allow", "POST"\);\s+res\.status\(405\)/);
+  assert.match(serverSource, /cardhawkMode: CONFIG_READINESS\.mode/);
+  assert.match(serverSource, /BUY_NOW means high-priority scouting candidate for human review, not an automated purchase/);
 });
