@@ -22,7 +22,8 @@ const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
 const systemHealth = require("./engines/systemHealth");
-const ebayMarketplace = require("./marketplaces/ebayMarketplace");
+const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
+const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1263,8 +1264,8 @@ async function runScoutScan(source = "automatic") {
     status: "running",
     error: null,
     rateLimited: false,
-    queryDelayMs: ebayMarketplace.config.searchDelayMs,
-    laneDelayMs: ebayMarketplace.config.laneDelayMs
+    queryDelayMs: activeMarketplace.config.searchDelayMs,
+    laneDelayMs: activeMarketplace.config.laneDelayMs
   };
 
   systemHealth.startScan(scan);
@@ -1284,7 +1285,7 @@ async function runScoutScan(source = "automatic") {
 
       for (const query of lane.queries) {
         try {
-          const results = await ebayMarketplace.searchWithBackoff(query, ebayMarketplace.config.scanQueryLimit, { parseCardTitle });
+          const results = await activeMarketplace.searchWithBackoff(query, activeMarketplace.config.scanQueryLimit, { parseCardTitle });
           laneCount += results.length;
           scan.listingsFound += results.length;
 
@@ -1299,10 +1300,10 @@ async function runScoutScan(source = "automatic") {
             results: results.length
           });
         } catch (error) {
-          const compactError = ebayMarketplace.compactError(error);
+          const compactError = activeMarketplace.compactError(error);
           laneErrors.push({ query, error: compactError });
 
-          if (ebayMarketplace.isRateLimitError(error)) {
+          if (activeMarketplace.isRateLimitError(error)) {
             scan.rateLimited = true;
             scan.error = compactError;
             systemHealth.recordScanEngine("ebay", "warning", {
@@ -1322,7 +1323,7 @@ async function runScoutScan(source = "automatic") {
           console.error(`eBay query failed for "${query}":`, compactError);
         }
 
-        await sleep(ebayMarketplace.config.searchDelayMs);
+        await sleep(activeMarketplace.config.searchDelayMs);
       }
 
       scan.lanes.push({
@@ -1333,7 +1334,7 @@ async function runScoutScan(source = "automatic") {
       });
 
       if (scan.rateLimited) break;
-      await sleep(ebayMarketplace.config.laneDelayMs);
+      await sleep(activeMarketplace.config.laneDelayMs);
     }
 
     scan.newAlerts = store.alerts.length - alertsBefore;
@@ -1345,7 +1346,7 @@ async function runScoutScan(source = "automatic") {
     });
   } catch (error) {
     scan.status = "failed";
-    scan.error = ebayMarketplace.compactError(error);
+    scan.error = activeMarketplace.compactError(error);
     systemHealth.setEngine("scout", "failed", { error: scan.error });
     console.error("Scout scan failed:", scan.error);
   }
@@ -1498,7 +1499,7 @@ function startScoutEngine() {
   }
 
   console.log(`Scout Engine enabled. Running every ${SCOUT_INTERVAL_MINUTES} minutes.`);
-  console.log(`eBay rate protection: query delay ${ebayMarketplace.config.searchDelayMs}ms, lane delay ${ebayMarketplace.config.laneDelayMs}ms, query limit ${ebayMarketplace.config.scanQueryLimit}.`);
+  console.log(`eBay rate protection: query delay ${activeMarketplace.config.searchDelayMs}ms, lane delay ${activeMarketplace.config.laneDelayMs}ms, query limit ${activeMarketplace.config.scanQueryLimit}.`);
 
   // Wait one minute after deploy before the first startup scan so Railway restarts do not hammer eBay.
   setTimeout(() => runScoutScan("startup"), 60_000);
@@ -1857,7 +1858,7 @@ app.get("/search", async (req, res) => {
   try {
     const query = req.query.q || "";
     const selectedLane = req.query.lane || "baseball";
-    const results = query ? await ebayMarketplace.search(query, 12, { parseCardTitle }) : [];
+    const results = query ? await activeMarketplace.search(query, 12, { parseCardTitle }) : [];
 
     const scored = results.map(item => {
       const scoring = scoreListing(item, Object.values(store.listings));
@@ -2163,11 +2164,11 @@ app.get("/health", (req, res) => {
   const health = systemHealth.summarizeRuntime(store, {
     scoutEnabled: SCOUT_ENABLED,
     rateLimitProtection: {
-      ebaySearchDelayMs: ebayMarketplace.config.searchDelayMs,
-      ebayLaneDelayMs: ebayMarketplace.config.laneDelayMs,
-      ebayMaxRetries: ebayMarketplace.config.maxRetries,
-      ebayBackoffBaseMs: ebayMarketplace.config.backoffBaseMs,
-      ebayScanQueryLimit: ebayMarketplace.config.scanQueryLimit
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
     }
   });
 
@@ -2227,11 +2228,11 @@ app.get("/api/health", (req, res) => {
   res.json(systemHealth.summarizeRuntime(store, {
     scoutEnabled: SCOUT_ENABLED,
     rateLimitProtection: {
-      ebaySearchDelayMs: ebayMarketplace.config.searchDelayMs,
-      ebayLaneDelayMs: ebayMarketplace.config.laneDelayMs,
-      ebayMaxRetries: ebayMarketplace.config.maxRetries,
-      ebayBackoffBaseMs: ebayMarketplace.config.backoffBaseMs,
-      ebayScanQueryLimit: ebayMarketplace.config.scanQueryLimit
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
     }
   }));
 });
@@ -2240,11 +2241,11 @@ app.get("/api/status", (req, res) => {
   const health = systemHealth.summarizeRuntime(store, {
     scoutEnabled: SCOUT_ENABLED,
     rateLimitProtection: {
-      ebaySearchDelayMs: ebayMarketplace.config.searchDelayMs,
-      ebayLaneDelayMs: ebayMarketplace.config.laneDelayMs,
-      ebayMaxRetries: ebayMarketplace.config.maxRetries,
-      ebayBackoffBaseMs: ebayMarketplace.config.backoffBaseMs,
-      ebayScanQueryLimit: ebayMarketplace.config.scanQueryLimit
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
     }
   });
 
@@ -2257,11 +2258,11 @@ app.get("/api/status", (req, res) => {
     totalScans: store.scans.length,
     scanInProgress,
     rateLimitProtection: {
-      ebaySearchDelayMs: ebayMarketplace.config.searchDelayMs,
-      ebayLaneDelayMs: ebayMarketplace.config.laneDelayMs,
-      ebayMaxRetries: ebayMarketplace.config.maxRetries,
-      ebayBackoffBaseMs: ebayMarketplace.config.backoffBaseMs,
-      ebayScanQueryLimit: ebayMarketplace.config.scanQueryLimit
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
     },
     lanes: Object.keys(LANES)
   });
