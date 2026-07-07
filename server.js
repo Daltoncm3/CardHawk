@@ -1934,7 +1934,12 @@ app.get("/api/alerts/preview", (req, res) => {
   });
 });
 
-app.get("/api/alerts/send-pending", async (req, res) => {
+app.get("/api/alerts/send-pending", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).json({ error: "Method Not Allowed", message: "Use POST /api/alerts/send-pending" });
+});
+
+app.post("/api/alerts/send-pending", async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 5), 25);
   const dryRun = String(req.query.dryRun || "false").toLowerCase() === "true";
   const alerts = store.alerts || [];
@@ -2011,13 +2016,9 @@ app.post("/api/notifications/test", async (req, res) => {
   }
 });
 
-app.get("/api/notifications/test", async (req, res) => {
-  try {
-    const result = await notificationEngine.sendTestAlert({ smsOnly: true });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ sent: false, error: error.message });
-  }
+app.get("/api/notifications/test", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).json({ error: "Method Not Allowed", message: "Use POST /api/notifications/test" });
 });
 
 
