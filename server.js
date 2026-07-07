@@ -1,5 +1,4 @@
 const express = require("express");
-const fs = require("fs");
 const path = require("path");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
@@ -25,6 +24,7 @@ const systemHealth = require("./engines/systemHealth");
 const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
+const { loadJsonState, saveJsonState } = require("./utils/stateStore");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
@@ -133,16 +133,9 @@ let store = {
   }
 };
 
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
-}
-
 function loadStore() {
   try {
-    ensureDataFile();
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    const loaded = JSON.parse(raw);
+    const loaded = loadJsonState(DATA_FILE, store);
 
     store = {
       listings: loaded.listings || {},
@@ -165,8 +158,7 @@ function loadStore() {
 }
 
 function saveStore() {
-  ensureDataFile();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
+  saveJsonState(DATA_FILE, store);
 }
 
 function requireLogin(req, res, next) {
