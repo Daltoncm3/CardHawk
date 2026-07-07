@@ -10,6 +10,7 @@ const appStore = require('../utils/appStore');
 const engineMetricsEngine = require('../engines/engineMetricsEngine');
 const listingIdentity = require('../utils/listingIdentity');
 const mockMarketplace = require('../marketplaces/mockMarketplace');
+const notificationEngine = require('../engines/notificationEngine');
 const stateStore = require('../utils/stateStore');
 
 function makeTempFile(name = 'state.json') {
@@ -150,6 +151,60 @@ test('engineMetricsEngine summarizes production counters safely', () => {
   assert.equal(metrics.alerts.totalRejections, 2);
   assert.equal(metrics.data.totalListings, 2);
   assert.equal(metrics.health.overallStatus, 'warning');
+});
+
+test('notificationEngine persists non-forced sent alert keys for idempotency', async () => {
+  const { filePath } = makeTempFile('notificationState.json');
+  const previousEnabled = process.env.CARDHAWK_ALERTS_ENABLED;
+  const previousAlertTo = process.env.ALERT_TO;
+  let postCount = 0;
+
+  process.env.CARDHAWK_ALERTS_ENABLED = 'true';
+  process.env.ALERT_TO = 'alerts@example.invalid';
+  notificationEngine.__setNotificationStateFileForTests(filePath);
+  notificationEngine.__setResendPosterForTests(async () => {
+    postCount += 1;
+    return { id: `message-${postCount}` };
+  });
+
+  try {
+    const listing = {
+      ebayItemId: 'notify-1',
+      lane: 'baseball',
+      title: 'Notification Smoke Test',
+      price: 100,
+      totalCost: 100,
+      estimatedProfit: 100,
+      roi: 0.5,
+      score: 95,
+      marketConfidence: 90,
+      url: 'https://example.invalid/notify-1'
+    };
+
+    const first = await notificationEngine.sendDealAlert(listing);
+    assert.equal(first.sent, true);
+    assert.equal(postCount, 1);
+
+    const persisted = stateStore.loadJsonState(filePath, {});
+    assert.equal(persisted.version, 1);
+    assert.ok(persisted.savedAt);
+    assert.deepEqual(persisted.sentAlertKeys, [first.key]);
+
+    notificationEngine.__setNotificationStateFileForTests(filePath);
+    const duplicate = await notificationEngine.sendDealAlert(listing);
+    assert.equal(duplicate.sent, false);
+    assert.equal(duplicate.reason, 'duplicate alert skipped');
+    assert.equal(duplicate.key, first.key);
+    assert.equal(postCount, 1);
+  } finally {
+    if (previousEnabled === undefined) delete process.env.CARDHAWK_ALERTS_ENABLED;
+    else process.env.CARDHAWK_ALERTS_ENABLED = previousEnabled;
+
+    if (previousAlertTo === undefined) delete process.env.ALERT_TO;
+    else process.env.ALERT_TO = previousAlertTo;
+
+    notificationEngine.__setResendPosterForTests(null);
+  }
 });
 
 test('server route-method hardening remains in place without importing server.js', () => {

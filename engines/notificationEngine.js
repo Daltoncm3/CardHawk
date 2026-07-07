@@ -2,7 +2,70 @@
 // CardHawk Notification Engine v2
 // Sends deal alerts through Resend HTTP API instead of SMTP.
 
-const sentAlertKeys = new Set();
+const path = require("path");
+const stateStore = require("../utils/stateStore");
+
+const NOTIFICATION_STATE_FILE = path.join(__dirname, "..", "data", "notificationState.json");
+const MAX_SENT_ALERT_KEYS = 1000;
+
+let sentAlertKeys = [];
+let stateFilePath = NOTIFICATION_STATE_FILE;
+let resendPoster = postToResend;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function createDefaultNotificationState() {
+  return {
+    version: 1,
+    savedAt: null,
+    sentAlertKeys: []
+  };
+}
+
+function normalizeNotificationState(state = {}) {
+  return {
+    version: 1,
+    savedAt: state.savedAt || null,
+    sentAlertKeys: Array.isArray(state.sentAlertKeys)
+      ? state.sentAlertKeys.filter(Boolean).slice(-MAX_SENT_ALERT_KEYS)
+      : []
+  };
+}
+
+function loadNotificationState(filePath = stateFilePath) {
+  const loaded = stateStore.loadJsonState(filePath, createDefaultNotificationState());
+  const normalized = normalizeNotificationState(loaded);
+  sentAlertKeys = normalized.sentAlertKeys;
+  return normalized;
+}
+
+function saveNotificationState(filePath = stateFilePath) {
+  const state = {
+    version: 1,
+    savedAt: nowIso(),
+    sentAlertKeys: sentAlertKeys.slice(-MAX_SENT_ALERT_KEYS)
+  };
+
+  stateStore.saveJsonState(filePath, state);
+  return state;
+}
+
+function hasSentAlertKey(key) {
+  return sentAlertKeys.includes(key);
+}
+
+function rememberSentAlertKey(key) {
+  if (!key) return null;
+
+  sentAlertKeys = sentAlertKeys.filter((existingKey) => existingKey !== key);
+  sentAlertKeys.push(key);
+  sentAlertKeys = sentAlertKeys.slice(-MAX_SENT_ALERT_KEYS);
+  return saveNotificationState();
+}
+
+loadNotificationState();
 
 function env(name, fallback = "") {
   return process.env[name] || fallback;
@@ -171,21 +234,27 @@ async function sendDealAlert(listing, options = {}) {
   }
 
   const key = buildAlertKey(listing);
-  if (!options.force && sentAlertKeys.has(key)) {
+  if (!options.force && hasSentAlertKey(key)) {
     return { sent: false, reason: "duplicate alert skipped", key };
   }
 
   const subject = options.subject || `CardHawk Deal: $${money(listing.totalCost || listing.price)}`;
   const text = options.smsOnly ? buildSmsBody(listing) : buildEmailBody(listing);
 
-  const result = await postToResend({
+  const result = await resendPoster({
     from,
     to: to.split(",").map(item => item.trim()).filter(Boolean),
     subject,
     text
   });
 
-  sentAlertKeys.add(key);
+  if (!options.force) {
+    try {
+      rememberSentAlertKey(key);
+    } catch (error) {
+      console.warn("Notification Engine failed to persist sent alert key:", error.message);
+    }
+  }
 
   return {
     sent: true,
@@ -229,6 +298,22 @@ function getStatus() {
   };
 }
 
+function __setNotificationStateFileForTests(filePath) {
+  stateFilePath = filePath;
+  return loadNotificationState(filePath);
+}
+
+function __setResendPosterForTests(poster) {
+  resendPoster = poster || postToResend;
+}
+
+function __resetForTests() {
+  sentAlertKeys = [];
+  stateFilePath = NOTIFICATION_STATE_FILE;
+  resendPoster = postToResend;
+  loadNotificationState();
+}
+
 module.exports = {
   sendDealAlert,
   sendTestAlert,
@@ -236,5 +321,8 @@ module.exports = {
   buildSmsBody,
   buildEmailBody,
   evaluateAlertRules,
-  getAlertThresholds
+  getAlertThresholds,
+  __setNotificationStateFileForTests,
+  __setResendPosterForTests,
+  __resetForTests
 };
