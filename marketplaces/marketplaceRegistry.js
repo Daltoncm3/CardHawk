@@ -1,8 +1,9 @@
 'use strict';
 
 const ebayMarketplace = require('./ebayMarketplace');
+const mockMarketplace = require('./mockMarketplace');
 
-const marketplaces = [ebayMarketplace];
+const marketplaces = [ebayMarketplace, mockMarketplace];
 const activeMarketplace = ebayMarketplace;
 
 function getActiveMarketplace() {
