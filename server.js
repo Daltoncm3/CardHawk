@@ -1455,6 +1455,7 @@ function layout(title, content) {
             <a href="/history">History</a>
             <a href="/scans">Scan History</a>
             <a href="/health">Health</a>
+            <a href="/metrics">Metrics</a>
             <a href="/search">Manual Search</a>
             <form method="POST" action="/scan-now" style="margin:0;">
               <button type="submit">Run Scout Now</button>
@@ -2036,6 +2037,11 @@ function healthClass(status) {
   return "small";
 }
 
+function metricValue(value, suffix = "") {
+  if (value === null || value === undefined || value === "") return "n/a";
+  return `${value}${suffix}`;
+}
+
 app.get("/health", (req, res) => {
   const health = systemHealth.summarizeRuntime(store, {
     scoutEnabled: SCOUT_ENABLED,
@@ -2126,6 +2132,73 @@ app.get("/api/metrics", (req, res) => {
   });
 
   res.json(engineMetricsEngine.summarizeEngineMetrics(store, health));
+});
+
+app.get("/metrics", (req, res) => {
+  const health = systemHealth.summarizeRuntime(store, {
+    scoutEnabled: SCOUT_ENABLED,
+    rateLimitProtection: {
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
+    }
+  });
+  const metrics = engineMetricsEngine.summarizeEngineMetrics(store, health);
+  const engines = metrics.health.engines || [];
+
+  res.send(layout("CardHawk Operational Metrics", `
+    <h2>Operational Metrics</h2>
+    <p class="small">Read-only operational view derived from existing scan, health, and store data. Raw JSON: <a href="/api/metrics">/api/metrics</a></p>
+
+    <div class="stats">
+      <div class="stat"><div class="number">${metrics.scans.totalScans}</div><div>Total Scans</div></div>
+      <div class="stat"><div class="number">${metricValue(metrics.scans.successRatePercent, "%")}</div><div>Scan Success Rate</div></div>
+      <div class="stat"><div class="number">${metricValue(metrics.scans.averageDurationSeconds, "s")}</div><div>Average Scan Duration</div></div>
+      <div class="stat"><div class="number">${metricValue(metrics.scans.averageListingsFoundPerScan)}</div><div>Listings Per Scan</div></div>
+      <div class="stat"><div class="number">${metrics.alerts.totalAlerts}</div><div>Total Alerts</div></div>
+      <div class="stat"><div class="number">${metricValue(metrics.alerts.alertRatePercent, "%")}</div><div>Alert Rate</div></div>
+    </div>
+
+    <h2 class="table-title">Scan Metrics</h2>
+    <table>
+      <tr><th>Completed</th><th>Failed</th><th>Rate Limited</th><th>Skipped</th><th>Total Listings Found</th><th>Total New Alerts</th></tr>
+      <tr>
+        <td>${metrics.scans.completedScans}</td>
+        <td>${metrics.scans.failedScans}</td>
+        <td>${metrics.scans.rateLimitedScans}</td>
+        <td>${metrics.scans.skippedScans}</td>
+        <td>${metrics.scans.totalListingsFound}</td>
+        <td>${metrics.scans.totalNewAlertsFromScans}</td>
+      </tr>
+    </table>
+
+    <h2 class="table-title">Alert And Data Metrics</h2>
+    <table>
+      <tr><th>Alerts</th><th>Rejections</th><th>Alert Rate</th><th>Rejection Rate</th><th>Listings</th><th>Recent Failures</th></tr>
+      <tr>
+        <td>${metrics.alerts.totalAlerts}</td>
+        <td>${metrics.alerts.totalRejections}</td>
+        <td>${metricValue(metrics.alerts.alertRatePercent, "%")}</td>
+        <td>${metricValue(metrics.alerts.rejectionRatePercent, "%")}</td>
+        <td>${metrics.data.totalListings}</td>
+        <td>${metrics.data.recentFailures}</td>
+      </tr>
+    </table>
+
+    <h2 class="table-title">Engine Status</h2>
+    <table>
+      <tr><th>Engine</th><th>Status</th><th>Updated</th></tr>
+      ${engines.map(engine => `
+        <tr>
+          <td>${escapeHtml(engine.name || "")}</td>
+          <td class="${healthClass(engine.status)}">${escapeHtml(engine.status || "unknown")}</td>
+          <td>${escapeHtml(shortDate(engine.updatedAt))}</td>
+        </tr>
+      `).join("")}
+    </table>
+  `));
 });
 
 app.get("/api/status", (req, res) => {
