@@ -26,6 +26,7 @@ const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const appStore = require("./utils/appStore");
 const configReadiness = require("./utils/configReadiness");
+const operatorAuditLog = require("./utils/operatorAuditLog");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
@@ -161,6 +162,40 @@ function requireLogin(req, res, next) {
 }
 
 app.use(requireLogin);
+
+function getRequestAuditContext(req) {
+  let actor = "unknown";
+
+  try {
+    const auth = req.headers.authorization || "";
+    const encoded = auth.startsWith("Basic ") ? auth.split(" ")[1] : "";
+    if (encoded) {
+      actor = Buffer.from(encoded, "base64").toString().split(":")[0] || "unknown";
+    }
+  } catch (_) {
+    actor = "unknown";
+  }
+
+  const forwardedFor = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+
+  return {
+    actor,
+    sourceIp: forwardedFor || req.ip || req.socket?.remoteAddress || null,
+    userAgent: req.headers["user-agent"] || null
+  };
+}
+
+function recordOperatorAction(req, action, data = {}) {
+  try {
+    return operatorAuditLog.recordOperatorAction(action, {
+      ...getRequestAuditContext(req),
+      ...data
+    });
+  } catch (error) {
+    console.warn(`Operator audit log failed for ${action}:`, error.message);
+    return null;
+  }
+}
 
 function money(value) {
   return Number(value || 0).toFixed(2);
@@ -1526,7 +1561,28 @@ app.get("/search", async (req, res) => {
 });
 
 app.post("/scan-now", async (req, res) => {
-  await runScoutScan("manual");
+  try {
+    const scan = await runScoutScan("manual");
+    recordOperatorAction(req, "manual_scan_requested", {
+      status: scan?.status || "unknown",
+      details: {
+        scanId: scan?.id || null,
+        source: scan?.source || "manual",
+        listingsFound: scan?.listingsFound || 0,
+        newAlerts: scan?.newAlerts || 0,
+        rateLimited: Boolean(scan?.rateLimited),
+        error: scan?.error || null
+      }
+    });
+  } catch (error) {
+    recordOperatorAction(req, "manual_scan_requested", {
+      status: "failed",
+      details: {
+        error: error.message
+      }
+    });
+    throw error;
+  }
   res.redirect("/");
 });
 
@@ -1721,6 +1777,15 @@ app.post("/api/alerts/send-pending", async (req, res) => {
     .slice(0, limit);
 
   if (dryRun) {
+    recordOperatorAction(req, "send_pending_alerts", {
+      status: "dry_run",
+      details: {
+        dryRun: true,
+        limit,
+        candidateCount: candidates.length
+      }
+    });
+
     return res.json({
       dryRun: true,
       count: candidates.length,
@@ -1769,6 +1834,17 @@ app.post("/api/alerts/send-pending", async (req, res) => {
   }
 
   saveStore();
+  recordOperatorAction(req, "send_pending_alerts", {
+    status: "completed",
+    details: {
+      dryRun: false,
+      limit,
+      candidateCount: candidates.length,
+      attempted: candidates.length,
+      sentCount: results.filter(result => result.sent).length,
+      failedCount: results.filter(result => !result.sent).length
+    }
+  });
   res.json({ attempted: candidates.length, results });
 });
 
@@ -1776,11 +1852,34 @@ app.get("/api/notifications/status", (req, res) => {
   res.json(notificationEngine.getStatus());
 });
 
+app.get("/api/operator-audit", (req, res) => {
+  const limit = Math.min(Number(req.query.limit || 100), 1000);
+  res.json({
+    summary: operatorAuditLog.summarizeOperatorAuditLog(),
+    auditLog: operatorAuditLog.getOperatorAuditLog(limit)
+  });
+});
+
 app.post("/api/notifications/test", async (req, res) => {
   try {
     const result = await notificationEngine.sendTestAlert({ smsOnly: true });
+    recordOperatorAction(req, "notification_test", {
+      status: result?.sent ? "sent" : "not_sent",
+      details: {
+        sent: Boolean(result?.sent),
+        provider: result?.provider || null,
+        id: result?.id || null,
+        reason: result?.reason || null
+      }
+    });
     res.json(result);
   } catch (error) {
+    recordOperatorAction(req, "notification_test", {
+      status: "failed",
+      details: {
+        error: error.message
+      }
+    });
     res.status(500).json({ sent: false, error: error.message });
   }
 });

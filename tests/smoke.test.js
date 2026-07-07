@@ -12,6 +12,7 @@ const engineMetricsEngine = require('../engines/engineMetricsEngine');
 const listingIdentity = require('../utils/listingIdentity');
 const mockMarketplace = require('../marketplaces/mockMarketplace');
 const notificationEngine = require('../engines/notificationEngine');
+const operatorAuditLog = require('../utils/operatorAuditLog');
 const stateStore = require('../utils/stateStore');
 
 function makeTempFile(name = 'state.json') {
@@ -283,11 +284,68 @@ test('configReadiness reports notification warnings when alerts are enabled with
   assert.ok(readiness.warnings.some((issue) => issue.variable === 'ALERT_TO'));
 });
 
+test('operatorAuditLog records sanitized operator actions with versioned state', () => {
+  const { filePath } = makeTempFile('operatorAuditLog.json');
+
+  const event = operatorAuditLog.recordOperatorAction('manual_scan_requested', {
+    status: 'completed',
+    actor: 'operator',
+    sourceIp: '127.0.0.1',
+    userAgent: 'CardHawkSmokeTest',
+    details: {
+      scanId: 'scan-1',
+      listingsFound: 3,
+      password: 'do-not-store',
+      authHeader: 'Basic secret',
+      nested: {
+        apiKey: 'hidden',
+        ok: true
+      }
+    }
+  }, { filePath });
+
+  const log = operatorAuditLog.getOperatorAuditLog(10, { filePath });
+  assert.equal(log.version, 1);
+  assert.equal(log.events.length, 1);
+  assert.equal(log.events[0].id, event.id);
+  assert.equal(log.events[0].action, 'manual_scan_requested');
+  assert.equal(log.events[0].actor, 'operator');
+  assert.equal(log.events[0].details.scanId, 'scan-1');
+  assert.equal(log.events[0].details.password, undefined);
+  assert.equal(log.events[0].details.authHeader, undefined);
+  assert.equal(log.events[0].details.nested.apiKey, undefined);
+  assert.equal(log.events[0].details.nested.ok, true);
+  assert.equal(JSON.stringify(log).includes('do-not-store'), false);
+  assert.equal(JSON.stringify(log).includes('Basic secret'), false);
+  assert.equal(JSON.stringify(log).includes('hidden'), false);
+});
+
+test('operatorAuditLog caps latest events at 1000', () => {
+  const { filePath } = makeTempFile('operatorAuditLog.json');
+
+  for (let index = 0; index < 1005; index += 1) {
+    operatorAuditLog.recordOperatorAction(`action-${index}`, {
+      status: 'completed',
+      actor: 'operator',
+      details: { index }
+    }, { filePath });
+  }
+
+  const log = operatorAuditLog.getOperatorAuditLog(1000, { filePath });
+  const summary = operatorAuditLog.summarizeOperatorAuditLog({ filePath });
+
+  assert.equal(log.events.length, 1000);
+  assert.equal(summary.totalEvents, 1000);
+  assert.equal(log.events[0].action, 'action-1004');
+  assert.equal(log.events[999].action, 'action-5');
+});
+
 test('server route-method hardening remains in place without importing server.js', () => {
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
   assert.match(serverSource, /app\.get\("\/api\/alerts\/send-pending", \(req, res\) => \{\s+res\.setHeader\("Allow", "POST"\);\s+res\.status\(405\)/);
   assert.match(serverSource, /app\.post\("\/api\/alerts\/send-pending", async \(req, res\) => \{/);
+  assert.match(serverSource, /app\.get\("\/api\/operator-audit", \(req, res\) => \{/);
   assert.match(serverSource, /app\.post\("\/api\/notifications\/test", async \(req, res\) => \{/);
   assert.match(serverSource, /app\.get\("\/api\/notifications\/test", \(req, res\) => \{\s+res\.setHeader\("Allow", "POST"\);\s+res\.status\(405\)/);
 });
