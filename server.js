@@ -22,6 +22,7 @@ const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
 const systemHealth = require("./engines/systemHealth");
+const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
@@ -2110,6 +2111,21 @@ app.get("/api/health", (req, res) => {
       ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
     }
   }));
+});
+
+app.get("/api/metrics", (req, res) => {
+  const health = systemHealth.summarizeRuntime(store, {
+    scoutEnabled: SCOUT_ENABLED,
+    rateLimitProtection: {
+      ebaySearchDelayMs: activeMarketplace.config.searchDelayMs,
+      ebayLaneDelayMs: activeMarketplace.config.laneDelayMs,
+      ebayMaxRetries: activeMarketplace.config.maxRetries,
+      ebayBackoffBaseMs: activeMarketplace.config.backoffBaseMs,
+      ebayScanQueryLimit: activeMarketplace.config.scanQueryLimit
+    }
+  });
+
+  res.json(engineMetricsEngine.summarizeEngineMetrics(store, health));
 });
 
 app.get("/api/status", (req, res) => {
