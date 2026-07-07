@@ -1,5 +1,7 @@
 'use strict';
 
+const listingIdentity = require('../utils/listingIdentity');
+
 const SOURCE = 'validation_harness';
 
 const RECOMMENDATIONS = ['BUY_NOW', 'STRONG_WATCH', 'WATCH', 'MONITOR', 'PASS'];
@@ -72,16 +74,7 @@ function pickString(sources, keys, fallback = '') {
 }
 
 function getListingId(listing = {}) {
-  return (
-    listing.listingId ||
-    listing.ebayItemId ||
-    listing.itemId ||
-    listing.id ||
-    listing.listing?.ebayItemId ||
-    listing.listing?.itemId ||
-    listing.listing?.id ||
-    ''
-  );
+  return listingIdentity.getListingId(listing) || listingIdentity.getListingId(listing.listing);
 }
 
 function getTitle(listing = {}) {

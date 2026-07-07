@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const stateStore = require("../utils/stateStore");
+const listingIdentity = require("../utils/listingIdentity");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const HISTORY_FILE = path.join(DATA_DIR, "listingHistory.json");
@@ -74,13 +75,7 @@ function roundMoney(value) {
 }
 
 function getItemId(listing) {
-  return String(
-    listing?.ebayItemId ||
-    listing?.itemId ||
-    listing?.id ||
-    listing?.legacyItemId ||
-    ""
-  ).trim();
+  return listingIdentity.getListingId(listing) || String(listing?.legacyItemId || "").trim();
 }
 
 function getTotalCost(listing) {

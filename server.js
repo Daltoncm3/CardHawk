@@ -23,6 +23,7 @@ const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
 const systemHealth = require("./engines/systemHealth");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
+const listingIdentity = require("./utils/listingIdentity");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
@@ -931,12 +932,13 @@ function saveScoutedListing(listing, query, lane) {
     seenCount: existing?.seenCount ? existing.seenCount + 1 : 1,
     alertCreated: existing?.alertCreated || false
   };
+  const listingId = listingIdentity.getListingId(saved);
 
   const gate = dealGate(saved);
   saved.dealGate = gate;
   try {
   predictionAccuracyEngine.recordPrediction({
-    listingId: saved.ebayItemId,
+    listingId,
     title: saved.title,
     recommendation: gate.passed ? "BUY_NOW" : "PASS",
     decisionScore: scoring.score,
@@ -955,7 +957,7 @@ function saveScoutedListing(listing, query, lane) {
 }
   try {
   decisionValidationEngine.recordDecision({
-    listingId: saved.ebayItemId,
+    listingId,
     title: saved.title,
     decision: gate.passed ? "BUY_NOW" : "PASS",
     decisionScore: scoring.decision?.decisionScore || scoring.decision?.score || scoring.score,
@@ -1231,7 +1233,7 @@ async function runScoutScan(source = "automatic") {
 
 try {
   for (const drop of historyResult.priceDrops || []) {
-    const id = drop.ebayItemId || drop.itemId || drop.listingId || drop.id;
+    const id = listingIdentity.getListingId(drop);
     if (!id) continue;
 
     learningEngine.recordListingOutcome(id, {
@@ -1258,7 +1260,7 @@ try {
 }
 
   for (const gone of historyResult.disappeared || []) {
-    const id = gone.ebayItemId || gone.itemId || gone.listingId || gone.id || gone;
+    const id = listingIdentity.getListingId(gone);
     if (!id) continue;
 
     learningEngine.recordListingOutcome(id, {
