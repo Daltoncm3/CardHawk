@@ -257,3 +257,110 @@ test('comparableQuality does not change existing decision-bearing Market Intelli
   assert.deepEqual(withComparableQuality.componentScores, base.componentScores);
   assert.ok(withComparableQuality.comparableQuality);
 });
+
+test('evidenceSufficiency exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 100, soldAt: '2026-07-01T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 105, soldAt: '2026-06-15T00:00:00.000Z', similarity: 94 },
+      { soldPrice: 98, soldAt: '2026-06-01T00:00:00.000Z', similarity: 93 }
+    ]
+  });
+
+  assert.ok(result.evidenceSufficiency);
+  assert.equal(result.evidenceSufficiency.source, 'evidence_sufficiency_engine');
+  assert.equal(result.evidenceSufficiency.checks.soldEvidence.trueSoldCount, result.evidenceSummary.trueSoldCount);
+});
+
+test('empty evidence returns safe evidenceSufficiency output', () => {
+  const result = evaluate({
+    marketData: { confidence: 0, marketValue: 0 },
+    compData: { confidence: 0 },
+    qualityData: { confidence: 0 }
+  });
+
+  assert.equal(result.evidenceSummary.evidenceCount, 0);
+  assert.equal(result.evidenceSufficiency.sufficientForValuation, false);
+  assert.equal(result.evidenceSufficiency.sufficiencyLevel, 'unreliable');
+  assert.ok(result.evidenceSufficiency.evidenceSufficiencyScore <= 20);
+});
+
+test('active-only evidenceSufficiency is insufficient or unreliable', () => {
+  const result = evaluate({
+    compData: {
+      selectedComps: [
+        { price: 100, status: 'active', similarity: 98 },
+        { price: 110, isActive: true, similarity: 97 }
+      ]
+    }
+  });
+
+  assert.equal(result.evidenceSummary.activeOnlyFlag, true);
+  assert.equal(result.evidenceSufficiency.sufficientForValuation, false);
+  assert.ok(['insufficient', 'unreliable'].includes(result.evidenceSufficiency.sufficiencyLevel));
+  assert.equal(result.evidenceSufficiency.checks.fallbackRisk.activeOnlyFlag, true);
+});
+
+test('fallback-only evidenceSufficiency is flagged', () => {
+  const result = evaluate({
+    compData: {
+      selectedComps: [
+        { price: 90, similarity: 96 },
+        { price: 100, similarity: 96 }
+      ]
+    }
+  });
+
+  assert.equal(result.evidenceSummary.fallbackOnlyFlag, true);
+  assert.equal(result.evidenceSufficiency.sufficientForValuation, false);
+  assert.equal(result.evidenceSufficiency.checks.fallbackRisk.fallbackOnlyFlag, true);
+  assert.match(result.evidenceSufficiency.blockingConcerns.join(' '), /fallback-only/i);
+});
+
+test('strong evidence returns adequate or strong evidenceSufficiency', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 96 },
+      { soldPrice: 98, soldAt: '2026-06-25T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 100, soldAt: '2026-06-18T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 104, soldAt: '2026-06-10T00:00:00.000Z', similarity: 94 },
+      { soldPrice: 110, soldAt: '2026-06-01T00:00:00.000Z', similarity: 94 }
+    ]
+  });
+
+  assert.equal(result.evidenceSufficiency.sufficientForValuation, true);
+  assert.ok(['adequate', 'strong'].includes(result.evidenceSufficiency.sufficiencyLevel));
+  assert.ok(result.evidenceSufficiency.evidenceSufficiencyScore >= 68);
+});
+
+test('evidenceSufficiency does not change existing decision-bearing Market Intelligence fields', () => {
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    }
+  });
+
+  const withEvidenceSufficiency = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    }
+  });
+
+  assert.equal(withEvidenceSufficiency.intelligenceScore, base.intelligenceScore);
+  assert.equal(withEvidenceSufficiency.confidenceScore, base.confidenceScore);
+  assert.equal(withEvidenceSufficiency.trustLevel, base.trustLevel);
+  assert.equal(withEvidenceSufficiency.recommendation, base.recommendation);
+  assert.deepEqual(withEvidenceSufficiency.componentScores, base.componentScores);
+  assert.deepEqual(withEvidenceSufficiency.warnings, base.warnings);
+  assert.deepEqual(withEvidenceSufficiency.positives, base.positives);
+  assert.deepEqual(withEvidenceSufficiency.reasons, base.reasons);
+  assert.ok(withEvidenceSufficiency.evidenceSufficiency);
+});

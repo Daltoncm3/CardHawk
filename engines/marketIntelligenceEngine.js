@@ -1,6 +1,7 @@
 'use strict';
 
 const comparableQualityEngine = require('./comparableQualityEngine');
+const evidenceSufficiencyEngine = require('./evidenceSufficiencyEngine');
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
@@ -676,6 +677,13 @@ function evaluateMarketIntelligence(input = {}) {
       volatility: evidenceSummary.volatility
     }
   });
+  const evidenceSufficiency = evidenceSufficiencyEngine.evaluateEvidenceSufficiency({
+    listing: input.listing,
+    evidenceSummary,
+    comparableQuality,
+    marketData: input.marketData,
+    compData: input.compData
+  });
 
   const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
   const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
@@ -862,7 +870,8 @@ function evaluateMarketIntelligence(input = {}) {
     projectedRoi,
     heuristicFallbackUsed: fallbackUsed,
     evidenceSummary,
-    comparableQuality
+    comparableQuality,
+    evidenceSufficiency
   };
 
   result.summary = summarizeMarketIntelligence(result);
