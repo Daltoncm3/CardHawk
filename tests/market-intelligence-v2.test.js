@@ -416,3 +416,95 @@ test('valuationRange does not change existing decision-bearing Market Intelligen
   assert.equal(withValuationRange.estimatedValue, base.estimatedValue);
   assert.ok(withValuationRange.valuationRange);
 });
+
+test('demandQuality exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 96, seller: 'seller-a', source: 'ebay' },
+      { soldPrice: 98, soldAt: '2026-06-25T00:00:00.000Z', similarity: 95, seller: 'seller-b', source: 'ebay' },
+      { soldPrice: 100, soldAt: '2026-06-18T00:00:00.000Z', similarity: 95, seller: 'seller-c', source: 'ebay' },
+      { soldPrice: 104, soldAt: '2026-06-10T00:00:00.000Z', similarity: 94, seller: 'seller-d', source: 'alt' },
+      { soldPrice: 110, soldAt: '2026-06-01T00:00:00.000Z', similarity: 94, seller: 'seller-e', source: 'alt' }
+    ],
+    salesVelocityData: {
+      salesVelocityScore: 74,
+      soldLast7Days: 1,
+      soldLast30Days: 5,
+      soldLast90Days: 12,
+      salesTrend: 'stable',
+      demandStrength: 'strong',
+      details: {
+        priceVolatility: 0.12,
+        seasonalSpike: false,
+        earlyMarket: false,
+        duplicateSalesExcluded: 0,
+        soldCount: 5
+      }
+    },
+    trendData: {
+      direction: 'Stable',
+      percentChange: 2,
+      trendScore: 58
+    }
+  });
+
+  assert.ok(result.demandQuality);
+  assert.equal(result.demandQuality.source, 'demand_quality_engine');
+  assert.equal(result.demandQuality.dimensions.soldDepth.status, 'adequate');
+  assert.ok(result.demandQuality.summary);
+});
+
+test('demandQuality does not change existing decision-bearing Market Intelligence fields', () => {
+  const sharedLegacyInputs = {
+    salesVelocityData: {
+      salesVelocityScore: 70,
+      soldLast7Days: 1,
+      soldLast30Days: 4,
+      soldLast90Days: 9,
+      salesTrend: 'stable',
+      demandStrength: 'moderate',
+      details: {
+        duplicateSalesExcluded: 0,
+        priceVolatility: 0.12
+      }
+    },
+    trendData: {
+      direction: 'Stable',
+      percentChange: 1
+    }
+  };
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    },
+    ...sharedLegacyInputs
+  });
+
+  const withDemandQuality = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    },
+    ...sharedLegacyInputs
+  });
+
+  assert.equal(withDemandQuality.intelligenceScore, base.intelligenceScore);
+  assert.equal(withDemandQuality.confidenceScore, base.confidenceScore);
+  assert.equal(withDemandQuality.trustLevel, base.trustLevel);
+  assert.equal(withDemandQuality.recommendation, base.recommendation);
+  assert.deepEqual(withDemandQuality.componentScores, base.componentScores);
+  assert.deepEqual(withDemandQuality.warnings, base.warnings);
+  assert.deepEqual(withDemandQuality.positives, base.positives);
+  assert.deepEqual(withDemandQuality.reasons, base.reasons);
+  assert.equal(withDemandQuality.marketDepth, base.marketDepth);
+  assert.equal(withDemandQuality.referenceMarketValue, base.referenceMarketValue);
+  assert.equal(withDemandQuality.estimatedValue, base.estimatedValue);
+  assert.ok(withDemandQuality.demandQuality);
+});
