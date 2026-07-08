@@ -32,6 +32,19 @@ function pickFirstNumber(sources, keys, fallback = 0) {
   return value === undefined ? fallback : toNumber(value, fallback);
 }
 
+function pickRoiPercent(sources) {
+  const explicitPercent = pickFirstNumber(
+    sources,
+    ['roiPercent', 'projectedRoiPercent', 'projectedROIPercent'],
+    NaN
+  );
+
+  if (Number.isFinite(explicitPercent)) return explicitPercent;
+
+  const decimalRoi = pickFirstNumber(sources, ['roi', 'returnOnInvestment'], 0);
+  return decimalRoi * 100;
+}
+
 function clampScore(value) {
   return Math.max(0, Math.min(100, Math.round(toNumber(value, 0))));
 }
@@ -176,11 +189,7 @@ function getProjectedRoi(input = {}) {
   const listing = input.listing || {};
   const roiData = input.roiData || {};
 
-  return pickFirstNumber(
-    [roiData, listing],
-    ['roi', 'roiPercent', 'returnOnInvestment'],
-    0
-  );
+  return pickRoiPercent([roiData, listing]);
 }
 
 function scoreSoldDepth(soldCount) {

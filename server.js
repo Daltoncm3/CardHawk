@@ -579,6 +579,19 @@ function dealGate(listing = {}) {
     return fallback;
   };
 
+  const getRoiPercent = (sources) => {
+    const explicitPercent = pickNumber(sources, [
+      'roiPercent',
+      'projectedRoiPercent',
+      'projectedROIPercent'
+    ], NaN);
+
+    if (Number.isFinite(explicitPercent)) return explicitPercent;
+
+    const decimalRoi = pickNumber(sources, ['roi', 'returnOnInvestment'], 0);
+    return decimalRoi * 100;
+  };
+
   const marketData = listing.marketData || {};
   const soldSales = Array.isArray(listing.soldSales)
     ? listing.soldSales
@@ -594,6 +607,7 @@ function dealGate(listing = {}) {
   const score = toNumber(listing.score, 0);
   const estimatedProfit = toNumber(listing.estimatedProfit, 0);
   const roi = toNumber(listing.roi, 0);
+  const roiPercent = getRoiPercent([listing.roiData, listing, marketData, compData]);
 
   const soldCompCount = Math.max(
     soldSales.length,
@@ -807,7 +821,7 @@ function dealGate(listing = {}) {
     reasons.push('Projected profit is high despite no sold history.');
   }
 
-  if (roi > 150) {
+  if (roiPercent > 150) {
     const roiHasStrongSupport =
       soldCompCount >= 8 &&
       confidenceScore >= 85 &&
@@ -819,7 +833,7 @@ function dealGate(listing = {}) {
       !usesHeuristicFallback;
 
     if (!roiHasStrongSupport) {
-      reasons.push(`ROI is excessive (${roi}%) without very strong independent support.`);
+      reasons.push(`ROI is excessive (${roiPercent}%) without very strong independent support.`);
     }
   }
 
@@ -835,7 +849,7 @@ function dealGate(listing = {}) {
       ['excellent', 'good', ''].includes(pricingLevel) &&
       !conditionUnknown &&
       !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel) &&
-      roi <= 150;
+      roiPercent <= 150;
 
     if (!heuristicHasStrongSupport) {
       reasons.push('Heuristic fallback valuation lacks enough independent support.');
@@ -849,7 +863,7 @@ function dealGate(listing = {}) {
       marketIntelligenceScore >= 75 &&
       liquidityScore >= 65 &&
       priceConsistencyScore >= 65 &&
-      roi <= 100 &&
+      roiPercent <= 100 &&
       !usesHeuristicFallback &&
       !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel);
 
@@ -894,6 +908,7 @@ function dealGate(listing = {}) {
       score,
       estimatedProfit,
       roi,
+      roiPercent,
       soldCompCount,
       confidenceScore,
       marketIntelligenceScore,

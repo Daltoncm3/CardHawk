@@ -36,6 +36,19 @@ function pickFirstNumber(sources, keys, fallback = 0) {
   return value === undefined ? fallback : toNumber(value, fallback);
 }
 
+function pickRoiPercent(sources) {
+  const explicitPercent = pickFirstNumber(
+    sources,
+    ['roiPercent', 'projectedRoiPercent', 'projectedROIPercent'],
+    NaN
+  );
+
+  if (Number.isFinite(explicitPercent)) return explicitPercent;
+
+  const decimalRoi = pickFirstNumber(sources, ['roi', 'returnOnInvestment'], 0);
+  return decimalRoi * 100;
+}
+
 function uniqueMessages(messages) {
   const seen = new Set();
 
@@ -356,11 +369,7 @@ function calculateConservativeRoi(input = {}) {
     return (conservativeProfit / cost) * 100;
   }
 
-  return pickFirstNumber(
-    [input, roiData],
-    ['roi', 'roiPercent', 'returnOnInvestment'],
-    0
-  );
+  return pickRoiPercent([roiData, input]);
 }
 
 function scoreEvidenceStrength(input = {}) {

@@ -32,6 +32,19 @@ function pickFirstNumber(sources, keys, fallback = 0) {
   return value === undefined ? fallback : toNumber(value, fallback);
 }
 
+function pickRoiPercent(sources) {
+  const explicitPercent = pickFirstNumber(
+    sources,
+    ['roiPercent', 'projectedRoiPercent', 'projectedROIPercent'],
+    NaN
+  );
+
+  if (Number.isFinite(explicitPercent)) return explicitPercent;
+
+  const decimalRoi = pickFirstNumber(sources, ['roi', 'returnOnInvestment'], 0);
+  return decimalRoi * 100;
+}
+
 function clampRiskScore(score) {
   return Math.max(0, Math.min(100, Math.round(toNumber(score, 0))));
 }
@@ -289,11 +302,7 @@ function evaluateRisk(input = {}) {
     ['estimatedProfit', 'profit', 'netProfit', 'projectedProfit'],
     0
   );
-  const roi = pickFirstNumber(
-    [roiData, listing, input],
-    ['roi', 'roiPercent', 'returnOnInvestment'],
-    0
-  );
+  const roiPercent = pickRoiPercent([roiData, listing, input]);
   const estimatedValue = pickFirstNumber(
     [roiData, listing, input.marketData || {}, input.compData || {}],
     ['estimatedValue', 'estimatedSalePrice', 'targetSalePrice', 'projectedSalePrice', 'marketValue'],
@@ -343,24 +352,24 @@ function evaluateRisk(input = {}) {
     addPositive(`Market confidence is acceptable (${confidence}/100).`, state);
   }
 
-  if (roi > 250) {
+  if (roiPercent > 250) {
     const hasStrongCompSupport = soldCompCount >= 8 && confidence >= 80 && !heuristicFallback;
 
     if (!hasStrongCompSupport) {
-      addRisk(40, `ROI appears impossible (${roi}%) without strong comp support.`, state);
+      addRisk(40, `ROI appears impossible (${roiPercent}%) without strong comp support.`, state);
     } else {
-      addRisk(12, `ROI is unusually high (${roi}%) and should be reviewed.`, state);
+      addRisk(12, `ROI is unusually high (${roiPercent}%) and should be reviewed.`, state);
     }
-  } else if (roi > 150) {
+  } else if (roiPercent > 150) {
     const hasGoodSupport = soldCompCount >= 5 && confidence >= 70 && !heuristicFallback;
 
     if (!hasGoodSupport) {
-      addRisk(24, `ROI is very high (${roi}%) without enough support.`, state);
+      addRisk(24, `ROI is very high (${roiPercent}%) without enough support.`, state);
     } else {
-      addRisk(8, `ROI is high (${roi}%) and should be sanity checked.`, state);
+      addRisk(8, `ROI is high (${roiPercent}%) and should be sanity checked.`, state);
     }
-  } else if (roi > 0) {
-    addPositive(`ROI is within a realistic range (${roi}%).`, state);
+  } else if (roiPercent > 0) {
+    addPositive(`ROI is within a realistic range (${roiPercent}%).`, state);
   }
 
   if (referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 3) {
