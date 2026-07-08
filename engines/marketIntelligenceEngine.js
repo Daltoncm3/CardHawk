@@ -108,6 +108,209 @@ function getStandardDeviation(values, average) {
   return Math.sqrt(variance);
 }
 
+function roundMoney(value) {
+  return Math.round(toNumber(value, 0) * 100) / 100;
+}
+
+function roundMetric(value, digits = 3) {
+  const multiplier = Math.pow(10, digits);
+  return Math.round(toNumber(value, 0) * multiplier) / multiplier;
+}
+
+function getEvidenceText(evidence = {}) {
+  return [
+    evidence.evidenceType,
+    evidence.status,
+    evidence.listingStatus,
+    evidence.source,
+    evidence.type,
+    evidence.recordType,
+    evidence.marketState,
+    evidence.saleStatus
+  ].filter(Boolean).map(normalize).join(' ');
+}
+
+function getEvidenceType(evidence = {}) {
+  const explicitType = normalize(evidence.evidenceType);
+  if (explicitType === 'true_sold' || explicitType === 'active' || explicitType === 'fallback_unknown') {
+    return explicitType;
+  }
+
+  const text = getEvidenceText(evidence);
+  if (
+    evidence.sold === true ||
+    evidence.isSold === true ||
+    evidence.completed === true ||
+    evidence.isCompleted === true ||
+    evidence.soldAt ||
+    evidence.dateSold ||
+    /\b(sold|completed|ended)\b/.test(text)
+  ) {
+    return 'true_sold';
+  }
+
+  if (
+    evidence.active === true ||
+    evidence.isActive === true ||
+    Array.isArray(evidence.buyingOptions) ||
+    /\b(active|live|listed|available|current|open)\b/.test(text)
+  ) {
+    return 'active';
+  }
+
+  return 'fallback_unknown';
+}
+
+function getEvidencePrice(evidence = {}) {
+  return pickFirstNumber(
+    [evidence],
+    ['soldPrice', 'salePrice', 'price', 'askingPrice', 'askPrice', 'amount', 'totalPrice', 'value', 'marketValue'],
+    0
+  );
+}
+
+function getEvidenceAgeDays(evidence = {}) {
+  const explicitAge = pickFirstNumber(
+    [evidence],
+    ['ageDays', 'daysOld', 'daysSinceSale', 'soldDaysAgo'],
+    NaN
+  );
+
+  if (Number.isFinite(explicitAge)) return Math.max(0, explicitAge);
+
+  const dateValue = pickFirstValue(
+    [evidence],
+    ['soldAt', 'dateSold', 'soldDate', 'saleDate', 'endedAt', 'endDate', 'lastSeenAt', 'createdAt'],
+    ''
+  );
+
+  if (!dateValue) return null;
+
+  const timestamp = new Date(dateValue).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const ageMs = Date.now() - timestamp;
+  return ageMs > 0 ? Math.floor(ageMs / 86400000) : 0;
+}
+
+function getEvidenceSaleType(evidence = {}) {
+  const text = normalize(
+    pickFirstValue([evidence], ['saleType', 'format', 'listingType', 'purchaseType', 'type'], '')
+  );
+
+  if (text.includes('auction')) return 'auction';
+  if (text.includes('best') || text.includes('offer')) return 'best_offer';
+  if (text.includes('buy') || text.includes('bin') || text.includes('fixed')) return 'buy_it_now';
+  return 'unknown';
+}
+
+function normalizeEvidenceItem(evidence = {}, sourceGroup = '') {
+  const price = getEvidencePrice(evidence);
+  const ageDays = getEvidenceAgeDays(evidence);
+
+  return {
+    evidenceType: getEvidenceType(evidence),
+    price: roundMoney(price),
+    ageDays,
+    similarity: pickFirstNumber([evidence], ['similarity', 'similarityScore', 'matchScore'], 0),
+    source: pickFirstValue([evidence], ['source', 'marketplace', 'platform'], sourceGroup),
+    saleType: getEvidenceSaleType(evidence),
+    title: pickFirstValue([evidence], ['title', 'name', 'listingTitle'], '')
+  };
+}
+
+function getEvidenceSources(input = {}) {
+  const compData = input.compData || {};
+  const marketData = input.marketData || {};
+
+  return [
+    ...asArray(input.soldSales).map((item) => ({ item, sourceGroup: 'sold_sales' })),
+    ...asArray(compData.selectedComps).map((item) => ({ item, sourceGroup: 'selected_comps' })),
+    ...asArray(compData.comps).map((item) => ({ item, sourceGroup: 'comp_data' })),
+    ...asArray(marketData.soldComps).map((item) => ({ item, sourceGroup: 'market_sold_comps' })),
+    ...asArray(marketData.activeComps).map((item) => ({ item, sourceGroup: 'market_active_comps' }))
+  ];
+}
+
+function getRecencyWeight(ageDays) {
+  if (!Number.isFinite(ageDays)) return 0.75;
+  if (ageDays <= 30) return 1.2;
+  if (ageDays <= 90) return 1;
+  if (ageDays <= 180) return 0.75;
+  return 0.5;
+}
+
+function getWeightedSoldAverage(soldEvidence) {
+  const weighted = soldEvidence
+    .map((evidence) => {
+      const similarityWeight = evidence.similarity > 0 ? Math.max(0.35, evidence.similarity / 100) : 0.75;
+      const weight = similarityWeight * getRecencyWeight(evidence.ageDays);
+      return { price: evidence.price, weight };
+    })
+    .filter((item) => item.price > 0 && item.weight > 0);
+
+  if (!weighted.length) return 0;
+
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  const totalValue = weighted.reduce((sum, item) => sum + item.price * item.weight, 0);
+  return totalWeight > 0 ? roundMoney(totalValue / totalWeight) : 0;
+}
+
+function calculateEvidenceQualityScore(evidence) {
+  if (!evidence.length) return 0;
+
+  const trueSoldCount = evidence.filter((item) => item.evidenceType === 'true_sold').length;
+  const activeCount = evidence.filter((item) => item.evidenceType === 'active').length;
+  const unknownCount = evidence.filter((item) => item.evidenceType === 'fallback_unknown').length;
+  const similarityValues = evidence.map((item) => item.similarity).filter((value) => value > 0);
+  const freshCount = evidence.filter((item) => Number.isFinite(item.ageDays) && item.ageDays <= 90).length;
+
+  let score = 35;
+  score += Math.min(30, trueSoldCount * 8);
+  score += Math.min(10, activeCount * 2);
+  score += Math.min(12, freshCount * 3);
+  score -= Math.min(25, unknownCount * 7);
+
+  if (similarityValues.length) {
+    score += Math.min(13, Math.max(0, getAverage(similarityValues) - 75) * 0.5);
+  }
+
+  return clampScore(score);
+}
+
+function buildEvidenceSummary(input = {}) {
+  const evidence = getEvidenceSources(input)
+    .map(({ item, sourceGroup }) => normalizeEvidenceItem(item, sourceGroup))
+    .filter((item) => item.price > 0);
+
+  const trueSoldEvidence = evidence.filter((item) => item.evidenceType === 'true_sold');
+  const activeEvidence = evidence.filter((item) => item.evidenceType === 'active');
+  const fallbackUnknownEvidence = evidence.filter((item) => item.evidenceType === 'fallback_unknown');
+  const soldPrices = trueSoldEvidence.map((item) => item.price).filter((price) => price > 0);
+  const activePrices = activeEvidence.map((item) => item.price).filter((price) => price > 0);
+  const medianSold = roundMoney(getMedian(soldPrices));
+  const highSold = soldPrices.length ? Math.max(...soldPrices) : 0;
+  const lowSold = soldPrices.length ? Math.min(...soldPrices) : 0;
+  const priceSpread = medianSold > 0 && highSold > lowSold ? (highSold - lowSold) / medianSold : 0;
+  const volatility = medianSold > 0 ? getStandardDeviation(soldPrices, getAverage(soldPrices) || medianSold) / medianSold : 0;
+
+  return {
+    evidenceCount: evidence.length,
+    trueSoldCount: trueSoldEvidence.length,
+    activeCount: activeEvidence.length,
+    fallbackUnknownCount: fallbackUnknownEvidence.length,
+    medianSold,
+    weightedSoldAverage: getWeightedSoldAverage(trueSoldEvidence),
+    activeMedianAsk: roundMoney(getMedian(activePrices)),
+    priceSpread: roundMetric(priceSpread),
+    volatility: roundMetric(volatility),
+    evidenceQualityScore: calculateEvidenceQualityScore(evidence),
+    activeOnlyFlag: activeEvidence.length > 0 && trueSoldEvidence.length === 0,
+    fallbackOnlyFlag: fallbackUnknownEvidence.length > 0 && trueSoldEvidence.length === 0 && activeEvidence.length === 0,
+    normalizedEvidence: evidence
+  };
+}
+
 function getSoldCompCount(input = {}) {
   const marketData = input.marketData || {};
   const compData = input.compData || {};
@@ -458,6 +661,7 @@ function evaluateMarketIntelligence(input = {}) {
   const referenceValue = getMarketReference(input);
   const estimatedValue = getEstimatedValue(input);
   const projectedRoi = getProjectedRoi(input);
+  const evidenceSummary = buildEvidenceSummary(input);
 
   const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
   const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
@@ -642,7 +846,8 @@ function evaluateMarketIntelligence(input = {}) {
     referenceMarketValue: Number(referenceValue.toFixed(2)),
     estimatedValue: Number(estimatedValue.toFixed(2)),
     projectedRoi,
-    heuristicFallbackUsed: fallbackUsed
+    heuristicFallbackUsed: fallbackUsed,
+    evidenceSummary
   };
 
   result.summary = summarizeMarketIntelligence(result);
