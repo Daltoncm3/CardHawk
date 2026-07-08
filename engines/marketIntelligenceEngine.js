@@ -1,5 +1,7 @@
 'use strict';
 
+const comparableQualityEngine = require('./comparableQualityEngine');
+
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -662,6 +664,18 @@ function evaluateMarketIntelligence(input = {}) {
   const estimatedValue = getEstimatedValue(input);
   const projectedRoi = getProjectedRoi(input);
   const evidenceSummary = buildEvidenceSummary(input);
+  const comparableQuality = comparableQualityEngine.evaluateComparableQuality({
+    listing: input.listing,
+    comps: evidenceSummary.normalizedEvidence,
+    marketContext: {
+      medianSold: evidenceSummary.medianSold,
+      weightedSoldAverage: evidenceSummary.weightedSoldAverage,
+      referenceMarketValue: referenceValue,
+      marketValue: estimatedValue,
+      priceSpread: evidenceSummary.priceSpread,
+      volatility: evidenceSummary.volatility
+    }
+  });
 
   const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
   const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
@@ -847,7 +861,8 @@ function evaluateMarketIntelligence(input = {}) {
     estimatedValue: Number(estimatedValue.toFixed(2)),
     projectedRoi,
     heuristicFallbackUsed: fallbackUsed,
-    evidenceSummary
+    evidenceSummary,
+    comparableQuality
   };
 
   result.summary = summarizeMarketIntelligence(result);
