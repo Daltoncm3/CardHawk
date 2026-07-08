@@ -258,6 +258,68 @@ function getSoldPrice(comp = {}) {
   return pickFirstNumber([comp], ['soldPrice', 'salePrice', 'price', 'amount', 'totalPrice', 'value'], 0);
 }
 
+function hasSoldDateSignal(comp = {}) {
+  return Boolean(pickFirstValue([comp], ['soldAt', 'dateSold', 'soldDate', 'saleDate', 'completedAt'], ''));
+}
+
+function hasSoldTextSignal(comp = {}) {
+  const text = normalize(
+    [
+      comp.status,
+      comp.listingStatus,
+      comp.source,
+      comp.type,
+      comp.recordType,
+      comp.marketState,
+      comp.saleStatus
+    ].filter(Boolean).join(' ')
+  );
+
+  return /\b(sold|completed|ended)\b/.test(text);
+}
+
+function hasActiveTextSignal(comp = {}) {
+  const text = normalize(
+    [
+      comp.status,
+      comp.listingStatus,
+      comp.source,
+      comp.type,
+      comp.recordType,
+      comp.marketState,
+      comp.saleStatus
+    ].filter(Boolean).join(' ')
+  );
+
+  return /\b(active|live|listed|available|current|open)\b/.test(text);
+}
+
+function classifyEvidenceType(comp = {}) {
+  if (
+    comp.sold === true ||
+    comp.isSold === true ||
+    comp.completed === true ||
+    comp.isCompleted === true ||
+    hasSoldDateSignal(comp) ||
+    hasSoldTextSignal(comp)
+  ) {
+    return 'true_sold';
+  }
+
+  if (
+    comp.active === true ||
+    comp.isActive === true ||
+    hasActiveTextSignal(comp) ||
+    Array.isArray(comp.buyingOptions) ||
+    comp.itemWebUrl ||
+    comp.url
+  ) {
+    return 'active';
+  }
+
+  return 'fallback_unknown';
+}
+
 function getSoldDate(comp = {}) {
   const value = pickFirstValue([comp], ['soldDate', 'saleDate', 'dateSold', 'endedAt', 'endDate', 'timestamp'], '');
   const timestamp = value ? new Date(value).getTime() : NaN;
@@ -922,12 +984,14 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       const soldPrice = getSoldPrice(comp);
       const ageDays = getAgeDays(comp);
       const saleType = getSaleType(comp);
+      const evidenceType = classifyEvidenceType(comp);
 
       return {
         ...comp,
         soldPrice,
         ageDays,
         saleType,
+        evidenceType,
         recencyWeight: Number(getRecencyWeight(ageDays).toFixed(3)),
         saleTypeWeight: getSaleTypeWeight(saleType),
         similarity: comparison.similarity,
@@ -952,6 +1016,9 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   let selectedComps = (usableComps.length ? usableComps : outlierResult.kept).slice(0, 12);
   const strongCompCount = selectedComps.filter((comp) => comp.similarity >= 90).length;
   const compCount = selectedComps.length;
+  const trueSoldCompCount = selectedComps.filter((comp) => comp.evidenceType === 'true_sold').length;
+  const activeCompCount = selectedComps.filter((comp) => comp.evidenceType === 'active').length;
+  const fallbackUnknownCompCount = selectedComps.filter((comp) => comp.evidenceType === 'fallback_unknown').length;
   const usableCompCount = usableComps.length;
 
   const averageSimilarity = compCount
@@ -975,6 +1042,8 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
 
   if (!usableComps.length) warnings.push('No usable comps met the 75 similarity threshold.');
   if (usableCompCount < 3 && usableCompCount > 0) warnings.push(`Thin comp market: only ${usableCompCount} usable comp${usableCompCount === 1 ? '' : 's'} support this value.`);
+  if (activeCompCount > 0) warnings.push(`${activeCompCount} active comp${activeCompCount === 1 ? '' : 's'} preserved for valuation context, not sold support.`);
+  if (fallbackUnknownCompCount > 0) warnings.push(`${fallbackUnknownCompCount} comp${fallbackUnknownCompCount === 1 ? '' : 's'} had unknown evidence type and do not count as sold support.`);
   if (selectedComps.length > 0 && selectedComps.length < 3) warnings.push(`Valuation is driven by only ${selectedComps.length} selected comp${selectedComps.length === 1 ? '' : 's'}.`);
   if (selectedComps.length < 3 && pricingSpread > 0.65) warnings.push('Selected comps are thin and pricing spread is high; valuation confidence is conservative.');
   if (outlierResult.ignored.length) warnings.push(`${outlierResult.ignored.length} pricing outlier${outlierResult.ignored.length === 1 ? '' : 's'} ignored.`);
@@ -1013,6 +1082,10 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
 
   const result = {
     compCount,
+    trueSoldCompCount,
+    soldCompCount: trueSoldCompCount,
+    activeCompCount,
+    fallbackUnknownCompCount,
     strongCompCount,
     averageSimilarity: Number(averageSimilarity.toFixed(1)),
     bestSimilarity,
@@ -1028,6 +1101,7 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
       similarity: comp.similarity,
       similarityDetails: comp.similarityDetails || [],
       source: comp.source || comp.marketplace || comp.platform || '',
+      evidenceType: comp.evidenceType,
       ageDays: comp.ageDays,
       saleType: comp.saleType,
       recencyWeight: comp.recencyWeight,

@@ -580,7 +580,11 @@ function dealGate(listing = {}) {
   };
 
   const marketData = listing.marketData || {};
-  const soldSales = Array.isArray(listing.soldSales) ? listing.soldSales : [];
+  const soldSales = Array.isArray(listing.soldSales)
+    ? listing.soldSales
+    : Array.isArray(listing.soldSales?.sales)
+      ? listing.soldSales.sales
+      : [];
   const marketIntelligenceData = listing.marketIntelligenceData || {};
   const riskData = listing.riskData || {};
   const compData = listing.compData || {};
@@ -594,11 +598,12 @@ function dealGate(listing = {}) {
   const soldCompCount = Math.max(
     soldSales.length,
     pickNumber([marketData, compData, qualityData, marketIntelligenceData.compQuality], [
+      'trueSoldCompCount',
+      'soldCompCount',
       'soldCount',
       'recentSoldCount',
       'completedSales',
       'salesCount',
-      'compCount',
       'usableSoldCompCount'
     ], 0)
   );
@@ -2187,16 +2192,23 @@ function listingCard(item) {
   `;
 }
 
-loadStore();
-systemHealth.setEngine("scout", SCOUT_ENABLED ? "ok" : "disabled", { scoutIntervalMinutes: SCOUT_INTERVAL_MINUTES });
-systemHealth.setEngine("comps", "ok");
-systemHealth.setEngine("confidence", "ok");
-systemHealth.setEngine("grading", "ok");
-systemHealth.setEngine("quality", "ok");
-systemHealth.setEngine("notifications", notificationEngine.getStatus()?.enabled ? "ok" : "warning", notificationEngine.getStatus());
-systemHealth.setEngine("config", CONFIG_READINESS.status === "ready" ? "ok" : CONFIG_READINESS.status, CONFIG_READINESS);
+if (require.main === module) {
+  loadStore();
+  systemHealth.setEngine("scout", SCOUT_ENABLED ? "ok" : "disabled", { scoutIntervalMinutes: SCOUT_INTERVAL_MINUTES });
+  systemHealth.setEngine("comps", "ok");
+  systemHealth.setEngine("confidence", "ok");
+  systemHealth.setEngine("grading", "ok");
+  systemHealth.setEngine("quality", "ok");
+  systemHealth.setEngine("notifications", notificationEngine.getStatus()?.enabled ? "ok" : "warning", notificationEngine.getStatus());
+  systemHealth.setEngine("config", CONFIG_READINESS.status === "ready" ? "ok" : CONFIG_READINESS.status, CONFIG_READINESS);
 
-app.listen(PORT, () => {
-  console.log(`CardHawk running on port ${PORT}`);
-  startScoutEngine();
-});
+  app.listen(PORT, () => {
+    console.log(`CardHawk running on port ${PORT}`);
+    startScoutEngine();
+  });
+}
+
+module.exports = {
+  app,
+  dealGate
+};
