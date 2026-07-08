@@ -3,6 +3,7 @@
 const comparableQualityEngine = require('./comparableQualityEngine');
 const demandQualityEngine = require('./demandQualityEngine');
 const evidenceSufficiencyEngine = require('./evidenceSufficiencyEngine');
+const supplyPressureEngine = require('./supplyPressureEngine');
 const valuationRangeEngine = require('./valuationRangeEngine');
 
 function toNumber(value, fallback = 0) {
@@ -705,6 +706,19 @@ function evaluateMarketIntelligence(input = {}) {
     marketRegime: input.marketRegime,
     soldSales: input.soldSales
   });
+  const supplyPressure = supplyPressureEngine.evaluateSupplyPressure({
+    listing: input.listing,
+    evidenceSummary,
+    valuationRange,
+    demandQuality,
+    salesVelocityData: input.salesVelocityData || input.salesVelocity,
+    liquidityEvidence: input.liquidityEvidence || input.liquidity,
+    marketRegime: input.marketRegime,
+    activeComps: input.activeComps,
+    activeListings: input.activeListings,
+    marketData: input.marketData,
+    compData: input.compData
+  });
 
   const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
   const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
@@ -894,7 +908,8 @@ function evaluateMarketIntelligence(input = {}) {
     comparableQuality,
     evidenceSufficiency,
     valuationRange,
-    demandQuality
+    demandQuality,
+    supplyPressure
   };
 
   result.summary = summarizeMarketIntelligence(result);

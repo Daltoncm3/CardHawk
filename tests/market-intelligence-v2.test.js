@@ -508,3 +508,89 @@ test('demandQuality does not change existing decision-bearing Market Intelligenc
   assert.equal(withDemandQuality.estimatedValue, base.estimatedValue);
   assert.ok(withDemandQuality.demandQuality);
 });
+
+test('supplyPressure exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 96 },
+      { soldPrice: 98, soldAt: '2026-06-25T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 100, soldAt: '2026-06-18T00:00:00.000Z', similarity: 95 }
+    ],
+    marketData: {
+      activeComps: [
+        { price: 110, status: 'active', evidenceType: 'active', seller: 'seller-a', ageDays: 6 },
+        { price: 115, status: 'active', evidenceType: 'active', seller: 'seller-b', ageDays: 8 }
+      ]
+    },
+    salesVelocityData: {
+      soldLast30Days: 3,
+      inventoryPressure: 'normal',
+      details: {
+        activeInventoryKnown: true,
+        activeInventoryQualityKnown: true
+      }
+    },
+    liquidityEvidence: {
+      soldCount: 3,
+      activeCount: 2,
+      sellThroughRate: 0.6
+    }
+  });
+
+  assert.ok(result.supplyPressure);
+  assert.equal(result.supplyPressure.source, 'supply_pressure_engine');
+  assert.equal(result.supplyPressure.trueSoldCount, result.evidenceSummary.trueSoldCount);
+  assert.ok(result.supplyPressure.summary);
+});
+
+test('supplyPressure does not change existing decision-bearing Market Intelligence fields', () => {
+  const sharedLegacyInputs = {
+    salesVelocityData: {
+      soldLast30Days: 4,
+      inventoryPressure: 'normal',
+      details: {
+        activeInventoryKnown: true,
+        activeInventoryQualityKnown: true
+      }
+    },
+    liquidityEvidence: {
+      soldCount: 3,
+      activeCount: 2,
+      sellThroughRate: 0.6
+    }
+  };
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    },
+    ...sharedLegacyInputs
+  });
+
+  const withSupplyPressure = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    },
+    ...sharedLegacyInputs
+  });
+
+  assert.equal(withSupplyPressure.intelligenceScore, base.intelligenceScore);
+  assert.equal(withSupplyPressure.confidenceScore, base.confidenceScore);
+  assert.equal(withSupplyPressure.trustLevel, base.trustLevel);
+  assert.equal(withSupplyPressure.recommendation, base.recommendation);
+  assert.deepEqual(withSupplyPressure.componentScores, base.componentScores);
+  assert.deepEqual(withSupplyPressure.warnings, base.warnings);
+  assert.deepEqual(withSupplyPressure.positives, base.positives);
+  assert.deepEqual(withSupplyPressure.reasons, base.reasons);
+  assert.equal(withSupplyPressure.marketDepth, base.marketDepth);
+  assert.equal(withSupplyPressure.referenceMarketValue, base.referenceMarketValue);
+  assert.equal(withSupplyPressure.estimatedValue, base.estimatedValue);
+  assert.ok(withSupplyPressure.supplyPressure);
+});
