@@ -2,6 +2,7 @@
 
 const comparableQualityEngine = require('./comparableQualityEngine');
 const evidenceSufficiencyEngine = require('./evidenceSufficiencyEngine');
+const valuationRangeEngine = require('./valuationRangeEngine');
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
@@ -684,6 +685,17 @@ function evaluateMarketIntelligence(input = {}) {
     marketData: input.marketData,
     compData: input.compData
   });
+  const valuationRange = valuationRangeEngine.evaluateValuationRange({
+    listing: input.listing,
+    evidenceSummary,
+    comparableQuality,
+    evidenceSufficiency,
+    marketData: input.marketData,
+    compData: input.compData,
+    soldSales: input.soldSales,
+    activeComps: input.activeComps,
+    activeListings: input.activeListings
+  });
 
   const liquidity = scoreLiquidity(soldCount, activeCount, sellThroughRate);
   const demand = clampScore(liquidity * 0.75 + scoreSoldDepth(soldCount) * 0.25);
@@ -871,7 +883,8 @@ function evaluateMarketIntelligence(input = {}) {
     heuristicFallbackUsed: fallbackUsed,
     evidenceSummary,
     comparableQuality,
-    evidenceSufficiency
+    evidenceSufficiency,
+    valuationRange
   };
 
   result.summary = summarizeMarketIntelligence(result);

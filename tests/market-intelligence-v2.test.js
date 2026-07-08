@@ -364,3 +364,55 @@ test('evidenceSufficiency does not change existing decision-bearing Market Intel
   assert.deepEqual(withEvidenceSufficiency.reasons, base.reasons);
   assert.ok(withEvidenceSufficiency.evidenceSufficiency);
 });
+
+test('valuationRange exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 96 },
+      { soldPrice: 98, soldAt: '2026-06-25T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 100, soldAt: '2026-06-18T00:00:00.000Z', similarity: 95 },
+      { soldPrice: 104, soldAt: '2026-06-10T00:00:00.000Z', similarity: 94 },
+      { soldPrice: 110, soldAt: '2026-06-01T00:00:00.000Z', similarity: 94 }
+    ]
+  });
+
+  assert.ok(result.valuationRange);
+  assert.equal(result.valuationRange.source, 'valuation_range_engine');
+  assert.equal(result.valuationRange.basis.trueSoldCount, result.evidenceSummary.trueSoldCount);
+  assert.ok(result.valuationRange.expectedValue > 0);
+});
+
+test('valuationRange does not change existing decision-bearing Market Intelligence fields', () => {
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    }
+  });
+
+  const withValuationRange = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    }
+  });
+
+  assert.equal(withValuationRange.intelligenceScore, base.intelligenceScore);
+  assert.equal(withValuationRange.confidenceScore, base.confidenceScore);
+  assert.equal(withValuationRange.trustLevel, base.trustLevel);
+  assert.equal(withValuationRange.recommendation, base.recommendation);
+  assert.deepEqual(withValuationRange.componentScores, base.componentScores);
+  assert.deepEqual(withValuationRange.warnings, base.warnings);
+  assert.deepEqual(withValuationRange.positives, base.positives);
+  assert.deepEqual(withValuationRange.reasons, base.reasons);
+  assert.equal(withValuationRange.marketDepth, base.marketDepth);
+  assert.equal(withValuationRange.referenceMarketValue, base.referenceMarketValue);
+  assert.equal(withValuationRange.estimatedValue, base.estimatedValue);
+  assert.ok(withValuationRange.valuationRange);
+});
