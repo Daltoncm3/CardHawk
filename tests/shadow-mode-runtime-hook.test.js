@@ -37,6 +37,7 @@ function withShadowFlag(value, fn) {
     if (previous === undefined) delete process.env.CARDHAWK_SHADOW_MODE_ENABLED;
     else process.env.CARDHAWK_SHADOW_MODE_ENABLED = previous;
     server.__setShadowModeDecisionIntelligenceEvaluatorForTest(null);
+    server.__setShadowModeDecisionLoggerForTest(null);
   }
 }
 
@@ -111,8 +112,12 @@ test('Shadow Mode feature flag defaults to disabled', () => {
 test('Decision Intelligence shadow hook is not executed when disabled', () => {
   withShadowFlag('false', () => {
     let calls = 0;
+    let logCalls = 0;
     server.__setShadowModeDecisionIntelligenceEvaluatorForTest(() => {
       calls += 1;
+    });
+    server.__setShadowModeDecisionLoggerForTest(() => {
+      logCalls += 1;
     });
 
     server.runShadowModeDecisionIntelligence({
@@ -121,18 +126,23 @@ test('Decision Intelligence shadow hook is not executed when disabled', () => {
     server.scoreListing(buildListing(), buildCompUniverse());
 
     assert.equal(calls, 0);
+    assert.equal(logCalls, 0);
   });
 });
 
-test('Decision Intelligence shadow hook executes when enabled and discards output', () => {
+test('Decision Intelligence shadow hook executes and logs when enabled while discarding output', () => {
   withShadowFlag('true', () => {
     const inputs = [];
+    const logs = [];
     server.__setShadowModeDecisionIntelligenceEvaluatorForTest((input) => {
       inputs.push(input);
       return {
         recommendationImpact: 'none',
         summary: 'discarded shadow output'
       };
+    });
+    server.__setShadowModeDecisionLoggerForTest((input) => {
+      logs.push(input);
     });
 
     const scoring = server.scoreListing(buildListing(), buildCompUniverse());
@@ -142,6 +152,9 @@ test('Decision Intelligence shadow hook executes when enabled and discards outpu
     assert.ok(inputs[0].comparableQuality);
     assert.ok(inputs[0].valuationRange);
     assert.ok(inputs[0].supplyPressure);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].listing.ebayItemId, 'shadow-target');
+    assert.equal(logs[0].decisionIntelligence.summary, 'discarded shadow output');
     assert.equal(scoring.shadowModeDecisionIntelligence, undefined);
     assert.equal(scoring.shadowMode, undefined);
   });
@@ -156,6 +169,7 @@ test('runtime scoring outputs are unchanged with Shadow Mode enabled', () => {
       recommendationImpact: 'none',
       summary: 'discarded shadow output'
     }));
+    server.__setShadowModeDecisionLoggerForTest(() => {});
 
     return projectRuntimeOutput(server.scoreListing(buildListing(), buildCompUniverse()));
   });
@@ -170,6 +184,25 @@ test('Shadow Mode evaluator failure does not change runtime scoring output', () 
   const enabled = withShadowFlag('true', () => {
     server.__setShadowModeDecisionIntelligenceEvaluatorForTest(() => {
       throw new Error('shadow failure');
+    });
+
+    return projectRuntimeOutput(server.scoreListing(buildListing(), buildCompUniverse()));
+  });
+
+  assert.deepEqual(enabled, disabled);
+});
+
+test('Shadow Mode logger failure does not change runtime scoring output', () => {
+  const disabled = withShadowFlag('false', () =>
+    projectRuntimeOutput(server.scoreListing(buildListing(), buildCompUniverse()))
+  );
+  const enabled = withShadowFlag('true', () => {
+    server.__setShadowModeDecisionIntelligenceEvaluatorForTest(() => ({
+      recommendationImpact: 'none',
+      summary: 'discarded shadow output'
+    }));
+    server.__setShadowModeDecisionLoggerForTest(() => {
+      throw new Error('shadow logger failure');
     });
 
     return projectRuntimeOutput(server.scoreListing(buildListing(), buildCompUniverse()));

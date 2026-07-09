@@ -27,6 +27,7 @@ const listingIdentity = require("./utils/listingIdentity");
 const appStore = require("./utils/appStore");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
+const shadowModeLogger = require("./utils/shadowModeLogger");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
@@ -128,6 +129,7 @@ const CONFIG_READINESS = configReadiness.evaluateConfigReadiness(process.env, {
 
 let store = appStore.createDefaultStore();
 let shadowModeDecisionIntelligenceEvaluator = null;
+let shadowModeDecisionLogger = shadowModeLogger.logShadowModeDecision;
 
 function isShadowModeEnabled(env = process.env) {
   return String(env.CARDHAWK_SHADOW_MODE_ENABLED || "false").toLowerCase() === "true";
@@ -141,17 +143,27 @@ function getShadowModeDecisionIntelligenceEvaluator() {
   return shadowModeDecisionIntelligenceEvaluator;
 }
 
-function runShadowModeDecisionIntelligence(marketIntelligenceData = {}) {
+function runShadowModeDecisionIntelligence(marketIntelligenceData = {}, context = {}) {
   if (!isShadowModeEnabled()) return;
 
   try {
-    getShadowModeDecisionIntelligenceEvaluator()({
+    const decisionIntelligence = getShadowModeDecisionIntelligenceEvaluator()({
       evidenceSufficiency: marketIntelligenceData.evidenceSufficiency,
       listingSimilarity: marketIntelligenceData.listingSimilarity,
       comparableQuality: marketIntelligenceData.comparableQuality,
       valuationRange: marketIntelligenceData.valuationRange,
       supplyPressure: marketIntelligenceData.supplyPressure
     });
+
+    try {
+      shadowModeDecisionLogger({
+        listing: context.listing,
+        scanContext: context.scanContext,
+        decisionIntelligence
+      });
+    } catch (_) {
+      // Passive Shadow Mode logging must never affect runtime behavior.
+    }
   } catch (_) {
     // Shadow Mode is observation-only and must never affect runtime behavior.
   }
@@ -159,6 +171,10 @@ function runShadowModeDecisionIntelligence(marketIntelligenceData = {}) {
 
 function __setShadowModeDecisionIntelligenceEvaluatorForTest(evaluator) {
   shadowModeDecisionIntelligenceEvaluator = evaluator;
+}
+
+function __setShadowModeDecisionLoggerForTest(logger) {
+  shadowModeDecisionLogger = logger || shadowModeLogger.logShadowModeDecision;
 }
 
 function loadStore() {
@@ -500,7 +516,9 @@ const roi = roiData.roi;
         roiData,
         compData
     });
-  runShadowModeDecisionIntelligence(marketIntelligenceData);
+  runShadowModeDecisionIntelligence(marketIntelligenceData, {
+    listing: { ...listing, parsed }
+  });
   
 const decisionData = decisionEngine.makeDecision({
   listing: { ...listing, parsed },
@@ -2263,5 +2281,6 @@ module.exports = {
   scoreListing,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
-  __setShadowModeDecisionIntelligenceEvaluatorForTest
+  __setShadowModeDecisionIntelligenceEvaluatorForTest,
+  __setShadowModeDecisionLoggerForTest
 };
