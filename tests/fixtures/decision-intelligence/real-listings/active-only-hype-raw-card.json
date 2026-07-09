@@ -1,0 +1,121 @@
+{
+  "id": "real-active-only-hype-raw-card",
+  "description": "A hype listing with only active-market context should remain not ready.",
+  "category": "active_only",
+  "listing": {
+    "title": "2024 Prizm Draft Hype Prospect Raw Silver",
+    "price": 129.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "active-only trap"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 0,
+    "activeCount": 7,
+    "fallbackUnknownCount": 0,
+    "medianSold": 0,
+    "weightedSoldAverage": 0,
+    "activeOnlyFlag": true,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 90,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 1,
+      "strong": 6,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Active listings appear strongly similar to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 7,
+    "averageComparableQualityScore": 58,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 6,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Active comparable is informational only and not sold evidence."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": false,
+    "sufficiencyLevel": "unreliable",
+    "evidenceSufficiencyScore": 8,
+    "blockingConcerns": [
+      "No true sold evidence is available.",
+      "Evidence is active-only."
+    ],
+    "warnings": [
+      "Active-only evidence cannot support valuation trust."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is unreliable from the available evidence."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 0,
+    "expectedValue": 0,
+    "ceilingValue": 0,
+    "rangeQuality": "unreliable",
+    "confidence": 0,
+    "summary": "Valuation range is unreliable because true sold support is missing or insufficient."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "elevated",
+    "undercutRiskLevel": "moderate",
+    "resaleBlockerRisk": "moderate",
+    "supplyPressureScore": 71,
+    "undercutRiskScore": 64,
+    "warnings": [
+      "Active inventory is visible but cannot replace sold evidence."
+    ],
+    "summary": "Supply pressure is elevated, but active listings remain context only."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "unreliable",
+    "compPosture": "usable",
+    "valuationPosture": "unreliable_range",
+    "resalePressurePosture": "elevated",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "listing_similarity"
+    ],
+    "cautionSignalSources": [
+      "supply_pressure"
+    ],
+    "blockerSources": [
+      "evidence_sufficiency",
+      "valuation_range"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "No true sold evidence",
+      "active-only",
+      "unreliable"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: matching active listings do not create sold support. Explanation should block valuation trust.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

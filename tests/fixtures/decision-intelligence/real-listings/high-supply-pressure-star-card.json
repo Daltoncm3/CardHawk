@@ -1,0 +1,115 @@
+{
+  "id": "real-high-supply-pressure-star-card",
+  "description": "Usable valuation with heavy active inventory should produce cautious context and valuation-vs-supply conflict.",
+  "category": "high_supply_pressure",
+  "listing": {
+    "title": "2021 Select Star Player Courtside PSA 9",
+    "price": 44.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "resale undercut risk"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 6,
+    "activeCount": 18,
+    "fallbackUnknownCount": 0,
+    "medianSold": 72,
+    "weightedSoldAverage": 70,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 91,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 2,
+      "strong": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 6,
+    "averageComparableQualityScore": 81,
+    "qualityDistribution": {
+      "excellent": 2,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 78,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "True sold evidence meets the suggested minimum."
+    ],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 58,
+    "expectedValue": 71,
+    "ceilingValue": 86,
+    "rangeQuality": "usable",
+    "confidence": 73,
+    "summary": "Valuation range is usable for explanation."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "high",
+    "undercutRiskLevel": "high",
+    "resaleBlockerRisk": "high",
+    "supplyPressureScore": 88,
+    "undercutRiskScore": 84,
+    "warnings": [
+      "Active inventory may force undercutting."
+    ],
+    "summary": "Supply pressure appears high and may require aggressive resale pricing."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "cautious_context",
+    "evidencePosture": "adequate",
+    "compPosture": "strong",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "high",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [
+      "supply_pressure"
+    ],
+    "blockerSources": [],
+    "conflictSources": [
+      "valuation_vs_supply"
+    ],
+    "cautionMessageIncludes": [
+      "Supply pressure"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: the valuation is usable, but inventory depth makes resale execution risky; explanation should call out supply pressure.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

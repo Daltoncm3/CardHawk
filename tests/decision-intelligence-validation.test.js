@@ -22,10 +22,16 @@ function readFixture(filePath) {
 }
 
 function getFixtureFiles() {
-  return fs.readdirSync(FIXTURE_DIR)
-    .filter((fileName) => fileName.endsWith('.json'))
-    .sort()
-    .map((fileName) => path.join(FIXTURE_DIR, fileName));
+  function walk(directory) {
+    return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) return walk(entryPath);
+      if (entry.isFile() && entry.name.endsWith('.json')) return [entryPath];
+      return [];
+    });
+  }
+
+  return walk(FIXTURE_DIR).sort();
 }
 
 function getDecisionInput(fixture) {
@@ -111,7 +117,24 @@ function validateDecisionIntelligenceFixture(fixture) {
   );
   assertExpectedSources(fixture, 'blockers', actual.blockers, expected.blockerSources || []);
   assertExpectedSources(fixture, 'conflicts', actual.conflicts, expected.conflictSources || []);
+  if (expected.supportingSignalSources) {
+    assertExpectedSources(
+      fixture,
+      'supportingSignals',
+      actual.supportingSignals,
+      expected.supportingSignalSources
+    );
+  }
+  if (expected.cautionSignalSources) {
+    assertExpectedSources(
+      fixture,
+      'cautionSignals',
+      actual.cautionSignals,
+      expected.cautionSignalSources
+    );
+  }
   assertExpectedMessages(fixture, 'blocker messages', actual.blockers, expected.blockerMessageIncludes || []);
+  assertExpectedMessages(fixture, 'caution messages', actual.cautionSignals, expected.cautionMessageIncludes || []);
   assert.ok(
     actual.summary,
     formatMismatch(fixture, 'summary', 'non-empty summary', actual.summary)
@@ -146,5 +169,24 @@ test('decision intelligence validation fixtures do not mutate inputs', () => {
       before,
       `Validation mutated fixture ${fixture.id}`
     );
+  }
+});
+
+test('real-listing validation fixtures include review metadata', () => {
+  const realListingFiles = getFixtureFiles()
+    .filter((filePath) => filePath.includes(`${path.sep}real-listings${path.sep}`));
+
+  assert.ok(realListingFiles.length >= 5, 'Expected at least five real-listing validation fixtures.');
+
+  for (const filePath of realListingFiles) {
+    const fixture = readFixture(filePath);
+
+    assert.ok(fixture.listing, `${fixture.id} should include listing metadata.`);
+    assert.ok(fixture.evidenceSummary, `${fixture.id} should include normalized evidence summary.`);
+    assert.ok(fixture.expected, `${fixture.id} should include expected validation outcome.`);
+    assert.ok(fixture.reviewerNotes, `${fixture.id} should include reviewer notes.`);
+    assert.equal(typeof fixture.explanationScore, 'number', `${fixture.id} should include explanation score.`);
+    assert.equal(typeof fixture.falsePositive, 'boolean', `${fixture.id} should include falsePositive flag.`);
+    assert.equal(typeof fixture.falseNegative, 'boolean', `${fixture.id} should include falseNegative flag.`);
   }
 });

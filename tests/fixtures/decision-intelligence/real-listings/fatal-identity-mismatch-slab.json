@@ -1,0 +1,116 @@
+{
+  "id": "real-fatal-identity-mismatch-slab",
+  "description": "A slab/parallel mismatch should produce a comp blocker even with adequate sold evidence.",
+  "category": "fatal_identity_mismatch",
+  "listing": {
+    "title": "2020 Optic Holo PSA 10",
+    "price": 210,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "wrong-comp family"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 5,
+    "activeCount": 2,
+    "fallbackUnknownCount": 0,
+    "medianSold": 260,
+    "weightedSoldAverage": 252,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 42,
+    "similarityBand": "reject",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 0,
+      "weak": 1,
+      "reject": 4
+    },
+    "fatalMismatches": [
+      "parallel mismatch",
+      "grading company mismatch"
+    ],
+    "summary": "Listing similarity is rejected because high-impact identity dimensions do not match."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 5,
+    "averageComparableQualityScore": 82,
+    "qualityDistribution": {
+      "excellent": 2,
+      "good": 3,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 74,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "True sold evidence meets the suggested minimum."
+    ],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 224,
+    "expectedValue": 255,
+    "ceilingValue": 290,
+    "rangeQuality": "usable",
+    "confidence": 70,
+    "summary": "Valuation range is usable for the comp set, but identity mismatch must be reviewed."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 25,
+    "undercutRiskScore": 22,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "adequate",
+    "compPosture": "rejected",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [
+      "listing_similarity"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "similarity",
+      "parallel mismatch",
+      "grading company mismatch"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: evidence may be good for another card, but the identity mismatch should block trust in the explanation.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

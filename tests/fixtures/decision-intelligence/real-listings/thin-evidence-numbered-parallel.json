@@ -1,0 +1,113 @@
+{
+  "id": "real-thin-evidence-numbered-parallel",
+  "description": "A scarce numbered parallel with only limited sold support should produce limited context.",
+  "category": "thin_evidence",
+  "listing": {
+    "title": "2022 Bowman Chrome Prospect Gold /50 Raw",
+    "price": 69.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "thin but plausible"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 2,
+    "activeCount": 2,
+    "fallbackUnknownCount": 0,
+    "medianSold": 88,
+    "weightedSoldAverage": 91,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 76,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy because the numbered parallel market is thin."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 2,
+    "averageComparableQualityScore": 62,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 52,
+    "blockingConcerns": [],
+    "warnings": [
+      "Sold sample is thin."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 58,
+    "expectedValue": 89,
+    "ceilingValue": 121,
+    "rangeQuality": "thin",
+    "confidence": 48,
+    "summary": "Valuation range is thin because sold evidence is limited; use the floor more than the ceiling."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 42,
+    "undercutRiskScore": 39,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: not a reject, but explanation must emphasize thin market evidence and avoid overstating the ceiling.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

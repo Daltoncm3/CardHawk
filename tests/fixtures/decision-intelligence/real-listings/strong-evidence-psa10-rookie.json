@@ -1,0 +1,107 @@
+{
+  "id": "real-strong-evidence-psa10-rookie",
+  "description": "Strong sold evidence and strong comp trust should produce supported context.",
+  "category": "strong_evidence",
+  "listing": {
+    "title": "2023 Topps Chrome Rookie Refractor PSA 10",
+    "price": 82.5,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "clean buy-side context"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 8,
+    "activeCount": 3,
+    "fallbackUnknownCount": 0,
+    "medianSold": 118,
+    "weightedSoldAverage": 121,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 96,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 3,
+      "strong": 5,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings strongly match the graded rookie refractor target."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 8,
+    "averageComparableQualityScore": 86,
+    "qualityDistribution": {
+      "excellent": 4,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "strong",
+    "evidenceSufficiencyScore": 88,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "True sold evidence is deep enough for review."
+    ],
+    "summary": "Evidence sufficiency is strong with enough true sold support."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 104,
+    "expectedValue": 120,
+    "ceilingValue": 138,
+    "rangeQuality": "strong",
+    "confidence": 84,
+    "summary": "Valuation range is strong and tightly supported by sold evidence."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 18,
+    "undercutRiskScore": 16,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "supported_context",
+    "evidencePosture": "strong",
+    "compPosture": "strong",
+    "valuationPosture": "strong_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 5,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [],
+    "conflictSources": []
+  },
+  "reviewerNotes": "Dealer judgment: explanation should be confident but still non-decisional because sold comps, identity, valuation range, and resale pressure align.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}
