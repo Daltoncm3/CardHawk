@@ -24,6 +24,15 @@ function pickFirstNumber(sources, keys, fallback = 0) {
   return fallback;
 }
 
+function hasNumber(source, keys) {
+  if (!source || typeof source !== 'object') return false;
+
+  return keys.some((key) => {
+    if (source[key] === undefined || source[key] === null) return false;
+    return Number.isFinite(toNumber(source[key], NaN));
+  });
+}
+
 function getSalePrice(sale = {}) {
   return pickFirstNumber(
     [sale],
@@ -114,6 +123,76 @@ function getOutlierLevel(score) {
   return 'unreliable';
 }
 
+function getReferencePriceBasis(marketData = {}, compData = {}, soldPrices = []) {
+  const medianKeys = ['medianPrice', 'medianSoldPrice'];
+  const averageKeys = ['averagePrice', 'avgPrice', 'averageSoldPrice', 'avgSoldPrice'];
+
+  if (hasNumber(marketData, medianKeys) || hasNumber(compData, medianKeys) || getMedian(soldPrices) > 0) {
+    return 'median_sold';
+  }
+
+  if (soldPrices.length || hasNumber(marketData, averageKeys) || hasNumber(compData, averageKeys)) {
+    return 'average_sold';
+  }
+
+  return 'unknown';
+}
+
+function normalizeOutlierEvidence(input = {}) {
+  const soldSales = asArray(input.soldSales);
+  const referencePrice = toNumber(input.referencePrice, 0);
+
+  return soldSales
+    .map((sale) => {
+      const price = getSalePrice(sale);
+      const deviationPercent = getDeviationPercent(price, referencePrice);
+      const classification = price > 0 && referencePrice > 0
+        ? classifyOutlier(deviationPercent)
+        : 'unknown';
+
+      return {
+        title: sale.title || sale.name || '',
+        price,
+        deviationPercent: Number(deviationPercent.toFixed(3)),
+        classification,
+        isOutlier: !['normal', 'unknown'].includes(classification),
+        source: sale.source || sale.marketplace || sale.platform || '',
+        soldAt: sale.soldAt || sale.dateSold || sale.soldDate || sale.saleDate || null
+      };
+    })
+    .filter((item) => item.price > 0);
+}
+
+function summarizeOutliers(data = {}) {
+  const compCount = toNumber(data.compCount, 0);
+  const outlierRate = toNumber(data.outlierRate, 0);
+  const extremeOutlierCount = toNumber(data.extremeOutlierCount, 0);
+  const listingClassification = data.listingClassification || 'unknown';
+  const priceSpreadPercent = toNumber(data.priceSpreadPercent, 0);
+
+  if (compCount < 3) {
+    return 'Outlier analysis has insufficient sold evidence and should be treated as directional only.';
+  }
+
+  if (extremeOutlierCount > 0 || outlierRate > 0.3) {
+    return 'Outlier analysis shows elevated sale-price distortion that should be reviewed manually.';
+  }
+
+  if (listingClassification === 'high' || listingClassification === 'extreme') {
+    return 'The listing price appears materially detached from the sold-market reference.';
+  }
+
+  if (priceSpreadPercent > 0.65) {
+    return 'Sold prices are widely spread, reducing confidence in a single market reference.';
+  }
+
+  if (outlierRate <= 0.18) {
+    return 'Comparable sold prices show limited outlier pressure.';
+  }
+
+  return 'Outlier analysis shows moderate pricing noise in the sold-market evidence.';
+}
+
 function analyzeOutliers(input = {}) {
   const marketData = input.marketData || {};
   const soldSales = asArray(input.soldSales);
@@ -137,6 +216,7 @@ function analyzeOutliers(input = {}) {
   );
 
   const referencePrice = marketMedianPrice || marketAveragePrice;
+  const referencePriceBasis = getReferencePriceBasis(marketData, compData, soldPrices);
 
   const marketLowPrice = pickFirstNumber(
     [marketData, compData],
@@ -161,18 +241,9 @@ function analyzeOutliers(input = {}) {
     ? (marketHighPrice - marketLowPrice) / referencePrice
     : 0;
 
-  const outliers = soldPrices
-    .map((price) => {
-      const deviationPercent = getDeviationPercent(price, referencePrice);
-      const classification = classifyOutlier(deviationPercent);
-
-      return {
-        price,
-        deviationPercent: Number(deviationPercent.toFixed(3)),
-        classification
-      };
-    })
-    .filter((item) => item.classification !== 'normal');
+  const outlierEvidence = normalizeOutlierEvidence({ soldSales, referencePrice });
+  const outliers = outlierEvidence
+    .filter((item) => item.isOutlier);
 
   const moderateOutlierCount = outliers.filter((item) => item.classification === 'moderate').length;
   const highOutlierCount = outliers.filter((item) => item.classification === 'high').length;
@@ -228,9 +299,22 @@ function analyzeOutliers(input = {}) {
     positives.push('The listing price is not an obvious market outlier.');
   }
 
-  return {
+  const legacyOutliers = outliers.map((item) => ({
+    price: item.price,
+    deviationPercent: item.deviationPercent,
+    classification: item.classification
+  }));
+
+  const result = {
+    source: 'outlier_analyzer',
+    version: '1.5G',
+    evidenceRole: 'evidence_only',
+    analysisScope: ['sold_market_distribution', 'listing_vs_market_reference'],
     score,
     level: getOutlierLevel(score),
+    outlierRiskScore: score,
+    outlierRiskLevel: getOutlierLevel(score),
+    insufficientEvidence: compCount < 3,
     compCount,
     outlierCount,
     outlierRate: Number(outlierRate.toFixed(3)),
@@ -243,15 +327,38 @@ function analyzeOutliers(input = {}) {
     marketHighPrice,
     standardDeviation: Number(standardDeviation.toFixed(2)),
     priceSpreadPercent: Number(priceSpreadPercent.toFixed(3)),
+    referencePrice: Number(referencePrice.toFixed(2)),
+    referencePriceBasis,
     listingPrice,
     listingDeviationPercent: Number(listingDeviationPercent.toFixed(3)),
     listingClassification,
-    outliers,
+    saleOutlierSummary: {
+      outlierCount,
+      outlierRate: Number(outlierRate.toFixed(3)),
+      moderateCount: moderateOutlierCount,
+      highCount: highOutlierCount,
+      extremeCount: extremeOutlierCount
+    },
+    listingOutlier: {
+      price: listingPrice,
+      deviationPercent: Number(listingDeviationPercent.toFixed(3)),
+      classification: listingClassification
+    },
+    outlierEvidence,
+    outliers: legacyOutliers,
     warnings,
-    positives
+    positives,
+    summary: ''
   };
+
+  result.summary = summarizeOutliers(result);
+  return result;
 }
 
 module.exports = {
-  analyzeOutliers
+  analyzeOutliers,
+  classifyOutlier,
+  normalizeOutlierEvidence,
+  scoreOutlierRisk,
+  summarizeOutliers
 };
