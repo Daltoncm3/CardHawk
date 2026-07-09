@@ -687,3 +687,103 @@ test('marketRegime does not change existing decision-bearing Market Intelligence
   assert.equal(withMarketRegime.estimatedValue, base.estimatedValue);
   assert.ok(withMarketRegime.marketRegime);
 });
+
+test('decisionIntelligence exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 94 },
+      { soldPrice: 100, soldAt: '2026-07-03T00:00:00.000Z', similarity: 96 },
+      { soldPrice: 108, soldAt: '2026-07-05T00:00:00.000Z', similarity: 98 }
+    ],
+    listingSimilarity: {
+      similarityBand: 'strong',
+      averageSimilarityScore: 94,
+      similarityDistribution: {
+        exact: 0,
+        strong: 3,
+        usable: 0,
+        weak: 0,
+        reject: 0
+      },
+      summary: 'Listings are strongly similar.'
+    },
+    activeListings: [
+      { price: 110, status: 'active', evidenceType: 'active', seller: 'seller-a' }
+    ],
+    salesVelocityData: {
+      soldLast30Days: 4,
+      inventoryPressure: 'normal'
+    },
+    liquidityEvidence: {
+      soldCount: 3,
+      activeCount: 1,
+      sellThroughRate: 0.75
+    }
+  });
+
+  assert.ok(result.decisionIntelligence);
+  assert.equal(result.decisionIntelligence.source, 'decision_intelligence_engine');
+  assert.equal(result.decisionIntelligence.mode, 'explanation_only');
+  assert.equal(result.decisionIntelligence.recommendationImpact, 'none');
+  assert.ok(result.decisionIntelligence.summary);
+});
+
+test('decisionIntelligence does not change existing decision-bearing Market Intelligence fields', () => {
+  const sharedEvidenceInputs = {
+    listingSimilarity: {
+      similarityBand: 'strong',
+      averageSimilarityScore: 94,
+      similarityDistribution: {
+        exact: 0,
+        strong: 3,
+        usable: 0,
+        weak: 0,
+        reject: 0
+      },
+      summary: 'Listings are strongly similar.'
+    },
+    salesVelocityData: {
+      soldLast30Days: 4,
+      inventoryPressure: 'normal'
+    },
+    liquidityEvidence: {
+      soldCount: 3,
+      activeCount: 1,
+      sellThroughRate: 0.75
+    }
+  };
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    },
+    ...sharedEvidenceInputs
+  });
+
+  const withDecisionIntelligence = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    },
+    ...sharedEvidenceInputs
+  });
+
+  assert.equal(withDecisionIntelligence.intelligenceScore, base.intelligenceScore);
+  assert.equal(withDecisionIntelligence.confidenceScore, base.confidenceScore);
+  assert.equal(withDecisionIntelligence.trustLevel, base.trustLevel);
+  assert.equal(withDecisionIntelligence.recommendation, base.recommendation);
+  assert.deepEqual(withDecisionIntelligence.componentScores, base.componentScores);
+  assert.deepEqual(withDecisionIntelligence.warnings, base.warnings);
+  assert.deepEqual(withDecisionIntelligence.positives, base.positives);
+  assert.deepEqual(withDecisionIntelligence.reasons, base.reasons);
+  assert.equal(withDecisionIntelligence.marketDepth, base.marketDepth);
+  assert.equal(withDecisionIntelligence.referenceMarketValue, base.referenceMarketValue);
+  assert.equal(withDecisionIntelligence.estimatedValue, base.estimatedValue);
+  assert.ok(withDecisionIntelligence.decisionIntelligence);
+});
