@@ -1,5 +1,7 @@
 'use strict';
 
+// Canonical Comparable Quality owner; aggregate sample fields are evidence-only.
+
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -151,6 +153,22 @@ function scoreSource(source) {
   return 55;
 }
 
+function getCondition(value = {}) {
+  return normalize(pickFirstValue(
+    [value],
+    ['condition', 'grade', 'itemCondition', 'cardCondition', 'conditionName'],
+    ''
+  ));
+}
+
+function getSourceName(value = {}) {
+  return normalize(pickFirstValue(
+    [value],
+    ['source', 'marketplace', 'platform', 'site'],
+    ''
+  ));
+}
+
 function scorePriceReliability(comp = {}, marketContext = {}) {
   const price = pickFirstNumber(
     [comp],
@@ -295,10 +313,51 @@ function summarizeComparableQuality(data = {}) {
   return 'Comparable quality is weak or incomplete and should be treated cautiously.';
 }
 
+function getAggregateSampleQuality(input = {}) {
+  const comps = asArray(input.comps);
+  const listing = input.listing || {};
+  const evidenceTypes = comps.map(getEvidenceType);
+  const ageValues = comps
+    .map(getAgeDays)
+    .filter((ageDays) => Number.isFinite(ageDays) && ageDays >= 0);
+  const sources = comps
+    .map(getSourceName)
+    .filter(Boolean);
+  const listingCondition = getCondition(listing);
+  const knownConditionComps = comps.filter((comp) => getCondition(comp));
+  const matchingConditionComps = listingCondition
+    ? knownConditionComps.filter((comp) => getCondition(comp) === listingCondition)
+    : [];
+  const sourceList = Array.from(new Set(sources));
+
+  return {
+    sampleDepth: {
+      totalComparableCount: comps.length,
+      trueSoldCount: evidenceTypes.filter((type) => type === 'true_sold').length,
+      activeCount: evidenceTypes.filter((type) => type === 'active').length,
+      fallbackUnknownCount: evidenceTypes.filter((type) => type === 'fallback_unknown').length
+    },
+    averageAgeDays: ageValues.length
+      ? Number((ageValues.reduce((sum, ageDays) => sum + ageDays, 0) / ageValues.length).toFixed(1))
+      : 0,
+    sourceDiversity: {
+      sourceCount: sourceList.length,
+      sources: sourceList
+    },
+    knownConditionRate: comps.length
+      ? Number((knownConditionComps.length / comps.length).toFixed(3))
+      : 0,
+    conditionMatchRate: knownConditionComps.length
+      ? Number((matchingConditionComps.length / knownConditionComps.length).toFixed(3))
+      : 0
+  };
+}
+
 function evaluateComparableQuality(input = {}) {
   const comps = asArray(input.comps || input.comparables || input.selectedComps);
   const marketContext = input.marketContext || {};
   const scoredComps = comps.map((comp) => scoreComparable({ comp, marketContext }));
+  const aggregateSampleQuality = getAggregateSampleQuality({ comps, listing: input.listing });
   const distribution = {
     excellent: 0,
     good: 0,
@@ -322,6 +381,11 @@ function evaluateComparableQuality(input = {}) {
     averageComparableQualityScore,
     qualityDistribution: distribution,
     scoredComps,
+    sampleDepth: aggregateSampleQuality.sampleDepth,
+    averageAgeDays: aggregateSampleQuality.averageAgeDays,
+    sourceDiversity: aggregateSampleQuality.sourceDiversity,
+    knownConditionRate: aggregateSampleQuality.knownConditionRate,
+    conditionMatchRate: aggregateSampleQuality.conditionMatchRate,
     warnings: uniqueMessages(scoredComps.flatMap((comp) => comp.warnings)),
     summary: ''
   };

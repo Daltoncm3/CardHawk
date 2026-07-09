@@ -153,6 +153,97 @@ test('batch comparable quality returns distribution and summary', () => {
   assert.ok(result.summary);
 });
 
+test('aggregate sample-quality fields are exposed without changing batch scoring outputs', () => {
+  const result = comparableQualityEngine.evaluateComparableQuality({
+    marketContext,
+    listing: {
+      condition: 'PSA 10'
+    },
+    comps: [
+      {
+        soldPrice: 100,
+        ageDays: 10,
+        source: 'ebay completed sold',
+        condition: 'PSA 10',
+        status: 'sold',
+        similarity: 96
+      },
+      {
+        soldPrice: 104,
+        ageDays: 20,
+        source: 'pwcc completed sold',
+        condition: 'PSA 9',
+        status: 'completed',
+        similarity: 90
+      },
+      {
+        price: 108,
+        ageDays: 5,
+        source: 'ebay active',
+        condition: 'PSA 10',
+        status: 'active',
+        similarity: 95
+      },
+      {
+        price: 99,
+        source: 'manual'
+      }
+    ]
+  });
+  const expectedAverageScore = Math.round(
+    result.scoredComps.reduce((sum, comp) => sum + comp.comparableQualityScore, 0) /
+    result.scoredComps.length
+  );
+
+  assert.deepEqual(result.sampleDepth, {
+    totalComparableCount: 4,
+    trueSoldCount: 2,
+    activeCount: 1,
+    fallbackUnknownCount: 1
+  });
+  assert.equal(result.averageAgeDays, 11.7);
+  assert.deepEqual(result.sourceDiversity, {
+    sourceCount: 4,
+    sources: ['ebay completed sold', 'pwcc completed sold', 'ebay active', 'manual']
+  });
+  assert.equal(result.knownConditionRate, 0.75);
+  assert.equal(result.conditionMatchRate, 0.667);
+  assert.equal(result.averageComparableQualityScore, expectedAverageScore);
+  assert.equal(
+    Object.values(result.qualityDistribution).reduce((sum, count) => sum + count, 0),
+    result.scoredComparableCount
+  );
+});
+
+test('empty comparable quality output includes safe aggregate sample fields', () => {
+  const result = comparableQualityEngine.evaluateComparableQuality({
+    marketContext,
+    comps: []
+  });
+
+  assert.deepEqual(result.sampleDepth, {
+    totalComparableCount: 0,
+    trueSoldCount: 0,
+    activeCount: 0,
+    fallbackUnknownCount: 0
+  });
+  assert.equal(result.averageAgeDays, 0);
+  assert.deepEqual(result.sourceDiversity, {
+    sourceCount: 0,
+    sources: []
+  });
+  assert.equal(result.knownConditionRate, 0);
+  assert.equal(result.conditionMatchRate, 0);
+  assert.equal(result.averageComparableQualityScore, 0);
+  assert.deepEqual(result.qualityDistribution, {
+    excellent: 0,
+    good: 0,
+    usable: 0,
+    weak: 0,
+    reject: 0
+  });
+});
+
 test('engine does not mutate input comps', () => {
   const comp = Object.freeze({
     title: 'Immutable comp',
