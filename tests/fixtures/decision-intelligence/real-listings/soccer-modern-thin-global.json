@@ -1,0 +1,113 @@
+{
+  "id": "real-soccer-modern-thin-global",
+  "description": "Modern soccer parallel with limited global comps should remain limited context.",
+  "category": "thin_evidence_modern",
+  "listing": {
+    "title": "2021 Merlin Chrome U23 Aqua Refractor /199 PSA 10",
+    "price": 145,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "soccer thin market"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 2,
+    "activeCount": 5,
+    "fallbackUnknownCount": 0,
+    "medianSold": 170,
+    "weightedSoldAverage": 164,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 78,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 1,
+      "usable": 1,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy because parallel and region context is thin."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 2,
+    "averageComparableQualityScore": 59,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 51,
+    "blockingConcerns": [],
+    "warnings": [
+      "Limited global sold sample."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 118,
+    "expectedValue": 167,
+    "ceilingValue": 225,
+    "rangeQuality": "thin",
+    "confidence": 46,
+    "summary": "Valuation range is thin because sold evidence is limited; use the floor more than the ceiling."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 50,
+    "undercutRiskScore": 46,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: soccer parallels can be international and sparse; explanation should not overstate support.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

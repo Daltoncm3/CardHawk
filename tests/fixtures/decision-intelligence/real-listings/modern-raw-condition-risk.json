@@ -1,0 +1,115 @@
+{
+  "id": "real-modern-raw-condition-risk",
+  "description": "Raw card with condition uncertainty should produce limited context despite sold evidence.",
+  "category": "raw_condition_risk",
+  "listing": {
+    "title": "2018 Chrome Rookie Raw Refractor",
+    "price": 64.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "raw condition review"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 4,
+    "activeCount": 5,
+    "fallbackUnknownCount": 0,
+    "medianSold": 82,
+    "weightedSoldAverage": 79,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 69,
+    "similarityBand": "weak",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 2,
+      "weak": 2,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listing similarity is weak because raw condition is uncertain."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 52,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 3,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Condition mismatch risk is present."
+    ],
+    "summary": "Comparable quality is weak or incomplete and should be treated cautiously."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 54,
+    "blockingConcerns": [],
+    "warnings": [
+      "Raw condition risk limits trust."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 52,
+    "expectedValue": 81,
+    "ceilingValue": 110,
+    "rangeQuality": "thin",
+    "confidence": 48,
+    "summary": "Valuation range is thin because condition uncertainty widens the range."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 48,
+    "undercutRiskScore": 44,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "weak",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 1,
+    "supportingSignalSources": [
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "weak",
+      "limited",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: raw condition uncertainty means explanation should stay limited even with some solds.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

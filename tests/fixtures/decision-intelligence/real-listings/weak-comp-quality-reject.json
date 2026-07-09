@@ -1,0 +1,120 @@
+{
+  "id": "real-weak-comp-quality-reject",
+  "description": "Strong identity with rejected comp quality should block Decision Intelligence context.",
+  "category": "weak_comparable_quality",
+  "listing": {
+    "title": "2021 Prizm Rookie Color Match PSA 10",
+    "price": 310,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "bad comp set"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 3,
+    "activeCount": 3,
+    "fallbackUnknownCount": 1,
+    "medianSold": 365,
+    "weightedSoldAverage": 340,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 88,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 1,
+      "strong": 2,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 46,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 1,
+      "weak": 2,
+      "reject": 1
+    },
+    "warnings": [
+      "Comparable quality includes rejected or identity-failed comps."
+    ],
+    "summary": "Comparable quality includes rejected or identity-failed comps and should be reviewed."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 56,
+    "blockingConcerns": [],
+    "warnings": [
+      "Comp quality is weak."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 260,
+    "expectedValue": 350,
+    "ceilingValue": 470,
+    "rangeQuality": "usable",
+    "confidence": 58,
+    "summary": "Valuation range is usable for explanation."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 28,
+    "undercutRiskScore": 24,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "thin",
+    "compPosture": "rejected",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 3,
+    "supportingSignalSources": [
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency"
+    ],
+    "blockerSources": [
+      "comparable_quality"
+    ],
+    "conflictSources": [
+      "similarity_vs_quality",
+      "valuation_vs_evidence"
+    ],
+    "blockerMessageIncludes": [
+      "rejected"
+    ],
+    "cautionMessageIncludes": [
+      "limited"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: same-card appearance is not enough when the comp set itself is weak or rejected.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

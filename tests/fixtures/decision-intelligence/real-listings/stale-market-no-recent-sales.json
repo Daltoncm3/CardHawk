@@ -1,0 +1,115 @@
+{
+  "id": "real-stale-market-no-recent-sales",
+  "description": "Stale sales with no recent activity should produce limited context.",
+  "category": "stale_market",
+  "listing": {
+    "title": "2017 Select Field Level PSA 10",
+    "price": 135,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "stale sales"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 3,
+    "activeCount": 2,
+    "fallbackUnknownCount": 0,
+    "medianSold": 160,
+    "weightedSoldAverage": 158,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 82,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 1,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 3,
+    "averageComparableQualityScore": 56,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 2,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Comparable is stale."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 49,
+    "blockingConcerns": [],
+    "warnings": [
+      "Recent sold activity is stale."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 122,
+    "expectedValue": 159,
+    "ceilingValue": 205,
+    "rangeQuality": "thin",
+    "confidence": 43,
+    "summary": "Valuation range is thin because sold evidence is stale."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 40,
+    "undercutRiskScore": 36,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: old sales make the value directional rather than current.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

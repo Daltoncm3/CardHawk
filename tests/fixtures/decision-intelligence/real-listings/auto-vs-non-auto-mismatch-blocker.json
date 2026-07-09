@@ -1,0 +1,111 @@
+{
+  "id": "real-auto-vs-non-auto-mismatch-blocker",
+  "description": "Autograph target compared to non-auto sold comps should block comp trust.",
+  "category": "auto_vs_non_auto",
+  "listing": {
+    "title": "2021 Bowman Chrome Prospect Auto Refractor",
+    "price": 325,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "auto mismatch"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 5,
+    "activeCount": 4,
+    "fallbackUnknownCount": 0,
+    "medianSold": 95,
+    "weightedSoldAverage": 99,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 30,
+    "similarityBand": "reject",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 0,
+      "weak": 1,
+      "reject": 4
+    },
+    "fatalMismatches": [
+      "autograph mismatch"
+    ],
+    "summary": "Listing similarity is rejected because autograph status does not match."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 5,
+    "averageComparableQualityScore": 78,
+    "qualityDistribution": {
+      "excellent": 1,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 72,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 80,
+    "expectedValue": 97,
+    "ceilingValue": 118,
+    "rangeQuality": "usable",
+    "confidence": 68,
+    "summary": "Valuation range is usable for the non-auto comp set, but identity mismatch must be reviewed."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 26,
+    "undercutRiskScore": 22,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "adequate",
+    "compPosture": "rejected",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [
+      "listing_similarity"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "autograph mismatch"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: non-auto comps are not acceptable support for an auto target.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

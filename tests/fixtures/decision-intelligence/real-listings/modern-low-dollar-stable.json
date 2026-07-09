@@ -1,0 +1,107 @@
+{
+  "id": "real-modern-low-dollar-stable",
+  "description": "Low-dollar modern card with many stable sales should produce supported context.",
+  "category": "modern_low_dollar_stable",
+  "listing": {
+    "title": "2023 Topps Flagship Rookie PSA 9",
+    "price": 12.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "low-dollar stable"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 18,
+    "activeCount": 14,
+    "fallbackUnknownCount": 0,
+    "medianSold": 18,
+    "weightedSoldAverage": 17.5,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 93,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 6,
+      "strong": 12,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 18,
+    "averageComparableQualityScore": 82,
+    "qualityDistribution": {
+      "excellent": 6,
+      "good": 12,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "strong",
+    "evidenceSufficiencyScore": 90,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "Deep sold sample exists."
+    ],
+    "summary": "Evidence sufficiency is strong with enough true sold support."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 15,
+    "expectedValue": 18,
+    "ceilingValue": 21,
+    "rangeQuality": "strong",
+    "confidence": 86,
+    "summary": "Valuation range is strong and tightly supported by sold evidence."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 50,
+    "undercutRiskScore": 48,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "supported_context",
+    "evidencePosture": "strong",
+    "compPosture": "strong",
+    "valuationPosture": "strong_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 5,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [],
+    "conflictSources": []
+  },
+  "reviewerNotes": "Dealer judgment: common low-dollar market is well understood; explanation should be stable but not a recommendation.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

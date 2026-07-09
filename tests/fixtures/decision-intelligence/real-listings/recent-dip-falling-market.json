@@ -1,0 +1,118 @@
+{
+  "id": "real-recent-dip-falling-market",
+  "description": "Falling recent sales should keep context limited even when comps are usable.",
+  "category": "falling_market",
+  "listing": {
+    "title": "2021 Prizm Former MVP PSA 10",
+    "price": 210,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "falling market"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 5,
+    "activeCount": 9,
+    "fallbackUnknownCount": 0,
+    "medianSold": 245,
+    "weightedSoldAverage": 230,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 84,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 2,
+      "usable": 3,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 5,
+    "averageComparableQualityScore": 63,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 5,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [
+      "Recent sales are trending lower."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 57,
+    "blockingConcerns": [],
+    "warnings": [
+      "Market is falling."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 180,
+    "expectedValue": 235,
+    "ceilingValue": 292,
+    "rangeQuality": "thin",
+    "confidence": 49,
+    "summary": "Valuation range is thin because recent price direction is falling."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "elevated",
+    "undercutRiskLevel": "moderate",
+    "resaleBlockerRisk": "moderate",
+    "supplyPressureScore": 69,
+    "undercutRiskScore": 63,
+    "warnings": [
+      "Active supply is elevated."
+    ],
+    "summary": "Supply pressure is elevated."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "elevated",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 1,
+    "supportingSignalSources": [
+      "comparable_quality"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "Supply pressure",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: falling price context makes the read cautious even with several sales.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

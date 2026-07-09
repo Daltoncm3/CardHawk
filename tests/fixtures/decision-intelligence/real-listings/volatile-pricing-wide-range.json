@@ -1,0 +1,115 @@
+{
+  "id": "real-volatile-pricing-wide-range",
+  "description": "Wide sold-price range should produce limited context with thin valuation posture.",
+  "category": "volatile_pricing",
+  "listing": {
+    "title": "2023 National Treasures Patch /99",
+    "price": 260,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "volatile sold range"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 4,
+    "activeCount": 4,
+    "fallbackUnknownCount": 0,
+    "medianSold": 310,
+    "weightedSoldAverage": 345,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 74,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 1,
+      "usable": 3,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but patch variation requires review."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 60,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 4,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [
+      "Patch sales vary widely."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 55,
+    "blockingConcerns": [],
+    "warnings": [
+      "Price spread is wide."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 210,
+    "expectedValue": 328,
+    "ceilingValue": 515,
+    "rangeQuality": "thin",
+    "confidence": 45,
+    "summary": "Valuation range is thin because sold prices are volatile."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 48,
+    "undercutRiskScore": 45,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "requires review",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: usable but too volatile to present as clean support.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

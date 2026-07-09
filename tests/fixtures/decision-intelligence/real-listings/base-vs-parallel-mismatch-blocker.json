@@ -1,0 +1,111 @@
+{
+  "id": "real-base-vs-parallel-mismatch-blocker",
+  "description": "Base-card comps against a parallel target should be rejected as comp context.",
+  "category": "base_vs_parallel",
+  "listing": {
+    "title": "2020 Mosaic Green Parallel PSA 10",
+    "price": 119.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "base parallel mismatch"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 6,
+    "activeCount": 3,
+    "fallbackUnknownCount": 0,
+    "medianSold": 85,
+    "weightedSoldAverage": 88,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 44,
+    "similarityBand": "reject",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 1,
+      "weak": 1,
+      "reject": 4
+    },
+    "fatalMismatches": [
+      "base/parallel mismatch"
+    ],
+    "summary": "Listing similarity is rejected because base-card evidence does not match the parallel target."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 6,
+    "averageComparableQualityScore": 80,
+    "qualityDistribution": {
+      "excellent": 2,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 76,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 74,
+    "expectedValue": 87,
+    "ceilingValue": 104,
+    "rangeQuality": "usable",
+    "confidence": 71,
+    "summary": "Valuation range is usable for the comp set, but identity mismatch must be reviewed."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 45,
+    "undercutRiskScore": 40,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "adequate",
+    "compPosture": "rejected",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [
+      "listing_similarity"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "base/parallel mismatch"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: good base-card data should not validate a parallel target.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

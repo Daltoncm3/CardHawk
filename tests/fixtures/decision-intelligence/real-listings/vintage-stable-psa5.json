@@ -1,0 +1,107 @@
+{
+  "id": "real-vintage-stable-psa5",
+  "description": "Vintage graded card with stable sold comps should produce supported context.",
+  "category": "vintage_stable_market",
+  "listing": {
+    "title": "1968 Topps Hall of Famer PSA 5",
+    "price": 155,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "vintage stable"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 10,
+    "activeCount": 6,
+    "fallbackUnknownCount": 0,
+    "medianSold": 188,
+    "weightedSoldAverage": 184,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 89,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 4,
+      "strong": 6,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the vintage graded target."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 10,
+    "averageComparableQualityScore": 84,
+    "qualityDistribution": {
+      "excellent": 4,
+      "good": 6,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "strong",
+    "evidenceSufficiencyScore": 86,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "Deep vintage sold history is available."
+    ],
+    "summary": "Evidence sufficiency is strong with enough true sold support."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 166,
+    "expectedValue": 186,
+    "ceilingValue": 212,
+    "rangeQuality": "strong",
+    "confidence": 82,
+    "summary": "Valuation range is strong and tightly supported by sold evidence."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 43,
+    "undercutRiskScore": 38,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "supported_context",
+    "evidencePosture": "strong",
+    "compPosture": "strong",
+    "valuationPosture": "strong_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 5,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [],
+    "conflictSources": []
+  },
+  "reviewerNotes": "Dealer judgment: vintage grade-specific comps are stable enough for strong explanatory context.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

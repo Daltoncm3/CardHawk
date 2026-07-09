@@ -1,0 +1,107 @@
+{
+  "id": "real-psa10-vs-psa9-premium-context",
+  "description": "PSA 10 target with PSA 9-adjacent comps should remain supported when true PSA 10 sold evidence is adequate.",
+  "category": "psa10_vs_psa9",
+  "listing": {
+    "title": "2022 Prizm Star Rookie Silver PSA 10",
+    "price": 185,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "grade premium supported"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 5,
+    "activeCount": 4,
+    "fallbackUnknownCount": 0,
+    "medianSold": 245,
+    "weightedSoldAverage": 238,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 88,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 2,
+      "strong": 3,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target PSA 10 listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 5,
+    "averageComparableQualityScore": 79,
+    "qualityDistribution": {
+      "excellent": 1,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 77,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "PSA 10 sold support is adequate."
+    ],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 214,
+    "expectedValue": 240,
+    "ceilingValue": 272,
+    "rangeQuality": "usable",
+    "confidence": 73,
+    "summary": "Valuation range is usable for explanation."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 44,
+    "undercutRiskScore": 41,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "supported_context",
+    "evidencePosture": "adequate",
+    "compPosture": "usable",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 5,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [],
+    "conflictSources": []
+  },
+  "reviewerNotes": "Dealer judgment: PSA 10 premium is interpretable because same-grade sold support exists; explanation should stay context-only.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

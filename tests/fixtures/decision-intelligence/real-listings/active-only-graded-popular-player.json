@@ -1,0 +1,124 @@
+{
+  "id": "real-active-only-graded-popular-player",
+  "description": "Popular graded player card with only active listings should remain not ready.",
+  "category": "active_only",
+  "listing": {
+    "title": "2024 Donruss Optic Popular Rookie PSA 10",
+    "price": 199.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "popular active-only"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 0,
+    "activeCount": 11,
+    "fallbackUnknownCount": 0,
+    "medianSold": 0,
+    "weightedSoldAverage": 0,
+    "activeOnlyFlag": true,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 94,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 4,
+      "strong": 7,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Active listings appear strongly similar to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 11,
+    "averageComparableQualityScore": 60,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 10,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Active comparable is informational only and not sold evidence."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": false,
+    "sufficiencyLevel": "unreliable",
+    "evidenceSufficiencyScore": 12,
+    "blockingConcerns": [
+      "No true sold evidence is available.",
+      "Evidence is active-only."
+    ],
+    "warnings": [
+      "Active-only evidence cannot support valuation trust."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is unreliable from the available evidence."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 0,
+    "expectedValue": 0,
+    "ceilingValue": 0,
+    "rangeQuality": "unreliable",
+    "confidence": 0,
+    "summary": "Valuation range is unreliable because true sold support is missing or insufficient."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "high",
+    "undercutRiskLevel": "high",
+    "resaleBlockerRisk": "high",
+    "supplyPressureScore": 90,
+    "undercutRiskScore": 86,
+    "warnings": [
+      "Active inventory is high."
+    ],
+    "summary": "Supply pressure appears high and may require aggressive resale pricing."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "unreliable",
+    "compPosture": "usable",
+    "valuationPosture": "unreliable_range",
+    "resalePressurePosture": "high",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "listing_similarity"
+    ],
+    "cautionSignalSources": [
+      "supply_pressure"
+    ],
+    "blockerSources": [
+      "evidence_sufficiency",
+      "valuation_range"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "No true sold evidence",
+      "active-only",
+      "unreliable"
+    ],
+    "cautionMessageIncludes": [
+      "Supply pressure"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: popular player does not matter without true sold support.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

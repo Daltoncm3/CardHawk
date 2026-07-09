@@ -1,0 +1,115 @@
+{
+  "id": "real-vintage-high-dollar-thin",
+  "description": "High-dollar vintage card with limited sales should remain limited context.",
+  "category": "vintage_high_dollar_thin",
+  "listing": {
+    "title": "1953 Topps Star SGC 4",
+    "price": 2400,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "high-dollar thin vintage"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 2,
+    "activeCount": 3,
+    "fallbackUnknownCount": 0,
+    "medianSold": 2650,
+    "weightedSoldAverage": 2580,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 72,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy because vintage grade and eye appeal vary."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 2,
+    "averageComparableQualityScore": 58,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 2,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [
+      "Eye appeal and qualifier risk require review."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 50,
+    "blockingConcerns": [],
+    "warnings": [
+      "High-dollar sample is thin."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 2050,
+    "expectedValue": 2615,
+    "ceilingValue": 3340,
+    "rangeQuality": "thin",
+    "confidence": 44,
+    "summary": "Valuation range is thin because sold evidence is limited; use the floor more than the ceiling."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "normal",
+    "undercutRiskLevel": "normal",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 46,
+    "undercutRiskScore": 42,
+    "warnings": [],
+    "summary": "Supply pressure appears normal."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "normal",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 2,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: high-dollar vintage requires caution despite usable comps.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

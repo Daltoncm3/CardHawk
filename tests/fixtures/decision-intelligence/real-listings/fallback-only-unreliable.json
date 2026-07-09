@@ -1,0 +1,121 @@
+{
+  "id": "real-fallback-only-unreliable",
+  "description": "Fallback-only evidence should be not ready even if a valuation estimate exists elsewhere.",
+  "category": "fallback_only",
+  "listing": {
+    "title": "Obscure Minor League Team Issue Auto",
+    "price": 89.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "fallback-only"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 0,
+    "activeCount": 0,
+    "fallbackUnknownCount": 4,
+    "medianSold": 0,
+    "weightedSoldAverage": 0,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": true
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 0,
+    "similarityBand": "unknown",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Listing similarity is unknown from the available evidence."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 32,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 0,
+      "weak": 4,
+      "reject": 0
+    },
+    "warnings": [
+      "Comparable evidence type is unknown or fallback."
+    ],
+    "summary": "Comparable quality is weak or incomplete and should be treated cautiously."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": false,
+    "sufficiencyLevel": "unreliable",
+    "evidenceSufficiencyScore": 9,
+    "blockingConcerns": [
+      "No true sold evidence is available.",
+      "Evidence is fallback-only."
+    ],
+    "warnings": [
+      "Fallback-only evidence cannot support valuation trust."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is unreliable from the available evidence."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 0,
+    "expectedValue": 0,
+    "ceilingValue": 0,
+    "rangeQuality": "unreliable",
+    "confidence": 0,
+    "summary": "Valuation range is unreliable because true sold support is missing or insufficient."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "unknown",
+    "undercutRiskLevel": "unknown",
+    "resaleBlockerRisk": "unknown",
+    "supplyPressureScore": 0,
+    "undercutRiskScore": 0,
+    "warnings": [],
+    "summary": "Supply pressure is unknown."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "unreliable",
+    "compPosture": "weak",
+    "valuationPosture": "unreliable_range",
+    "resalePressurePosture": "unknown",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 0,
+    "supportingSignalSources": [],
+    "cautionSignalSources": [
+      "comparable_quality",
+      "supply_pressure"
+    ],
+    "blockerSources": [
+      "evidence_sufficiency",
+      "valuation_range"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "No true sold evidence",
+      "fallback-only",
+      "unreliable"
+    ],
+    "cautionMessageIncludes": [
+      "weak",
+      "unknown"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: no reliable market read can be made from fallback-only evidence.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

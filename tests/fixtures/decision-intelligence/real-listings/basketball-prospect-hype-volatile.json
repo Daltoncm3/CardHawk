@@ -1,0 +1,118 @@
+{
+  "id": "real-basketball-prospect-hype-volatile",
+  "description": "Prospect hype and volatile pricing should produce limited context, not supported context.",
+  "category": "hype_driven_volatile",
+  "listing": {
+    "title": "2025 Prizm Rookie Variation Raw",
+    "price": 240,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "prospect hype"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 4,
+    "activeCount": 20,
+    "fallbackUnknownCount": 0,
+    "medianSold": 275,
+    "weightedSoldAverage": 310,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 73,
+    "similarityBand": "usable",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 1,
+      "usable": 3,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings are usable but review-worthy because variation and early-market behavior add risk."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 57,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 3,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Early hype sales are volatile."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "limited",
+    "evidenceSufficiencyScore": 54,
+    "blockingConcerns": [],
+    "warnings": [
+      "Price evidence is volatile."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is limited and should remain informational."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 180,
+    "expectedValue": 292,
+    "ceilingValue": 430,
+    "rangeQuality": "thin",
+    "confidence": 42,
+    "summary": "Valuation range is thin because sold prices are volatile."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "elevated",
+    "undercutRiskLevel": "moderate",
+    "resaleBlockerRisk": "moderate",
+    "supplyPressureScore": 70,
+    "undercutRiskScore": 64,
+    "warnings": [
+      "Active supply is rising."
+    ],
+    "summary": "Supply pressure is elevated."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "limited_context",
+    "evidencePosture": "thin",
+    "compPosture": "usable",
+    "valuationPosture": "thin_range",
+    "resalePressurePosture": "elevated",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 1,
+    "supportingSignalSources": [
+      "comparable_quality"
+    ],
+    "cautionSignalSources": [
+      "evidence_sufficiency",
+      "listing_similarity",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "blockerSources": [],
+    "conflictSources": [],
+    "cautionMessageIncludes": [
+      "limited",
+      "review-worthy",
+      "Supply pressure",
+      "thin"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: prospect hype should be called out as limited context, not a clean market read.",
+  "explanationScore": 4,
+  "falsePositive": false,
+  "falseNegative": false
+}

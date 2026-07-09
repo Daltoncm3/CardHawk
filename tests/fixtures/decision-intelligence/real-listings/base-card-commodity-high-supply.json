@@ -1,0 +1,113 @@
+{
+  "id": "real-base-card-commodity-high-supply",
+  "description": "Commodity base card with lots of inventory should produce cautious context despite usable valuation.",
+  "category": "high_supply_pressure",
+  "listing": {
+    "title": "2023 Topps Chrome Base Rookie PSA 10",
+    "price": 29.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "commodity supply"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 22,
+    "activeCount": 65,
+    "fallbackUnknownCount": 0,
+    "medianSold": 38,
+    "weightedSoldAverage": 37,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 95,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 8,
+      "strong": 14,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 22,
+    "averageComparableQualityScore": 84,
+    "qualityDistribution": {
+      "excellent": 8,
+      "good": 14,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "strong",
+    "evidenceSufficiencyScore": 91,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [],
+    "summary": "Evidence sufficiency is strong with enough true sold support."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 32,
+    "expectedValue": 38,
+    "ceilingValue": 44,
+    "rangeQuality": "strong",
+    "confidence": 88,
+    "summary": "Valuation range is strong and tightly supported by sold evidence."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "high",
+    "undercutRiskLevel": "high",
+    "resaleBlockerRisk": "high",
+    "supplyPressureScore": 93,
+    "undercutRiskScore": 90,
+    "warnings": [
+      "Active inventory may force undercutting."
+    ],
+    "summary": "Supply pressure appears high and may require aggressive resale pricing."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "cautious_context",
+    "evidencePosture": "strong",
+    "compPosture": "strong",
+    "valuationPosture": "strong_range",
+    "resalePressurePosture": "high",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [
+      "supply_pressure"
+    ],
+    "blockerSources": [],
+    "conflictSources": [
+      "valuation_vs_supply"
+    ],
+    "cautionMessageIncludes": [
+      "Supply pressure"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: valuation is clear but resale undercut pressure is the core risk.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

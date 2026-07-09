@@ -1,0 +1,113 @@
+{
+  "id": "real-raw-vs-graded-mismatch-blocker",
+  "description": "Raw target using graded comps should block comp trust even when sold activity exists.",
+  "category": "raw_vs_graded",
+  "listing": {
+    "title": "2019 Optic Rated Rookie Raw Holo",
+    "price": 74.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "raw graded mismatch"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 4,
+    "activeCount": 2,
+    "fallbackUnknownCount": 0,
+    "medianSold": 140,
+    "weightedSoldAverage": 136,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 38,
+    "similarityBand": "reject",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 0,
+      "usable": 0,
+      "weak": 1,
+      "reject": 3
+    },
+    "fatalMismatches": [
+      "raw/graded mismatch"
+    ],
+    "summary": "Listing similarity is rejected because raw and graded evidence do not match."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 74,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 4,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 70,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "Sold evidence exists."
+    ],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 115,
+    "expectedValue": 138,
+    "ceilingValue": 164,
+    "rangeQuality": "usable",
+    "confidence": 67,
+    "summary": "Valuation range is usable for the provided comp set."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 24,
+    "undercutRiskScore": 20,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "adequate",
+    "compPosture": "rejected",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "supply_pressure",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [],
+    "blockerSources": [
+      "listing_similarity"
+    ],
+    "conflictSources": [],
+    "blockerMessageIncludes": [
+      "raw/graded mismatch"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: graded comps cannot validate a raw target without explicit raw sold support.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}

@@ -1,0 +1,115 @@
+{
+  "id": "real-hype-driven-high-supply",
+  "description": "Hype-driven modern listing with usable valuation but high supply should produce cautious context.",
+  "category": "hype_driven",
+  "listing": {
+    "title": "2026 Bowman 1st Mega Refractor Raw",
+    "price": 54.99,
+    "marketplace": "ebay",
+    "listingUrl": "redacted-offline-validation",
+    "capturedAt": "2026-07-09",
+    "reviewerLabel": "hype supply risk"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 9,
+    "activeCount": 42,
+    "fallbackUnknownCount": 0,
+    "medianSold": 61,
+    "weightedSoldAverage": 63,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 90,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 3,
+      "strong": 6,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 9,
+    "averageComparableQualityScore": 78,
+    "qualityDistribution": {
+      "excellent": 1,
+      "good": 8,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [
+      "Early market behavior may distort demand."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 74,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 49,
+    "expectedValue": 62,
+    "ceilingValue": 75,
+    "rangeQuality": "usable",
+    "confidence": 70,
+    "summary": "Valuation range is usable for explanation."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "high",
+    "undercutRiskLevel": "high",
+    "resaleBlockerRisk": "high",
+    "supplyPressureScore": 92,
+    "undercutRiskScore": 88,
+    "warnings": [
+      "Active inventory may force undercutting."
+    ],
+    "summary": "Supply pressure appears high and may require aggressive resale pricing."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "cautious_context",
+    "evidencePosture": "adequate",
+    "compPosture": "usable",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "high",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "supportingSignalSources": [
+      "comparable_quality",
+      "evidence_sufficiency",
+      "listing_similarity",
+      "valuation_range"
+    ],
+    "cautionSignalSources": [
+      "supply_pressure"
+    ],
+    "blockerSources": [],
+    "conflictSources": [
+      "valuation_vs_supply"
+    ],
+    "cautionMessageIncludes": [
+      "Supply pressure"
+    ]
+  },
+  "reviewerNotes": "Dealer judgment: sales exist, but active inventory and hype risk make resale execution fragile.",
+  "explanationScore": 5,
+  "falsePositive": false,
+  "falseNegative": false
+}
