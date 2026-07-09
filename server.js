@@ -127,6 +127,39 @@ const CONFIG_READINESS = configReadiness.evaluateConfigReadiness(process.env, {
 });
 
 let store = appStore.createDefaultStore();
+let shadowModeDecisionIntelligenceEvaluator = null;
+
+function isShadowModeEnabled(env = process.env) {
+  return String(env.CARDHAWK_SHADOW_MODE_ENABLED || "false").toLowerCase() === "true";
+}
+
+function getShadowModeDecisionIntelligenceEvaluator() {
+  if (!shadowModeDecisionIntelligenceEvaluator) {
+    shadowModeDecisionIntelligenceEvaluator = require("./engines/decisionIntelligenceEngine").evaluateDecisionIntelligence;
+  }
+
+  return shadowModeDecisionIntelligenceEvaluator;
+}
+
+function runShadowModeDecisionIntelligence(marketIntelligenceData = {}) {
+  if (!isShadowModeEnabled()) return;
+
+  try {
+    getShadowModeDecisionIntelligenceEvaluator()({
+      evidenceSufficiency: marketIntelligenceData.evidenceSufficiency,
+      listingSimilarity: marketIntelligenceData.listingSimilarity,
+      comparableQuality: marketIntelligenceData.comparableQuality,
+      valuationRange: marketIntelligenceData.valuationRange,
+      supplyPressure: marketIntelligenceData.supplyPressure
+    });
+  } catch (_) {
+    // Shadow Mode is observation-only and must never affect runtime behavior.
+  }
+}
+
+function __setShadowModeDecisionIntelligenceEvaluatorForTest(evaluator) {
+  shadowModeDecisionIntelligenceEvaluator = evaluator;
+}
 
 function loadStore() {
   try {
@@ -467,6 +500,7 @@ const roi = roiData.roi;
         roiData,
         compData
     });
+  runShadowModeDecisionIntelligence(marketIntelligenceData);
   
 const decisionData = decisionEngine.makeDecision({
   listing: { ...listing, parsed },
@@ -2225,5 +2259,9 @@ if (require.main === module) {
 
 module.exports = {
   app,
-  dealGate
+  dealGate,
+  scoreListing,
+  isShadowModeEnabled,
+  runShadowModeDecisionIntelligence,
+  __setShadowModeDecisionIntelligenceEvaluatorForTest
 };
