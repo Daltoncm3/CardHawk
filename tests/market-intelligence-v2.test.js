@@ -594,3 +594,96 @@ test('supplyPressure does not change existing decision-bearing Market Intelligen
   assert.equal(withSupplyPressure.estimatedValue, base.estimatedValue);
   assert.ok(withSupplyPressure.supplyPressure);
 });
+
+test('marketRegime exists in Market Intelligence output', () => {
+  const result = evaluate({
+    soldSales: [
+      { soldPrice: 92, soldAt: '2026-07-01T00:00:00.000Z', similarity: 94 },
+      { soldPrice: 100, soldAt: '2026-07-03T00:00:00.000Z', similarity: 96 },
+      { soldPrice: 108, soldAt: '2026-07-05T00:00:00.000Z', similarity: 98 }
+    ],
+    trendData: {
+      direction: 'up',
+      percentChange: 12,
+      confidence: 80
+    },
+    salesVelocityData: {
+      soldLast7Days: 2,
+      soldLast30Days: 6,
+      soldLast90Days: 10,
+      salesTrend: 'rising',
+      confidence: 78,
+      inventoryPressure: 'low'
+    },
+    liquidityEvidence: {
+      liquidityLevel: 'good',
+      liquidityScore: 76,
+      soldCount: 3,
+      activeCount: 2
+    }
+  });
+
+  assert.ok(result.marketRegime);
+  assert.equal(result.marketRegime.source, 'market_regime_engine');
+  assert.ok(result.marketRegime.primaryRegime);
+  assert.ok(result.marketRegime.summary);
+  assert.ok(result.marketRegime.dimensions);
+});
+
+test('marketRegime does not change existing decision-bearing Market Intelligence fields', () => {
+  const sharedIntelligenceInputs = {
+    trendData: {
+      direction: 'up',
+      percentChange: 12,
+      confidence: 80
+    },
+    salesVelocityData: {
+      soldLast7Days: 2,
+      soldLast30Days: 6,
+      soldLast90Days: 10,
+      salesTrend: 'rising',
+      confidence: 78,
+      inventoryPressure: 'low'
+    },
+    liquidityEvidence: {
+      liquidityLevel: 'good',
+      liquidityScore: 76,
+      soldCount: 3,
+      activeCount: 2
+    }
+  };
+  const base = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80
+    },
+    ...sharedIntelligenceInputs
+  });
+
+  const withMarketRegime = evaluate({
+    compData: {
+      compCount: 3,
+      soldCompCount: 3,
+      confidence: 80,
+      selectedComps: [
+        { price: 100, status: 'active', evidenceType: 'active', similarity: 95 },
+        { price: 100, similarity: 95 }
+      ]
+    },
+    ...sharedIntelligenceInputs
+  });
+
+  assert.equal(withMarketRegime.intelligenceScore, base.intelligenceScore);
+  assert.equal(withMarketRegime.confidenceScore, base.confidenceScore);
+  assert.equal(withMarketRegime.trustLevel, base.trustLevel);
+  assert.equal(withMarketRegime.recommendation, base.recommendation);
+  assert.deepEqual(withMarketRegime.componentScores, base.componentScores);
+  assert.deepEqual(withMarketRegime.warnings, base.warnings);
+  assert.deepEqual(withMarketRegime.positives, base.positives);
+  assert.deepEqual(withMarketRegime.reasons, base.reasons);
+  assert.equal(withMarketRegime.marketDepth, base.marketDepth);
+  assert.equal(withMarketRegime.referenceMarketValue, base.referenceMarketValue);
+  assert.equal(withMarketRegime.estimatedValue, base.estimatedValue);
+  assert.ok(withMarketRegime.marketRegime);
+});
