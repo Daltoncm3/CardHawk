@@ -1,0 +1,91 @@
+{
+  "id": "supported-context",
+  "description": "Strong similarity, adequate evidence, usable valuation, and low supply pressure should produce supported explanation context.",
+  "listing": {
+    "title": "2024 Topps Chrome John Doe Rookie PSA 10",
+    "price": 84.99,
+    "marketplace": "ebay"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 4,
+    "activeCount": 2,
+    "fallbackUnknownCount": 0,
+    "medianSold": 112,
+    "weightedSoldAverage": 116,
+    "activeOnlyFlag": false,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 92,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 1,
+      "strong": 3,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable listings show strong similarity to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 4,
+    "averageComparableQualityScore": 83,
+    "qualityDistribution": {
+      "excellent": 1,
+      "good": 3,
+      "usable": 0,
+      "weak": 0,
+      "reject": 0
+    },
+    "warnings": [],
+    "summary": "Comparable quality is strong across the available evidence."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": true,
+    "sufficiencyLevel": "adequate",
+    "evidenceSufficiencyScore": 76,
+    "blockingConcerns": [],
+    "warnings": [],
+    "positives": [
+      "True sold evidence meets the suggested minimum."
+    ],
+    "summary": "Evidence sufficiency is adequate, with enough support to trust the valuation context cautiously."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 92,
+    "expectedValue": 116,
+    "ceilingValue": 138,
+    "rangeQuality": "usable",
+    "confidence": 74,
+    "summary": "Valuation range is usable but should be reviewed: floor $92, expected $116, ceiling $138."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "low",
+    "undercutRiskLevel": "low",
+    "resaleBlockerRisk": "low",
+    "supplyPressureScore": 22,
+    "undercutRiskScore": 18,
+    "warnings": [],
+    "summary": "Supply pressure appears low from the available active-market evidence."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "supported_context",
+    "evidencePosture": "adequate",
+    "compPosture": "strong",
+    "valuationPosture": "usable_range",
+    "resalePressurePosture": "low",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 4,
+    "blockerSources": [],
+    "conflictSources": []
+  }
+}

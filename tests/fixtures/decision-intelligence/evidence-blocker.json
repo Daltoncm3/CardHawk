@@ -1,0 +1,106 @@
+{
+  "id": "evidence-blocker",
+  "description": "Active-only evidence and an unreliable valuation range should produce a not-ready explanation with blocker sources.",
+  "listing": {
+    "title": "2023 Panini Prizm Jane Prospect Silver Raw",
+    "price": 149.99,
+    "marketplace": "ebay"
+  },
+  "evidenceSummary": {
+    "trueSoldCount": 0,
+    "activeCount": 5,
+    "fallbackUnknownCount": 0,
+    "medianSold": 0,
+    "weightedSoldAverage": 0,
+    "activeOnlyFlag": true,
+    "fallbackOnlyFlag": false
+  },
+  "listingSimilarity": {
+    "source": "listing_similarity_engine",
+    "averageSimilarityScore": 88,
+    "similarityBand": "strong",
+    "similarityDistribution": {
+      "exact": 0,
+      "strong": 4,
+      "usable": 1,
+      "weak": 0,
+      "reject": 0
+    },
+    "fatalMismatches": [],
+    "summary": "Comparable active listings appear similar to the target listing."
+  },
+  "comparableQuality": {
+    "source": "comparable_quality_engine",
+    "scoredComparableCount": 5,
+    "averageComparableQualityScore": 57,
+    "qualityDistribution": {
+      "excellent": 0,
+      "good": 0,
+      "usable": 4,
+      "weak": 1,
+      "reject": 0
+    },
+    "warnings": [
+      "Active comparable is informational only and not sold evidence."
+    ],
+    "summary": "Comparable quality is usable but should remain evidence-only."
+  },
+  "evidenceSufficiency": {
+    "source": "evidence_sufficiency_engine",
+    "sufficientForValuation": false,
+    "sufficiencyLevel": "unreliable",
+    "evidenceSufficiencyScore": 10,
+    "blockingConcerns": [
+      "No true sold evidence is available.",
+      "Evidence is active-only."
+    ],
+    "warnings": [
+      "Active-only evidence cannot support valuation trust."
+    ],
+    "positives": [],
+    "summary": "Evidence sufficiency is unreliable from the available evidence."
+  },
+  "valuationRange": {
+    "source": "valuation_range_engine",
+    "floorValue": 0,
+    "expectedValue": 0,
+    "ceilingValue": 0,
+    "rangeQuality": "unreliable",
+    "confidence": 0,
+    "summary": "Valuation range is unreliable because true sold support is missing or insufficient."
+  },
+  "supplyPressure": {
+    "source": "supply_pressure_engine",
+    "pressureLevel": "elevated",
+    "undercutRiskLevel": "moderate",
+    "resaleBlockerRisk": "moderate",
+    "supplyPressureScore": 68,
+    "undercutRiskScore": 62,
+    "warnings": [
+      "Active inventory is visible but cannot replace sold evidence."
+    ],
+    "summary": "Supply pressure is elevated, but active listings remain context only."
+  },
+  "decisionIntelligence": {
+    "overallReadiness": "not_ready",
+    "evidencePosture": "unreliable",
+    "compPosture": "usable",
+    "valuationPosture": "unreliable_range",
+    "resalePressurePosture": "elevated",
+    "recommendationImpact": "none"
+  },
+  "expected": {
+    "validationOutcome": "pass",
+    "minimumSupportingSignals": 1,
+    "blockerSources": [
+      "evidence_sufficiency",
+      "valuation_range"
+    ],
+    "blockerMessageIncludes": [
+      "No true sold evidence",
+      "active-only",
+      "unreliable"
+    ],
+    "conflictSources": []
+  }
+}
