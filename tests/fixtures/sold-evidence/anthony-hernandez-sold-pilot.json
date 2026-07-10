@@ -1,0 +1,217 @@
+{
+  "asOf": "2026-07-10T00:00:00.000Z",
+  "listing": {
+    "ebayItemId": "anthony-hernandez-pilot-target",
+    "title": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC Rookie",
+    "price": 4.49,
+    "shipping": 0,
+    "totalCost": 4.49,
+    "sellerFeedbackPercentage": 99.8,
+    "sellerFeedbackScore": 840,
+    "url": "https://example.test/active/anthony-hernandez-181-silver-prizm",
+    "parsedIdentity": {
+      "category": "sports_card",
+      "sport": "ufc",
+      "player": "Anthony Hernandez",
+      "year": 2023,
+      "brand": "Panini",
+      "product": "Prizm UFC",
+      "setName": "Prizm",
+      "cardNumber": "181",
+      "parallel": "Silver Prizm",
+      "rookie": true,
+      "autograph": false,
+      "memorabilia": false,
+      "serialNumbered": false
+    }
+  },
+  "verifiedSoldRecords": [
+    {
+      "evidenceType": "true_sold",
+      "marketplace": "eBay",
+      "marketplaceSaleId": "ah-181-silver-sold-001",
+      "marketplaceListingId": "ah-181-silver-listing-001",
+      "rawTitle": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC Rookie",
+      "soldPrice": 6.5,
+      "shipping": 1.25,
+      "soldAt": "2026-07-01T18:30:00.000Z",
+      "saleType": "auction",
+      "url": "https://example.test/sold/anthony-hernandez-001",
+      "image": "https://example.test/sold/anthony-hernandez-001.jpg",
+      "condition": "Raw",
+      "gradeCompany": "raw",
+      "grade": "unknown",
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      },
+      "evidenceQualityScore": 91,
+      "evidenceQualityLevel": "strong",
+      "evidenceQuality": {
+        "score": 91,
+        "level": "strong",
+        "reasons": ["verified sold record", "exact title and card number match"]
+      },
+      "source": {
+        "adapter": "manual_pilot_fixture",
+        "retrievalMethod": "manual_import",
+        "sourceReliability": "verified_manual"
+      }
+    },
+    {
+      "evidenceType": "true_sold",
+      "marketplace": "eBay",
+      "marketplaceSaleId": "ah-181-silver-sold-002",
+      "marketplaceListingId": "ah-181-silver-listing-002",
+      "rawTitle": "Anthony Hernandez 2023 Panini Prizm UFC #181 Silver Prizm Rookie RC",
+      "soldPrice": 7,
+      "shipping": 0,
+      "soldAt": "2026-06-27T14:00:00.000Z",
+      "saleType": "buy_it_now",
+      "url": "https://example.test/sold/anthony-hernandez-002",
+      "condition": "Raw",
+      "gradeCompany": "raw",
+      "grade": "unknown",
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      },
+      "evidenceQualityScore": 88,
+      "evidenceQualityLevel": "strong",
+      "source": {
+        "adapter": "manual_pilot_fixture",
+        "retrievalMethod": "manual_import",
+        "sourceReliability": "verified_manual"
+      }
+    },
+    {
+      "evidenceType": "true_sold",
+      "marketplace": "eBay",
+      "marketplaceSaleId": "ah-181-silver-sold-003",
+      "marketplaceListingId": "ah-181-silver-listing-003",
+      "rawTitle": "2023 Prizm UFC Anthony Hernandez Silver Prizm #181 RC Rookie Card",
+      "soldPrice": 8.25,
+      "shipping": 1,
+      "soldAt": "2026-06-15T20:15:00.000Z",
+      "saleType": "best_offer",
+      "bestOfferAccepted": true,
+      "priceDisclosure": "reported_price",
+      "url": "https://example.test/sold/anthony-hernandez-003",
+      "condition": "Raw",
+      "gradeCompany": "raw",
+      "grade": "unknown",
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      },
+      "evidenceQualityScore": 84,
+      "evidenceQualityLevel": "good",
+      "source": {
+        "adapter": "manual_pilot_fixture",
+        "retrievalMethod": "manual_import",
+        "sourceReliability": "verified_manual"
+      }
+    },
+    {
+      "evidenceType": "true_sold",
+      "marketplace": "COMC",
+      "marketplaceSaleId": "ah-181-silver-comc-001",
+      "rawTitle": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC",
+      "soldPrice": 6.75,
+      "shipping": 0,
+      "soldAt": "2026-05-28T16:00:00.000Z",
+      "saleType": "buy_it_now",
+      "url": "https://example.test/comc/sold/anthony-hernandez-001",
+      "condition": "Raw",
+      "gradeCompany": "raw",
+      "grade": "unknown",
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      },
+      "evidenceQualityScore": 78,
+      "evidenceQualityLevel": "good",
+      "source": {
+        "adapter": "manual_pilot_fixture",
+        "retrievalMethod": "manual_import",
+        "sourceReliability": "verified_manual"
+      }
+    }
+  ],
+  "contextRecords": [
+    {
+      "evidenceType": "active_context",
+      "marketplace": "eBay",
+      "marketplaceSaleId": "ah-181-active-context-001",
+      "rawTitle": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC Active Listing",
+      "soldPrice": 49.99,
+      "soldAt": "2026-07-08T12:00:00.000Z",
+      "status": "active",
+      "sold": false,
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      }
+    },
+    {
+      "evidenceType": "aggregate_market_price",
+      "marketplace": "Aggregate Provider",
+      "marketplaceSaleId": "ah-181-aggregate-context-001",
+      "rawTitle": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm Aggregate Market Price",
+      "soldPrice": 81.18,
+      "soldAt": "2026-07-08T12:00:00.000Z",
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "ufc",
+        "player": "Anthony Hernandez",
+        "year": 2023,
+        "brand": "Panini",
+        "product": "Prizm UFC",
+        "setName": "Prizm",
+        "cardNumber": "181",
+        "parallel": "Silver Prizm",
+        "rookie": true
+      }
+    }
+  ]
+}
