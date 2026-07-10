@@ -1,0 +1,261 @@
+{
+  "asOf": "2026-07-10T00:00:00.000Z",
+  "targetIdentity": {
+    "category": "sports_card",
+    "sport": "basketball",
+    "player": "Victor Wembanyama",
+    "year": 2023,
+    "brand": "Panini",
+    "setName": "Prizm",
+    "cardNumber": "136",
+    "parallel": "Silver Prizm",
+    "rookie": true,
+    "autograph": false,
+    "memorabilia": false,
+    "serialNumbered": false
+  },
+  "cases": [
+    {
+      "id": "exact-true-sold-match",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "ebay-sold-001",
+        "marketplaceListingId": "ebay-listing-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10",
+        "soldPrice": 121.5,
+        "shipping": 4.99,
+        "soldAt": "2026-07-04T12:00:00.000Z",
+        "saleType": "buy_it_now",
+        "url": "https://example.test/ebay/sold/001",
+        "image": "https://example.test/ebay/sold/001.jpg",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true },
+        "source": { "sourceReliability": "verified_manual" },
+        "evidenceQualityScore": 94,
+        "evidenceQualityLevel": "strong"
+      }
+    },
+    {
+      "id": "duplicate-sold-record",
+      "expected": { "evidenceType": "true_sold", "shouldImport": false, "duplicate": true, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "ebay-sold-001",
+        "marketplaceListingId": "ebay-listing-001-copy",
+        "rawTitle": "Duplicate 2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10",
+        "soldPrice": 999.99,
+        "soldAt": "2026-07-04T12:00:00.000Z",
+        "url": "https://example.test/ebay/sold/001-copy",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "same-card-sold-twice-different-sale-ids",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "ebay-sold-002",
+        "marketplaceListingId": "ebay-listing-002",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Sold Again",
+        "soldPrice": 118,
+        "shipping": 5,
+        "soldAt": "2026-07-06T12:00:00.000Z",
+        "url": "https://example.test/ebay/sold/002",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "active-listing-incorrectly-labeled-sold",
+      "sourceCapabilities": { "transactionLevelSoldSupport": false, "aggregateMarketPriceSupport": false, "activeContextSupport": true },
+      "expected": { "evidenceType": "active_context", "shouldImport": false, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "status": "active",
+        "sold": false,
+        "marketplace": "eBay",
+        "marketplaceSaleId": "active-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Active",
+        "soldPrice": 145,
+        "soldAt": "2026-07-07T12:00:00.000Z",
+        "url": "https://example.test/ebay/active/001",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "missing-sold-price",
+      "expected": { "evidenceType": "true_sold", "shouldImport": false, "rejectionReason": "missing_sold_price", "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "missing-price-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Missing Price",
+        "soldPrice": null,
+        "soldAt": "2026-07-04T12:00:00.000Z",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "missing-sold-date",
+      "expected": { "evidenceType": "true_sold", "shouldImport": false, "rejectionReason": "missing_sold_date", "identityMatch": true, "freshness": "unknown" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "missing-date-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Missing Date",
+        "soldPrice": 119,
+        "soldAt": null,
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "best-offer-undisclosed-final-price",
+      "expected": { "evidenceType": "true_sold", "shouldImport": false, "rejectionReason": "missing_sold_price", "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "best-offer-undisclosed-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Best Offer",
+        "soldPrice": null,
+        "soldAt": "2026-07-03T12:00:00.000Z",
+        "saleType": "best_offer",
+        "bestOfferAccepted": true,
+        "priceDisclosure": "undisclosed",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "raw-vs-graded-mismatch",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "condition": "raw", "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "raw-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC Raw",
+        "soldPrice": 40,
+        "soldAt": "2026-07-02T12:00:00.000Z",
+        "condition": "Raw",
+        "gradeCompany": "raw",
+        "grade": "unknown",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "base-vs-parallel-mismatch",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": false, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "base-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Base RC PSA 10",
+        "soldPrice": 75,
+        "soldAt": "2026-07-04T12:00:00.000Z",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Base", "rookie": true }
+      }
+    },
+    {
+      "id": "numbered-vs-unnumbered-mismatch",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": false, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "numbered-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm /99 PSA 10",
+        "soldPrice": 300,
+        "soldAt": "2026-07-05T12:00:00.000Z",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true, "serialNumbered": true, "printRun": 99 }
+      }
+    },
+    {
+      "id": "cross-marketplace-same-card",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "COMC",
+        "marketplaceSaleId": "comc-sold-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10",
+        "soldPrice": 122,
+        "soldAt": "2026-07-06T13:00:00.000Z",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "stale-sold-evidence",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "freshness": "stale" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "eBay",
+        "marketplaceSaleId": "stale-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Old Sale",
+        "soldPrice": 98,
+        "soldAt": "2025-10-01T12:00:00.000Z",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    },
+    {
+      "id": "strong-recent-sold-evidence",
+      "expected": { "evidenceType": "true_sold", "shouldImport": true, "identityMatch": true, "freshness": "fresh", "evidenceQualityLevel": "strong" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "PWCC",
+        "marketplaceSaleId": "pwcc-sold-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10",
+        "soldPrice": 130,
+        "buyerPremium": 0,
+        "soldAt": "2026-07-08T12:00:00.000Z",
+        "saleType": "auction",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "certificationNumber": "12345678",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true },
+        "source": { "sourceReliability": "verified" },
+        "evidenceQualityScore": 96,
+        "evidenceQualityLevel": "strong"
+      }
+    },
+    {
+      "id": "aggregate-market-price-context",
+      "sourceCapabilities": { "transactionLevelSoldSupport": false, "aggregateMarketPriceSupport": true, "activeContextSupport": false },
+      "expected": { "evidenceType": "aggregate_market_price", "shouldImport": false, "identityMatch": true, "freshness": "fresh" },
+      "record": {
+        "evidenceType": "true_sold",
+        "marketplace": "Aggregate Provider",
+        "marketplaceSaleId": "aggregate-001",
+        "rawTitle": "2023 Panini Prizm Victor Wembanyama #136 Silver Prizm RC PSA 10 Aggregate",
+        "soldPrice": 124,
+        "soldAt": "2026-07-08T12:00:00.000Z",
+        "condition": "PSA 10",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": { "category": "sports_card", "sport": "basketball", "player": "Victor Wembanyama", "year": 2023, "brand": "Panini", "setName": "Prizm", "cardNumber": "136", "parallel": "Silver Prizm", "rookie": true }
+      }
+    }
+  ]
+}
