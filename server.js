@@ -415,7 +415,7 @@ try {
 
   const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
 
- const estimatedValue = marketData.marketValue || compData.marketValue;
+ const estimatedValue = marketData.source === "insufficient_evidence" ? 0 : (marketData.marketValue || compData.marketValue);
 
 const roiData = roiEngine.evaluateROI({
   listing: { ...listing, parsed },

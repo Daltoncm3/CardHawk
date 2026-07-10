@@ -433,6 +433,7 @@ function calculateEvidenceConfidence({ soldEvidence, activeEvidence, source, out
   }
 
   if (source === "active_market") confidence = Math.min(confidence, 72);
+  if (source === "insufficient_evidence") confidence = Math.min(confidence, 25);
   if (source === "fallback") confidence = Math.min(confidence, 25);
 
   return clamp(Math.round(confidence), 0, 100);
@@ -515,6 +516,33 @@ function buildExpectedValueRange({ value, baseValue, confidence, source, soldEvi
   };
 }
 
+function buildActiveMarketContext(activeEvidence = [], activeCompData = {}, soldEvidence = []) {
+  const activePrices = activeEvidence.map(comp => comp.price).filter(price => price > 0).sort((a, b) => a - b);
+  const activeMedianAsk = median(activePrices);
+  const activeLowAsk = activePrices.length ? roundMoney(activePrices[0]) : 0;
+  const activeHighAsk = activePrices.length ? roundMoney(activePrices[activePrices.length - 1]) : 0;
+  const computedSpread = activeMedianAsk > 0
+    ? roundMoney((activeHighAsk - activeLowAsk) / activeMedianAsk)
+    : 0;
+  const pricingSpread = toNumber(activeCompData.pricingSpread, computedSpread);
+  const activeOnly = activeEvidence.length > 0 && soldEvidence.length === 0;
+  const warnings = [];
+
+  if (activeOnly) {
+    warnings.push("Active listing evidence is context only and cannot establish headline market value without true sold comps.");
+  }
+
+  return {
+    activeCompCount: activeEvidence.length,
+    activeMedianAsk,
+    activeLowAsk,
+    activeHighAsk,
+    activeAskSpread: roundMoney(pricingSpread || computedSpread),
+    unavailableForHeadlineValuation: activeOnly,
+    warnings
+  };
+}
+
 function calculateMarketValue(input = {}) {
   const listing = input.listing || input.targetListing || {};
   const activeCompData = input.activeCompData || input.compData || {};
@@ -535,6 +563,7 @@ function calculateMarketValue(input = {}) {
   const soldEvidence = soldClean.kept;
   const activeEvidence = activeClean.kept;
   const outliersRemoved = soldClean.removed.length + activeClean.removed.length;
+  const activeMarketContext = buildActiveMarketContext(activeEvidence, activeCompData, soldEvidence);
 
   let baseValue = 0;
   let source = "fallback";
@@ -557,6 +586,10 @@ function calculateMarketValue(input = {}) {
     ]);
     source = "blended_market";
     method = "soldPlusActiveBlend";
+  } else if (soldEvidence.length === 0 && (activeEvidence.length > 0 || activeCompData.marketValue > 0)) {
+    baseValue = 0;
+    source = "insufficient_evidence";
+    method = "activeOnlyNoSoldEvidence";
   } else if (activeEvidence.length >= 3 || activeCompData.marketValue > 0) {
     baseValue = roundMoney(toNumber(activeCompData.marketValue, 0) || weightedAverage(activeEvidence.map(comp => ({ value: comp.price, weight: comp.weight }))) * 0.9);
     source = "active_market";
@@ -610,6 +643,7 @@ function calculateMarketValue(input = {}) {
     activeCompCount: activeEvidence.length,
     outliersRemoved,
     priceRange: valueRange.priceRange,
+    activeMarketContext,
     listingPrice,
     discountAmount,
     discountPercent,
@@ -640,6 +674,8 @@ function calculateMarketValue(input = {}) {
         ? "Market value blended from limited sold evidence and active-market evidence."
         : source === "active_market"
           ? "Market value based on discounted active-market comps. Sold comps should improve confidence."
+          : source === "insufficient_evidence"
+            ? "Headline market value unavailable because no true sold comp evidence was available. Active listings are retained as context only."
           : "Fallback valuation only. Use low confidence until better evidence is available."
   };
 }
@@ -657,6 +693,7 @@ function summarizeMarketValue(marketData = {}) {
     soldCompCount: toNumber(marketData.soldCompCount, 0),
     activeCompCount: toNumber(marketData.activeCompCount, 0),
     priceRange: marketData.priceRange || { low: 0, high: 0 },
+    activeMarketContext: marketData.activeMarketContext || {},
     discountAmount: roundMoney(marketData.discountAmount || 0),
     discountPercent: toNumber(marketData.discountPercent, 0),
     note: marketData.note || ""
