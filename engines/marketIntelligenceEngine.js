@@ -659,6 +659,28 @@ function summarizeMarketIntelligence(data = {}) {
   return 'Market does not currently have enough reliable support for an investable recommendation.';
 }
 
+function normalizeCanonicalSoldEvidence(input = {}) {
+  const records = Array.isArray(input.records)
+    ? input.records
+    : Array.isArray(input.matchingRecords)
+      ? input.matchingRecords
+      : [];
+
+  return {
+    canonicalCardKey: input.canonicalCardKey || '',
+    trueSoldCount: pickFirstNumber([input], ['trueSoldCount'], 0),
+    recentSoldCount: pickFirstNumber([input], ['recentSoldCount'], 0),
+    medianSold: roundMoney(pickFirstNumber([input], ['medianSold'], 0)),
+    weightedSoldAverage: roundMoney(pickFirstNumber([input], ['weightedSoldAverage'], 0)),
+    newestSoldDate: input.newestSoldDate || null,
+    staleCount: pickFirstNumber([input], ['staleCount'], 0),
+    freshCount: pickFirstNumber([input], ['freshCount'], 0),
+    sourceMix: input.sourceMix || {},
+    records,
+    decisionImpact: 'none'
+  };
+}
+
 function evaluateMarketIntelligence(input = {}) {
   const soldCount = getSoldCompCount(input);
   const activeCount = getActiveCompCount(input);
@@ -931,7 +953,8 @@ function evaluateMarketIntelligence(input = {}) {
     demandQuality,
     supplyPressure,
     marketRegime,
-    decisionIntelligence
+    decisionIntelligence,
+    canonicalSoldEvidence: normalizeCanonicalSoldEvidence(input.canonicalSoldEvidence)
   };
 
   result.summary = summarizeMarketIntelligence(result);

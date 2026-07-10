@@ -28,7 +28,9 @@ const appStore = require("./utils/appStore");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
 const shadowModeLogger = require("./utils/shadowModeLogger");
+const soldEvidenceStore = require("./utils/soldEvidenceStore");
 const { createScoutScanner } = require("./services/scoutScannerService");
+const soldEvidenceService = require("./services/soldEvidenceService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
@@ -39,6 +41,7 @@ app.use(express.json());
 
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "cardhawk-data.json");
+const SOLD_EVIDENCE_FILE = path.join(DATA_DIR, "sold-evidence.json");
 
 const LANES = {
   all: { label: "All", queries: [] },
@@ -128,6 +131,7 @@ const CONFIG_READINESS = configReadiness.evaluateConfigReadiness(process.env, {
 });
 
 let store = appStore.createDefaultStore();
+let canonicalSoldEvidenceStore = null;
 let shadowModeDecisionIntelligenceEvaluator = null;
 let shadowModeDecisionLogger = shadowModeLogger.logShadowModeDecision;
 
@@ -175,6 +179,42 @@ function __setShadowModeDecisionIntelligenceEvaluatorForTest(evaluator) {
 
 function __setShadowModeDecisionLoggerForTest(logger) {
   shadowModeDecisionLogger = logger || shadowModeLogger.logShadowModeDecision;
+}
+
+function loadCanonicalSoldEvidenceStore() {
+  if (!canonicalSoldEvidenceStore) {
+    canonicalSoldEvidenceStore = soldEvidenceStore.loadSoldEvidenceStore(SOLD_EVIDENCE_FILE);
+  }
+
+  return canonicalSoldEvidenceStore;
+}
+
+function getListingCanonicalIdentity(listing = {}) {
+  return listing.canonicalIdentity ||
+    listing.parsedIdentity ||
+    listing.identity ||
+    listing.parsed ||
+    listing;
+}
+
+function getCanonicalSoldEvidenceForListing(listing = {}) {
+  try {
+    return soldEvidenceService.querySoldEvidence(
+      loadCanonicalSoldEvidenceStore(),
+      getListingCanonicalIdentity(listing),
+      { trueSoldOnly: true }
+    );
+  } catch (_) {
+    return soldEvidenceService.querySoldEvidence(
+      soldEvidenceStore.createEmptySoldEvidenceStore(),
+      getListingCanonicalIdentity(listing),
+      { trueSoldOnly: true }
+    );
+  }
+}
+
+function __setCanonicalSoldEvidenceStoreForTest(nextStore) {
+  canonicalSoldEvidenceStore = nextStore || null;
 }
 
 function loadStore() {
@@ -514,7 +554,8 @@ const roi = roiData.roi;
         marketData,
         soldSales: soldSalesSummary.sales,
         roiData,
-        compData
+        compData,
+        canonicalSoldEvidence: getCanonicalSoldEvidenceForListing({ ...listing, parsed })
     });
   runShadowModeDecisionIntelligence(marketIntelligenceData, {
     listing: { ...listing, parsed }
@@ -2282,5 +2323,7 @@ module.exports = {
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
-  __setShadowModeDecisionLoggerForTest
+  __setShadowModeDecisionLoggerForTest,
+  __setCanonicalSoldEvidenceStoreForTest,
+  getCanonicalSoldEvidenceForListing
 };
