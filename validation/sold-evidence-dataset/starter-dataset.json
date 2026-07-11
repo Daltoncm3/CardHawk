@@ -1,0 +1,17 @@
+{
+  "batchId": "manual-canonical-starter-batch-001",
+  "metadata": {
+    "datasetId": "manual-canonical-sold-evidence-v1",
+    "name": "Manual Canonical Sold Evidence Dataset Starter",
+    "createdAt": "2026-07-10T00:00:00.000Z",
+    "owner": "CardHawk validation",
+    "reviewPolicy": "human_verified_exact_identity_required",
+    "notes": "Starter batch for real manually verified sold records. Keep records empty until actual reviewed sales are entered."
+  },
+  "targets": {
+    "uniqueIdentities": 100,
+    "verifiedSoldRecords": 750,
+    "minimumSoldRecordsPerIdentity": 3
+  },
+  "records": []
+}

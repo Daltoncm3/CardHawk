@@ -1,0 +1,107 @@
+{
+  "batchId": "YYYY-MM-source-batch-001",
+  "metadata": {
+    "datasetId": "manual-canonical-sold-evidence-v1",
+    "name": "Manual Canonical Sold Evidence Dataset",
+    "createdAt": "YYYY-MM-DDT00:00:00.000Z",
+    "owner": "CardHawk validation",
+    "reviewPolicy": "human_verified_exact_identity_required",
+    "notes": "Template only. Replace placeholder values with verified sold evidence."
+  },
+  "targets": {
+    "uniqueIdentities": 100,
+    "verifiedSoldRecords": 750,
+    "minimumSoldRecordsPerIdentity": 3
+  },
+  "records": [
+    {
+      "marketplace": "marketplace_name",
+      "marketplaceSaleId": "source_sale_id_if_available",
+      "marketplaceListingId": "source_listing_id_if_available",
+      "sourceRecordId": "source_record_id_or_export_row_id",
+      "evidenceType": "true_sold",
+      "status": "active_evidence",
+      "rawTitle": "exact sold listing title",
+      "soldPrice": 0,
+      "shipping": 0,
+      "tax": null,
+      "buyerPremium": null,
+      "currency": "USD",
+      "soldAt": "YYYY-MM-DDT00:00:00.000Z",
+      "saleType": "auction_or_buy_it_now_or_best_offer",
+      "bestOfferAccepted": false,
+      "priceDisclosure": "reported_price",
+      "url": "https://source.example/sold-record",
+      "image": "https://source.example/image.jpg",
+      "condition": "raw_or_graded_or_visible_condition",
+      "gradeCompany": "PSA_or_BGS_or_SGC_or_CGC_or_raw",
+      "grade": "10_or_9_or_unknown",
+      "certificationNumber": null,
+      "seller": {
+        "username": "seller_name_if_available",
+        "feedbackScore": 0,
+        "feedbackPercentage": 0,
+        "marketplaceSellerId": null
+      },
+      "parsedIdentity": {
+        "category": "sports_card",
+        "sport": "basketball_or_baseball_or_football_or_hockey_or_mma_or_soccer",
+        "game": null,
+        "player": "exact player or subject",
+        "character": null,
+        "year": "YYYY",
+        "brand": "manufacturer or brand",
+        "product": null,
+        "setName": "set name",
+        "cardNumber": "card number without #",
+        "parallel": "base_or_exact_parallel",
+        "variation": null,
+        "rookie": false,
+        "autograph": false,
+        "memorabilia": false,
+        "serialNumbered": false,
+        "serialNumber": null,
+        "printRun": null
+      },
+      "identityConfidence": 0.95,
+      "priceConfidence": 0.95,
+      "soldDateConfidence": 0.95,
+      "evidenceQualityScore": 90,
+      "evidenceQualityLevel": "strong",
+      "evidenceQuality": {
+        "score": 90,
+        "level": "strong",
+        "reasons": [
+          "visible sold price",
+          "visible sold date",
+          "exact identity reviewed"
+        ]
+      },
+      "source": {
+        "adapter": "manual_dataset_entry",
+        "retrievalMethod": "manual_review",
+        "sourceReliability": "verified_manual",
+        "acquiredAt": "YYYY-MM-DDT00:00:00.000Z",
+        "query": "manual search or source description"
+      },
+      "provenance": {
+        "licenseType": "manual_review_source_terms",
+        "allowedUses": {
+          "internalValidation": true,
+          "valuationModeling": false,
+          "redistribution": false,
+          "display": false
+        }
+      },
+      "review": {
+        "status": "human_verified",
+        "reviewer": "reviewer_name",
+        "reviewedAt": "YYYY-MM-DDT00:00:00.000Z",
+        "notes": "Explain exact identity match and any uncertainty."
+      },
+      "datasetTags": [
+        "manual_verified"
+      ]
+    }
+  ]
+}
