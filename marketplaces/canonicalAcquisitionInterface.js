@@ -315,6 +315,7 @@ function normalizeAcquisitionResult(result = {}, sourceMetadata = {}) {
       sourceId: sourceMetadata.sourceId
     })),
     warnings: asArray(result.warnings),
+    metadata: asObject(result.metadata),
     cursor: result.cursor || null,
     acquiredAt: normalizeDate(result.acquiredAt) || new Date().toISOString(),
     summary: {
