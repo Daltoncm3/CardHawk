@@ -632,6 +632,81 @@ marketRecommendation: marketIntelligenceData.recommendation,
   };
 }
 
+function hasBuyLikeWording(value) {
+  return /\b(buy|buy_now|strong_review|strong buy candidate|elite)\b/i.test(String(value || ''));
+}
+
+function getQualityBucketForDisplay(bucket, rejectedByDealGate) {
+  const label = String(bucket || '').trim();
+  if (!label) return '';
+  if (!rejectedByDealGate) return label;
+
+  const normalized = label.toLowerCase();
+  if (normalized === 'elite') return 'Premium desirability context';
+  if (normalized === 'strong buy candidate') return 'Strong desirability context';
+  if (normalized === 'good flip candidate') return 'Good desirability context';
+  if (normalized.includes('buy')) return label.replace(/buy/ig, 'desirability');
+  return label + ' context';
+}
+
+function getSoldEvidenceCountForDisplay(item = {}, dealGateData = {}) {
+  const candidates = [
+    dealGateData.gate?.soldCompCount,
+    item.compData?.trueSoldCompCount,
+    item.marketData?.soldCompCount,
+    item.marketIntelligenceData?.soldCompCount,
+    item.soldSales?.saleCount,
+    Array.isArray(item.soldSales?.sales) ? item.soldSales.sales.length : undefined,
+    item.compData?.soldCompCount
+  ];
+
+  for (const value of candidates) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return Math.max(0, Math.round(number));
+  }
+
+  return 0;
+}
+
+function buildDisplayInterpretation(item = {}) {
+  const dealGateData = item.dealGate && typeof item.dealGate === 'object' ? item.dealGate : null;
+  const rejectedByDealGate = dealGateData?.passed === false;
+  const acceptedByDealGate = dealGateData?.passed === true;
+  const rawQualityBucket = item.qualityBucket || item.qualityData?.bucket || '';
+  const rawDealAction = item.dealGrade?.action || '';
+  const soldEvidenceCount = getSoldEvidenceCountForDisplay(item, dealGateData || {});
+
+  const display = {
+    source: 'presentation_display_guard',
+    authoritativeDecisionSource: dealGateData ? 'deal_gate' : 'unknown',
+    authoritativeDecision: acceptedByDealGate ? 'BUY_NOW' : rejectedByDealGate ? 'REJECTED' : 'UNREVIEWED',
+    primaryDecisionLabel: acceptedByDealGate ? 'BUY_NOW' : rejectedByDealGate ? 'Rejected by Deal Gate' : 'Pending Deal Gate',
+    recommendationImpact: dealGateData ? (acceptedByDealGate ? 'approved_by_deal_gate' : 'blocked_by_deal_gate') : 'unknown',
+    rejectionReasons: rejectedByDealGate ? [...(dealGateData.reasons || dealGateData.rejectionReasons || [])] : [],
+    qualityBucketLabel: getQualityBucketForDisplay(rawQualityBucket, rejectedByDealGate),
+    qualityContextLabel: rawQualityBucket ? 'Desirability context' : '',
+    dealGradeLabel: item.dealGrade?.grade || '',
+    legacyGradeActionLabel: rejectedByDealGate ? '' : rawDealAction,
+    hiddenLegacyGradeAction: rejectedByDealGate ? rawDealAction : '',
+    marketConfidenceLabel: 'Market Context Confidence',
+    soldEvidenceConfidenceLabel: 'Sold Evidence Support',
+    soldEvidenceCount,
+    suppressedBuyLikeLabels: false
+  };
+
+  display.suppressedBuyLikeLabels = rejectedByDealGate && (
+    hasBuyLikeWording(rawQualityBucket) ||
+    hasBuyLikeWording(rawDealAction) ||
+    hasBuyLikeWording(display.qualityBucketLabel) ||
+    hasBuyLikeWording(display.legacyGradeActionLabel)
+  );
+
+  return {
+    ...item,
+    display
+  };
+}
+
 function dealGate(listing = {}) {
   const reasons = [];
   const positives = [];
@@ -1761,6 +1836,7 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
   if (!listing) return res.status(404).json({ error: "Listing not found" });
 
   const scoring = scoreListing(listing, Object.values(store.listings));
+  const displayListing = { ...listing, ...scoring, dealGate: listing.dealGate || dealGate({ ...listing, ...scoring }) };
   res.json({
     listing: {
       ebayItemId: listing.ebayItemId,
@@ -1770,7 +1846,8 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
       url: listing.url
     },
     grade: scoring.dealGrade,
-    quality: scoring.qualityData
+    quality: scoring.qualityData,
+    display: buildDisplayInterpretation(displayListing).display
   });
 });
 
@@ -1779,6 +1856,7 @@ app.get("/api/quality/listing/:itemId", (req, res) => {
   if (!listing) return res.status(404).json({ error: "Listing not found" });
 
   const scoring = scoreListing(listing, Object.values(store.listings));
+  const displayListing = { ...listing, ...scoring, dealGate: listing.dealGate || dealGate({ ...listing, ...scoring }) };
   res.json({
     listing: {
       ebayItemId: listing.ebayItemId,
@@ -1788,7 +1866,8 @@ app.get("/api/quality/listing/:itemId", (req, res) => {
       url: listing.url
     },
     quality: scoring.qualityData,
-    grade: scoring.dealGrade
+    grade: scoring.dealGrade,
+    display: buildDisplayInterpretation(displayListing).display
   });
 });
 
@@ -2268,22 +2347,28 @@ function parsedTags(parsed, lane) {
   }).join("");
 }
 
-function listingCard(item) {
+function listingCard(rawItem) {
+  const item = buildDisplayInterpretation(rawItem);
+  const display = item.display || {};
+  const rejectedByDealGate = display.authoritativeDecision === 'REJECTED';
+
   return `
     <div class="card">
       <img src="${escapeHtml(item.image || "")}" />
       <div class="title">${escapeHtml(item.title)}</div>
       <div>${parsedTags(item.parsed, item.lane)}</div>
-      ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)} — ${escapeHtml(item.dealGrade.action || "")}</div>` : ""}
-      ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(item.qualityBucket || "")}</div>` : ""}
+      ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.rejectionReasons?.length ? ` — ${escapeHtml(display.rejectionReasons.slice(0, 1).join(" | "))}` : ""}</div>` : ""}
+      ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
+      ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
       <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
-      ${item.qualityReasons?.length ? `<div class="meta">Quality: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}
+      ${item.qualityReasons?.length ? `<div class="meta">Quality Context: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}
       ${item.qualityWarnings?.length ? `<div class="meta">Warnings: ${escapeHtml(item.qualityWarnings.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="price">$${money(item.totalCost || item.price)}</div>
       <div class="meta">Price: $${money(item.price)}</div>
       <div class="meta">Shipping: $${money(item.shipping)}</div>
       <div class="meta">Estimated Value: $${money(item.estimatedValue)}</div>
-      <div class="meta">Market Confidence: ${Math.round(item.marketConfidence || 0)}% (${item.compCount || 0} comps)</div>
+      <div class="meta">${escapeHtml(display.marketConfidenceLabel || "Market Context Confidence")}: ${Math.round(item.marketConfidence || 0)}% (${item.compCount || 0} comps)</div>
+      <div class="meta">${escapeHtml(display.soldEvidenceConfidenceLabel || "Sold Evidence Support")}: ${display.soldEvidenceCount || 0} true sold comps</div>
       ${item.confidenceReasons?.length ? `<div class="meta">Confidence: ${escapeHtml(item.confidenceReasons.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="meta">Comp Source: ${escapeHtml(item.compSource || "fallback")}</div>
       <div class="meta">Estimated Profit: $${money(item.estimatedProfit)}</div>
@@ -2320,6 +2405,7 @@ module.exports = {
   app,
   dealGate,
   scoreListing,
+  buildDisplayInterpretation,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
