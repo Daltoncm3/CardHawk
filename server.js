@@ -29,6 +29,7 @@ const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
 const shadowModeLogger = require("./utils/shadowModeLogger");
 const signalAnnotation = require("./utils/signalAnnotation");
+const signalSemantics = require("./utils/signalSemantics");
 const soldEvidenceStore = require("./utils/soldEvidenceStore");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const soldEvidenceService = require("./services/soldEvidenceService");
@@ -634,20 +635,13 @@ marketRecommendation: marketIntelligenceData.recommendation,
 }
 
 function hasBuyLikeWording(value) {
-  return /\b(buy|buy_now|strong_review|strong buy candidate|elite)\b/i.test(String(value || ''));
+  return signalSemantics.hasBuyLikeWording(value);
 }
 
 function getQualityBucketForDisplay(bucket, rejectedByDealGate) {
   const label = String(bucket || '').trim();
   if (!label) return '';
-  if (!rejectedByDealGate) return label;
-
-  const normalized = label.toLowerCase();
-  if (normalized === 'elite') return 'Premium desirability context';
-  if (normalized === 'strong buy candidate') return 'Strong desirability context';
-  if (normalized === 'good flip candidate') return 'Good desirability context';
-  if (normalized.includes('buy')) return label.replace(/buy/ig, 'desirability');
-  return label + ' context';
+  return signalSemantics.getAllowedSignalLabel('quality_bucket', label);
 }
 
 function getSoldEvidenceCountForDisplay(item = {}, dealGateData = {}) {
@@ -700,7 +694,9 @@ function buildDisplayInterpretation(item = {}) {
   const acceptedByDealGate = dealGateData?.passed === true;
   const rawQualityBucket = item.qualityBucket || item.qualityData?.bucket || '';
   const rawDealAction = item.dealGrade?.action || '';
+  const rawRoiRecommendation = item.roiData?.recommendation || '';
   const soldEvidenceCount = getSoldEvidenceCountForDisplay(item, dealGateData || {});
+  const legacyGradeActionLabel = rawDealAction ? signalSemantics.getAllowedSignalLabel('deal_grade', rawDealAction) : '';
 
   const display = {
     source: 'presentation_display_guard',
@@ -712,10 +708,15 @@ function buildDisplayInterpretation(item = {}) {
     qualityBucketLabel: getQualityBucketForDisplay(rawQualityBucket, rejectedByDealGate),
     qualityContextLabel: rawQualityBucket ? 'Desirability context' : '',
     dealGradeLabel: item.dealGrade?.grade || '',
-    legacyGradeActionLabel: rejectedByDealGate ? '' : rawDealAction,
-    hiddenLegacyGradeAction: rejectedByDealGate ? rawDealAction : '',
+    legacyGradeActionLabel: rejectedByDealGate ? '' : legacyGradeActionLabel,
+    hiddenLegacyGradeAction: rejectedByDealGate ? legacyGradeActionLabel : '',
+    legacyGradeActionAuthority: signalSemantics.describeSignalAuthority('deal_grade'),
+    roiRecommendationLabel: rawRoiRecommendation ? signalSemantics.getAllowedSignalLabel('roi_recommendation', rawRoiRecommendation) : '',
+    roiRecommendationAuthority: signalSemantics.describeSignalAuthority('roi_recommendation'),
     marketConfidenceLabel: 'Market Context Confidence',
+    marketConfidenceAuthority: signalSemantics.describeSignalAuthority('market_confidence'),
     soldEvidenceConfidenceLabel: 'Sold Evidence Support',
+    soldEvidenceConfidenceAuthority: signalSemantics.describeSignalAuthority('sold_evidence_confidence'),
     soldEvidenceCount,
     suppressedBuyLikeLabels: false
   };

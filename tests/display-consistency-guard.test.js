@@ -34,6 +34,9 @@ function baseListing(overrides = {}) {
       action: 'BUY_NOW',
       gradeScore: 97
     },
+    roiData: {
+      recommendation: 'BUY_NOW'
+    },
     dealGate: {
       passed: false,
       reasons: ['Zero sold comps available.'],
@@ -52,13 +55,14 @@ test('rejected listings cannot expose buy-like primary display labels', () => {
   assert.equal(displayListing.display.authoritativeDecision, 'REJECTED');
   assert.equal(displayListing.display.primaryDecisionLabel, 'Rejected by Deal Gate');
   assert.equal(displayListing.display.legacyGradeActionLabel, '');
-  assert.equal(displayListing.display.hiddenLegacyGradeAction, 'BUY_NOW');
+  assert.equal(displayListing.display.hiddenLegacyGradeAction, 'Legacy context');
   assert.equal(displayListing.display.qualityBucketLabel.includes('Buy'), false);
   assert.equal(displayListing.display.qualityBucketLabel.includes('Candidate'), false);
+  assert.equal(displayListing.display.hiddenLegacyGradeAction.includes('BUY'), false);
   assert.equal(displayListing.display.suppressedBuyLikeLabels, true);
 });
 
-test('accepted listings keep existing recommendation context labels visible', () => {
+test('accepted listings keep Deal Gate decision while context labels remain neutral', () => {
   const displayListing = buildDisplayInterpretation(baseListing({
     dealGate: {
       passed: true,
@@ -71,8 +75,9 @@ test('accepted listings keep existing recommendation context labels visible', ()
 
   assert.equal(displayListing.display.authoritativeDecision, 'BUY_NOW');
   assert.equal(displayListing.display.primaryDecisionLabel, 'BUY_NOW');
-  assert.equal(displayListing.display.qualityBucketLabel, 'Strong Buy Candidate');
-  assert.equal(displayListing.display.legacyGradeActionLabel, 'BUY_NOW');
+  assert.equal(displayListing.display.qualityBucketLabel, 'Strong desirability context');
+  assert.equal(displayListing.display.legacyGradeActionLabel, 'Legacy context');
+  assert.equal(displayListing.display.roiRecommendationLabel, 'Financial ROI context');
   assert.equal(displayListing.display.suppressedBuyLikeLabels, false);
   assert.equal(displayListing.display.soldEvidenceCount, 5);
 });
@@ -90,6 +95,7 @@ test('presentation guard preserves underlying calculation values', () => {
   assert.equal(displayListing.marketConfidence, before.marketConfidence);
   assert.deepEqual(displayListing.qualityData, before.qualityData);
   assert.deepEqual(displayListing.dealGrade, before.dealGrade);
+  assert.deepEqual(displayListing.roiData, before.roiData);
   assert.deepEqual(displayListing.dealGate, before.dealGate);
 });
 
@@ -111,7 +117,9 @@ test('display labels distinguish market context confidence from sold evidence su
   }));
 
   assert.equal(displayListing.display.marketConfidenceLabel, 'Market Context Confidence');
+  assert.equal(displayListing.display.marketConfidenceAuthority, 'context_only_non_authoritative');
   assert.equal(displayListing.display.soldEvidenceConfidenceLabel, 'Sold Evidence Support');
+  assert.equal(displayListing.display.soldEvidenceConfidenceAuthority, 'evidence_only_non_authoritative');
   assert.equal(displayListing.display.soldEvidenceCount, 2);
 });
 
@@ -129,4 +137,23 @@ test('rejected elite quality is demoted to context wording', () => {
   assert.equal(displayListing.display.qualityBucketLabel, 'Premium desirability context');
   assert.equal(displayListing.display.qualityBucketLabel.includes('Elite'), false);
   assert.equal(displayListing.display.suppressedBuyLikeLabels, true);
+});
+
+test('non-decision display labels do not emit buy-like wording', () => {
+  const displayListing = buildDisplayInterpretation(baseListing({
+    dealGate: {
+      passed: true,
+      reasons: [],
+      gate: {
+        soldCompCount: 5
+      }
+    }
+  }));
+
+  assert.equal(displayListing.display.primaryDecisionLabel, 'BUY_NOW');
+  assert.equal(/buy|buy_now|elite/i.test(displayListing.display.qualityBucketLabel), false);
+  assert.equal(/buy|buy_now|elite/i.test(displayListing.display.legacyGradeActionLabel), false);
+  assert.equal(/buy|buy_now|elite/i.test(displayListing.display.roiRecommendationLabel), false);
+  assert.equal(displayListing.display.legacyGradeActionAuthority, 'legacy_context_only');
+  assert.equal(displayListing.display.roiRecommendationAuthority, 'financial_context_only');
 });
