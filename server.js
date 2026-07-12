@@ -28,6 +28,7 @@ const appStore = require("./utils/appStore");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
 const shadowModeLogger = require("./utils/shadowModeLogger");
+const signalAnnotation = require("./utils/signalAnnotation");
 const soldEvidenceStore = require("./utils/soldEvidenceStore");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const soldEvidenceService = require("./services/soldEvidenceService");
@@ -668,6 +669,31 @@ function getSoldEvidenceCountForDisplay(item = {}, dealGateData = {}) {
   return 0;
 }
 
+function getSignalRawValuesForDisplay(item = {}, display = {}) {
+  const marketIntelligenceData = item.marketIntelligenceData || {};
+
+  return {
+    legacy_score: item.score ?? null,
+    quality_score: item.investmentQuality ?? item.qualityData?.investmentQuality ?? null,
+    quality_bucket: item.qualityBucket ?? item.qualityData?.bucket ?? null,
+    deal_grade: item.dealGrade ?? null,
+    market_confidence: item.marketConfidence ?? null,
+    sold_evidence_confidence: {
+      trueSoldCompCount: display.soldEvidenceCount ?? getSoldEvidenceCountForDisplay(item, item.dealGate || {})
+    },
+    intelligence_score: item.marketIntelligenceScore ?? marketIntelligenceData.intelligenceScore ?? null,
+    confidence_score: marketIntelligenceData.confidenceScore ?? null,
+    trust_level: item.marketTrustLevel ?? marketIntelligenceData.trustLevel ?? null,
+    roi_recommendation: item.roiData?.recommendation ?? null,
+    decision_intelligence: marketIntelligenceData.decisionIntelligence ?? null,
+    deal_gate: item.dealGate ?? null
+  };
+}
+
+function buildSignalAnnotationsForDisplay(item = {}, display = {}) {
+  return signalAnnotation.annotateSignals(getSignalRawValuesForDisplay(item, display));
+}
+
 function buildDisplayInterpretation(item = {}) {
   const dealGateData = item.dealGate && typeof item.dealGate === 'object' ? item.dealGate : null;
   const rejectedByDealGate = dealGateData?.passed === false;
@@ -700,6 +726,8 @@ function buildDisplayInterpretation(item = {}) {
     hasBuyLikeWording(display.qualityBucketLabel) ||
     hasBuyLikeWording(display.legacyGradeActionLabel)
   );
+
+  display.signalAnnotations = buildSignalAnnotationsForDisplay(item, display);
 
   return {
     ...item,
@@ -1875,6 +1903,7 @@ app.get("/api/alerts/debug", (req, res) => {
   const alerts = store.alerts || [];
   const analyzed = alerts.map(alert => {
     const ruleCheck = notificationEngine.evaluateAlertRules(alert);
+    const display = buildDisplayInterpretation(alert).display;
     return {
       ebayItemId: alert.ebayItemId,
       lane: alert.lane,
@@ -1901,7 +1930,8 @@ app.get("/api/alerts/debug", (req, res) => {
       notifiedAt: alert.notifiedAt || null,
       notificationFailures: ruleCheck.failures,
       notificationError: alert.notificationError || null,
-      createdAt: alert.createdAt
+      createdAt: alert.createdAt,
+      display
     };
   });
 
@@ -1927,6 +1957,7 @@ app.get("/api/alerts/preview", (req, res) => {
   const alerts = (store.alerts || [])
     .map(alert => {
       const ruleCheck = notificationEngine.evaluateAlertRules(alert);
+      const display = buildDisplayInterpretation(alert).display;
       return {
         title: alert.title,
         lane: alert.lane,
@@ -1943,7 +1974,8 @@ app.get("/api/alerts/preview", (req, res) => {
         compCount: alert.compCount,
         wouldNotify: ruleCheck.passed,
         reason: ruleCheck.passed ? "passes notification rules" : ruleCheck.failures.join("; "),
-        url: alert.url
+        url: alert.url,
+        display
       };
     })
     .sort((a, b) => Number(b.wouldNotify) - Number(a.wouldNotify) || (b.score || 0) - (a.score || 0))
@@ -1998,7 +2030,8 @@ app.post("/api/alerts/send-pending", async (req, res) => {
         investmentQuality: item.alert.investmentQuality || item.alert.qualityData?.investmentQuality || null,
         qualityBucket: item.alert.qualityBucket || item.alert.qualityData?.bucket || null,
         dealGrade: item.alert.dealGrade || null,
-        url: item.alert.url
+        url: item.alert.url,
+        display: buildDisplayInterpretation(item.alert).display
       }))
     });
   }
@@ -2406,6 +2439,7 @@ module.exports = {
   dealGate,
   scoreListing,
   buildDisplayInterpretation,
+  buildSignalAnnotationsForDisplay,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
