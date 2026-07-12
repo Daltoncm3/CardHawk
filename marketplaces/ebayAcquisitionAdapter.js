@@ -7,6 +7,20 @@ const {
   createAcquisitionRequest,
   createCanonicalAcquisitionAdapter
 } = require('./canonicalAcquisitionInterface');
+const {
+  createEbayTranslatorSourceMetadata,
+  translateEbayFixtureToRawCanonical
+} = require('./ebayResponseTranslator');
+const {
+  asArray,
+  normalizeDate,
+  toNumber
+} = require('../validation/canonicalValidationCore');
+const {
+  DEFAULT_FIXTURE_PATH,
+  loadEbayFixtureLibrary,
+  validateEbayFixtureLibrary
+} = require('../validation/ebayFixtureLibrary');
 
 const DEFAULT_SOURCE_ID = 'ebay';
 const DEFAULT_ADAPTER_NAME = 'ebay_acquisition_adapter';
@@ -39,6 +53,14 @@ const DEFAULT_CONFIG = {
     pageSize: 50,
     maxPages: 0,
     cursorStrategy: 'not_implemented'
+  },
+  fixtureMode: {
+    enabled: false,
+    fixturePath: DEFAULT_FIXTURE_PATH,
+    scenario: 'valid_subset',
+    pageSize: 25,
+    acquiredAt: '2026-07-12T00:00:00.000Z',
+    partialFailure: false
   }
 };
 
@@ -67,6 +89,10 @@ function mergeConfig(config = {}) {
     pagination: {
       ...DEFAULT_CONFIG.pagination,
       ...asObject(input.pagination)
+    },
+    fixtureMode: {
+      ...DEFAULT_CONFIG.fixtureMode,
+      ...asObject(input.fixtureMode)
     }
   };
 }
@@ -79,6 +105,66 @@ function hasAuthenticationPlaceholders(config = {}) {
     && Object.prototype.hasOwnProperty.call(auth, 'refreshToken')
     && Object.prototype.hasOwnProperty.call(auth, 'accessToken')
   );
+}
+
+function isFixtureModeEnabled(config = {}) {
+  return mergeConfig(config).fixtureMode.enabled === true;
+}
+
+function fixtureScenarioFromRequest(request = {}, config = {}) {
+  const normalizedConfig = mergeConfig(config);
+  return request.context?.fixtureScenario
+    || request.filters?.fixtureScenario
+    || normalizedConfig.fixtureMode.scenario
+    || 'valid_subset';
+}
+
+function loadFixtureLibrary(config = {}) {
+  const normalizedConfig = mergeConfig(config);
+  return loadEbayFixtureLibrary(normalizedConfig.fixtureMode.fixturePath || DEFAULT_FIXTURE_PATH);
+}
+
+function fixtureIsImportable(fixture = {}) {
+  return fixture.expected?.validation?.shouldImportAsTrueSold === true;
+}
+
+function selectFixturesForScenario(library = {}, scenario = 'valid_subset') {
+  const fixtures = asArray(library.fixtures);
+  if (scenario === 'all') return fixtures;
+  if (scenario === 'invalid') return fixtures.filter((fixture) => fixture.expected?.valid === false);
+  if (scenario === 'duplicates') return fixtures.filter((fixture) => fixture.category === 'duplicate_listing');
+  if (scenario === 'malformed') {
+    return fixtures.filter((fixture) => ['missing_fields', 'malformed_listing'].includes(fixture.category));
+  }
+  if (scenario === 'partial_failure') return fixtures.filter(fixtureIsImportable).slice(0, 3);
+  if (scenario === 'valid_all') return fixtures.filter(fixtureIsImportable);
+  return fixtures
+    .filter(fixtureIsImportable)
+    .filter((fixture) => fixture.category !== 'duplicate_listing')
+    .slice(0, 3);
+}
+
+function paginateFixtures(fixtures = [], request = {}, config = {}) {
+  const normalizedConfig = mergeConfig(config);
+  const cursor = request.cursor === undefined || request.cursor === null || request.cursor === ''
+    ? 0
+    : Math.max(0, toNumber(request.cursor, 0));
+  const requestedLimit = request.limit === null || request.limit === undefined
+    ? null
+    : toNumber(request.limit, NaN);
+  const pageSize = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? requestedLimit
+    : toNumber(normalizedConfig.fixtureMode.pageSize, 25);
+  const records = fixtures.slice(cursor, cursor + pageSize);
+  const nextOffset = cursor + records.length;
+
+  return {
+    records,
+    cursor,
+    pageSize,
+    nextCursor: nextOffset < fixtures.length ? String(nextOffset) : null,
+    totalFixtures: fixtures.length
+  };
 }
 
 function translateEbaySoldEvidenceRequest(request = {}, config = {}) {
@@ -100,14 +186,22 @@ function translateEbaySoldEvidenceRequest(request = {}, config = {}) {
     requestedEvidenceTypes: normalizedRequest.requestedEvidenceTypes,
     endpoint: null,
     method: 'GET',
-    authStrategy: 'oauth_placeholder',
+    authStrategy: isFixtureModeEnabled(normalizedConfig) ? 'offline_fixture' : 'oauth_placeholder',
     pagination: normalizedConfig.pagination,
     rateLimit: normalizedConfig.rateLimit,
     retry: normalizedConfig.retry,
+    fixtureMode: {
+      enabled: normalizedConfig.fixtureMode.enabled === true,
+      scenario: fixtureScenarioFromRequest(normalizedRequest, normalizedConfig),
+      fixturePath: normalizedConfig.fixtureMode.fixturePath,
+      pageSize: normalizedConfig.fixtureMode.pageSize
+    },
     notes: [
-      'No eBay endpoint is selected in the skeleton.',
-      'Completed/sold evidence source must be approved before implementation.',
-      'This translator performs no network access.'
+      normalizedConfig.fixtureMode.enabled
+        ? 'Offline fixture mode is enabled; no eBay endpoint is selected.'
+        : 'No eBay endpoint is selected in the skeleton.',
+      'Completed/sold evidence source must be approved before live implementation.',
+      'This adapter performs no network access.'
     ]
   };
 }
@@ -170,18 +264,82 @@ function createNotImplementedResult(request = {}, config = {}) {
   };
 }
 
-function buildEbayCapabilities(config = {}) {
+function createFixtureBackedResult(request = {}, config = {}) {
   const normalizedConfig = mergeConfig(config);
+  const translatedRequest = translateEbaySoldEvidenceRequest(request, normalizedConfig);
+  const library = loadFixtureLibrary(normalizedConfig);
+  const fixtureValidation = validateEbayFixtureLibrary(library);
+  const scenario = fixtureScenarioFromRequest(createAcquisitionRequest(request), normalizedConfig);
+  const selectedFixtures = selectFixturesForScenario(library, scenario);
+  const page = paginateFixtures(selectedFixtures, createAcquisitionRequest(request), normalizedConfig);
+  const sourceMetadata = createEbayTranslatorSourceMetadata({
+    sourceId: DEFAULT_SOURCE_ID,
+    adapterName: DEFAULT_ADAPTER_NAME,
+    adapterVersion: ADAPTER_VERSION,
+    capabilities: buildEbayCapabilities(normalizedConfig)
+  });
+  const records = page.records.map((fixture) => translateEbayFixtureToRawCanonical(fixture, {
+    sourceMetadata,
+    acquiredAt: normalizedConfig.fixtureMode.acquiredAt,
+    retrievalMethod: 'offline_fixture_acquisition',
+    sourceReliability: 'offline_fixture'
+  }));
+  const partialFailure = scenario === 'partial_failure' || normalizedConfig.fixtureMode.partialFailure === true;
 
   return {
-    accessMode: ACCESS_MODES.OFFICIAL_API,
-    sourceReliability: 'unimplemented_official_api_skeleton',
-    transactionLevelSoldSupport: false,
-    aggregateMarketPriceSupport: false,
-    activeContextSupport: false,
-    acceptedBestOfferSupport: false,
-    shippingSupport: false,
-    certificationSupport: false,
+    request,
+    records,
+    warnings: [
+      'ebay_fixture_mode_enabled',
+      'no_network_request_performed',
+      ...(fixtureValidation.passed ? [] : ['ebay_fixture_library_validation_failed'])
+    ],
+    errors: partialFailure
+      ? [
+        {
+          code: 'ebay_fixture_partial_failure',
+          message: 'Offline fixture mode simulated a partial acquisition failure.',
+          retryable: true
+        }
+      ]
+      : [],
+    cursor: page.nextCursor,
+    acquiredAt: normalizeDate(normalizedConfig.fixtureMode.acquiredAt) || new Date().toISOString(),
+    metadata: {
+      adapterState: 'fixture_backed',
+      implemented: true,
+      fixtureOnly: true,
+      networkAccess: false,
+      writesProductionStore: false,
+      translatedRequest,
+      fixtureSet: library.metadata?.fixtureSet || null,
+      fixtureVersion: library.metadata?.version || null,
+      fixtureScenario: scenario,
+      pagination: {
+        cursor: page.cursor,
+        nextCursor: page.nextCursor,
+        pageSize: page.pageSize,
+        returned: records.length,
+        totalFixtures: page.totalFixtures
+      },
+      fixtureValidation
+    }
+  };
+}
+
+function buildEbayCapabilities(config = {}) {
+  const normalizedConfig = mergeConfig(config);
+  const fixtureMode = normalizedConfig.fixtureMode.enabled === true;
+
+  return {
+    accessMode: fixtureMode ? ACCESS_MODES.OFFLINE_FIXTURE : ACCESS_MODES.OFFICIAL_API,
+    sourceReliability: fixtureMode ? 'offline_fixture' : 'unimplemented_official_api_skeleton',
+    transactionLevelSoldSupport: fixtureMode,
+    aggregateMarketPriceSupport: fixtureMode,
+    activeContextSupport: fixtureMode,
+    acceptedBestOfferSupport: fixtureMode,
+    shippingSupport: fixtureMode,
+    certificationSupport: fixtureMode,
     identityFields: [
       'category',
       'sport',
@@ -209,7 +367,7 @@ function buildEbayCapabilities(config = {}) {
       'sourceUrl'
     ],
     supportsIncrementalSync: false,
-    supportsHistoricalBackfill: false,
+    supportsHistoricalBackfill: fixtureMode,
     supportsHealthCheck: true,
     maxBatchSize: normalizedConfig.pagination.pageSize,
     rateLimit: normalizedConfig.rateLimit,
@@ -224,16 +382,22 @@ function buildEbayCapabilities(config = {}) {
       marketplaceId: normalizedConfig.marketplaceId,
       environment: normalizedConfig.environment,
       authentication: {
-        strategy: 'oauth_placeholder',
+        strategy: fixtureMode ? 'offline_fixture' : 'oauth_placeholder',
         placeholdersDeclared: hasAuthenticationPlaceholders(normalizedConfig),
         scopes: normalizedConfig.auth.scopes
       },
       requestTranslation: 'defined_placeholder',
-      responseTranslation: 'defined_placeholder',
+      responseTranslation: fixtureMode ? 'offline_fixture_translator' : 'defined_placeholder',
       retry: normalizedConfig.retry,
       pagination: normalizedConfig.pagination,
       validationHooks: ['validateEbayMarketplaceRecord'],
-      implemented: false
+      fixtureMode: {
+        enabled: fixtureMode,
+        scenario: normalizedConfig.fixtureMode.scenario,
+        fixturePath: normalizedConfig.fixtureMode.fixturePath,
+        pageSize: normalizedConfig.fixtureMode.pageSize
+      },
+      implemented: fixtureMode ? 'fixture_only' : false
     }
   };
 }
@@ -245,21 +409,32 @@ function createEbayAcquisitionAdapter(options = {}) {
     sourceId: options.sourceId || DEFAULT_SOURCE_ID,
     marketplace: 'ebay',
     marketplaceLabel: 'eBay',
-    sourceName: 'eBay Sold Evidence Acquisition Skeleton',
+    sourceName: config.fixtureMode.enabled
+      ? 'eBay Fixture-Backed Sold Evidence Acquisition'
+      : 'eBay Sold Evidence Acquisition Skeleton',
     adapterName: options.adapterName || DEFAULT_ADAPTER_NAME,
     adapterVersion: options.adapterVersion || ADAPTER_VERSION,
     capabilities: {
       ...buildEbayCapabilities(config),
       ...asObject(options.capabilities)
     },
-    acquire: async (request) => createNotImplementedResult(request, config),
+    acquire: async (request) => (
+      config.fixtureMode.enabled
+        ? createFixtureBackedResult(request, config)
+        : createNotImplementedResult(request, config)
+    ),
     healthCheck: async () => ({
-      status: config.enabled ? ADAPTER_STATUS.UNCONFIGURED : ADAPTER_STATUS.DISABLED,
-      message: config.enabled
-        ? 'eBay adapter skeleton is enabled but acquisition is not implemented.'
-        : 'eBay adapter skeleton is disabled by default.',
-      implemented: false,
+      status: config.fixtureMode.enabled
+        ? ADAPTER_STATUS.READY
+        : (config.enabled ? ADAPTER_STATUS.UNCONFIGURED : ADAPTER_STATUS.DISABLED),
+      message: config.fixtureMode.enabled
+        ? 'eBay adapter is running in offline fixture-backed mode. No network access is performed.'
+        : (config.enabled
+          ? 'eBay adapter skeleton is enabled but live acquisition is not implemented.'
+          : 'eBay adapter skeleton is disabled by default.'),
+      implemented: config.fixtureMode.enabled ? 'fixture_only' : false,
       networkAccess: false,
+      fixtureOnly: config.fixtureMode.enabled,
       authenticationConfigured: false,
       authenticationPlaceholdersDeclared: hasAuthenticationPlaceholders(config),
       rateLimitConfigured: Boolean(config.rateLimit),
@@ -286,17 +461,24 @@ function createEbayAcquisitionAdapter(options = {}) {
 
     getImplementationStatus() {
       return {
-        implemented: false,
-        acquisitionImplemented: false,
+        implemented: config.fixtureMode.enabled ? 'fixture_only' : false,
+        acquisitionImplemented: config.fixtureMode.enabled ? 'fixture_only' : false,
         networkAccess: false,
-        supportedEvidenceTypes: [],
+        supportedEvidenceTypes: config.fixtureMode.enabled
+          ? [EVIDENCE_TYPES.TRUE_SOLD, EVIDENCE_TYPES.AGGREGATE_MARKET_PRICE, EVIDENCE_TYPES.ACTIVE_CONTEXT]
+          : [],
         plannedEvidenceTypes: [EVIDENCE_TYPES.TRUE_SOLD],
         blockers: [
           'approved_eBay_sold_evidence_endpoint_required',
           'commercial_usage_approval_required',
           'authentication_flow_not_implemented',
-          'response_translation_not_implemented'
-        ]
+          ...(config.fixtureMode.enabled ? [] : ['response_translation_not_implemented'])
+        ],
+        fixtureMode: {
+          enabled: config.fixtureMode.enabled,
+          scenario: config.fixtureMode.scenario,
+          productionApproved: false
+        }
       };
     }
   };
@@ -319,7 +501,9 @@ module.exports = {
   DEFAULT_SOURCE_ID,
   buildEbayCapabilities,
   createEbayAcquisitionAdapter,
+  createFixtureBackedResult,
   createNotImplementedResult,
+  isFixtureModeEnabled,
   mergeConfig,
   registerEbayAcquisitionAdapter,
   translateEbaySoldEvidenceRequest,

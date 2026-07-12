@@ -109,7 +109,8 @@ function normalizeAdapterRecord(rawRecord = {}, sourceMetadata = {}, options = {
       ...(requestedEvidenceType === EVIDENCE_TYPES.TRUE_SOLD && evidenceType !== EVIDENCE_TYPES.TRUE_SOLD
         ? ['source_without_transaction_level_sold_support']
         : [])
-    ]
+    ],
+    translationWarnings: Array.isArray(rawRecord.translationWarnings) ? [...rawRecord.translationWarnings] : []
   };
 }
 
