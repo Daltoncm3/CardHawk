@@ -9,6 +9,11 @@ const {
   assertAdapterContract,
   validateRawEvidenceRecord
 } = require('../marketplaces/canonicalAcquisitionInterface');
+const {
+  asArray,
+  asObject,
+  unique
+} = require('./canonicalValidationCore');
 
 const REQUIRED_CAPABILITY_FIELDS = [
   'acquisitionInterfaceVersion',
@@ -64,18 +69,6 @@ const DEFAULT_FIXTURES = {
     }
   }
 };
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function unique(values = []) {
-  return [...new Set(values)];
-}
 
 function createCheck(name, pass, details = {}) {
   return {

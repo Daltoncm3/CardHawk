@@ -8,58 +8,27 @@ const {
   createEmptySoldEvidenceStore,
   normalizeSoldEvidenceRecord
 } = require('../utils/soldEvidenceStore');
+const {
+  REQUIRED_CANONICAL_RECORD_FIELDS,
+  REQUIRED_IDENTITY_FIELDS,
+  REQUIRED_IMMUTABLE_RECORD_FIELDS,
+  REQUIRED_STORE_SOURCE_FIELDS,
+  REASON_CODES,
+  asArray,
+  asObject,
+  buildMissingReason,
+  createValidationResult,
+  hasIdentitySubject,
+  missingFields,
+  normalizeDate,
+  toNumber,
+  validateOptionalSchemaVersion
+} = require('./canonicalValidationCore');
 
 const HARNESS_VERSION = '1.0.0';
 
-const REQUIRED_RECORD_FIELDS = [
-  'id',
-  'evidenceType',
-  'marketplace',
-  'rawTitle',
-  'normalizedTitle',
-  'soldPrice',
-  'totalPaid',
-  'soldAt',
-  'url',
-  'parsedIdentity',
-  'canonicalCardKey',
-  'source',
-  'status',
-  'duplicateKeys'
-];
-
-const REQUIRED_IDENTITY_FIELDS = [
-  'category',
-  'year',
-  'setName',
-  'cardNumber'
-];
-
-const REQUIRED_SOURCE_FIELDS = [
-  'adapter',
-  'retrievalMethod',
-  'sourceReliability',
-  'acquiredAt'
-];
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function normalizeDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function toNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
+const REQUIRED_RECORD_FIELDS = REQUIRED_CANONICAL_RECORD_FIELDS;
+const REQUIRED_SOURCE_FIELDS = REQUIRED_STORE_SOURCE_FIELDS;
 
 function createCheck(name, pass, details = {}) {
   return {
@@ -81,26 +50,14 @@ function extractRecords(input = {}) {
   return [];
 }
 
-function missingFields(record = {}, fields = []) {
-  return fields.filter((field) => {
-    const value = record[field];
-    if (Array.isArray(value)) return value.length === 0;
-    if (value && typeof value === 'object') return Object.keys(value).length === 0;
-    return value === undefined || value === null || value === '';
-  });
-}
-
-function hasSubject(identity = {}) {
-  return Boolean(identity.player || identity.subject || identity.character);
-}
-
 function validateIdentity(record = {}) {
   const identity = asObject(record.parsedIdentity);
-  const reasons = missingFields(identity, REQUIRED_IDENTITY_FIELDS).map((field) => `missing_identity_${field}`);
+  const reasons = missingFields(identity, REQUIRED_IDENTITY_FIELDS)
+    .map((field) => buildMissingReason(REASON_CODES.MISSING_IDENTITY_PREFIX, field));
 
-  if (!hasSubject(identity)) reasons.push('missing_identity_subject');
+  if (!hasIdentitySubject(identity)) reasons.push(REASON_CODES.MISSING_IDENTITY_SUBJECT);
   if (record.canonicalCardKey !== buildCanonicalCardKey(identity)) {
-    reasons.push('canonical_card_key_mismatch');
+    reasons.push(REASON_CODES.CANONICAL_CARD_KEY_MISMATCH);
   }
 
   return {
@@ -111,10 +68,11 @@ function validateIdentity(record = {}) {
 
 function validateProvenance(record = {}) {
   const source = asObject(record.source);
-  const reasons = missingFields(source, REQUIRED_SOURCE_FIELDS).map((field) => `missing_source_${field}`);
+  const reasons = missingFields(source, REQUIRED_SOURCE_FIELDS)
+    .map((field) => buildMissingReason(REASON_CODES.MISSING_SOURCE_PREFIX, field));
 
-  if (!normalizeDate(source.acquiredAt)) reasons.push('invalid_source_acquiredAt');
-  if (!record.url && !record.itemWebUrl) reasons.push('missing_source_url');
+  if (!normalizeDate(source.acquiredAt)) reasons.push(`${REASON_CODES.INVALID_SOURCE_PREFIX}acquiredAt`);
+  if (!record.url && !record.itemWebUrl) reasons.push(REASON_CODES.MISSING_SOURCE_URL);
 
   return {
     valid: reasons.length === 0,
@@ -125,8 +83,8 @@ function validateProvenance(record = {}) {
 function validateEvidenceType(record = {}) {
   const reasons = [];
 
-  if (record.evidenceType !== 'true_sold') reasons.push('not_true_sold_evidence');
-  if (record.status !== 'active_evidence') reasons.push('inactive_or_context_record');
+  if (record.evidenceType !== 'true_sold') reasons.push(REASON_CODES.NOT_TRUE_SOLD_EVIDENCE);
+  if (record.status !== 'active_evidence') reasons.push(REASON_CODES.INACTIVE_OR_CONTEXT_RECORD);
 
   return {
     valid: reasons.length === 0,
@@ -137,10 +95,10 @@ function validateEvidenceType(record = {}) {
 function validateTransactionEligibility(record = {}) {
   const reasons = [];
 
-  if (toNumber(record.soldPrice, 0) <= 0) reasons.push('missing_sold_price');
-  if (!normalizeDate(record.soldAt)) reasons.push('missing_sold_date');
+  if (toNumber(record.soldPrice, 0) <= 0) reasons.push(REASON_CODES.MISSING_SOLD_PRICE);
+  if (!normalizeDate(record.soldAt)) reasons.push(REASON_CODES.MISSING_SOLD_DATE);
   if (record.bestOfferAccepted && record.priceDisclosure === 'undisclosed') {
-    reasons.push('undisclosed_best_offer_price');
+    reasons.push(REASON_CODES.UNDISCLOSED_BEST_OFFER_PRICE);
   }
 
   return {
@@ -151,11 +109,11 @@ function validateTransactionEligibility(record = {}) {
 
 function validateImmutableRequirements(record = {}) {
   const reasons = [];
-  const immutableFields = ['id', 'canonicalCardKey', 'duplicateKeys'];
 
-  reasons.push(...missingFields(record, immutableFields).map((field) => `missing_immutable_${field}`));
+  reasons.push(...missingFields(record, REQUIRED_IMMUTABLE_RECORD_FIELDS)
+    .map((field) => buildMissingReason(REASON_CODES.MISSING_IMMUTABLE_PREFIX, field)));
   if (Array.isArray(record.duplicateKeys) && !record.duplicateKeys.includes(`url:${String(record.url || '').toLowerCase()}`) && !record.marketplaceSaleId && !record.marketplaceListingId) {
-    reasons.push('weak_duplicate_identity');
+    reasons.push(REASON_CODES.WEAK_DUPLICATE_IDENTITY);
   }
 
   return {
@@ -166,6 +124,8 @@ function validateImmutableRequirements(record = {}) {
 
 function validateCanonicalRecord(record = {}) {
   const schemaReasons = missingFields(record, REQUIRED_RECORD_FIELDS).map((field) => `missing_schema_${field}`);
+  const schemaVersion = validateOptionalSchemaVersion(record.schemaVersion);
+  schemaReasons.push(...schemaVersion.reasons);
   const identity = validateIdentity(record);
   const provenance = validateProvenance(record);
   const evidenceType = validateEvidenceType(record);
@@ -181,6 +141,19 @@ function validateCanonicalRecord(record = {}) {
   ];
 
   return {
+    ...createValidationResult({
+      reasons,
+      checks: {
+        schema: schemaReasons,
+        identity: identity.reasons,
+        provenance: provenance.reasons,
+        evidenceType: evidenceType.reasons,
+        transactionEligibility: transactionEligibility.reasons,
+        immutable: immutable.reasons
+      },
+      recordId: record.id,
+      canonicalCardKey: record.canonicalCardKey
+    }),
     valid: reasons.length === 0,
     reasons,
     checks: {

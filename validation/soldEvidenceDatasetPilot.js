@@ -8,33 +8,26 @@ const {
   extractRecords,
   normalizeDatasetRecords
 } = require('./soldEvidenceDatasetBuilder');
+const {
+  REQUIRED_IDENTITY_FIELDS,
+  REQUIRED_STORE_SOURCE_FIELDS,
+  REASON_CODES,
+  asArray,
+  asObject,
+  buildMissingReason,
+  getIdentityValue,
+  hasIdentitySubject,
+  normalizeDate,
+  toNumber
+} = require('./canonicalValidationCore');
 
-const REQUIRED_IDENTITY_FIELDS = [
-  'category',
-  'year',
-  'setName',
-  'cardNumber'
-];
-const REQUIRED_SOURCE_FIELDS = [
-  'adapter',
-  'retrievalMethod',
-  'sourceReliability',
-  'acquiredAt'
-];
+const REQUIRED_SOURCE_FIELDS = REQUIRED_STORE_SOURCE_FIELDS;
 const VERIFIED_REVIEW_STATUSES = new Set([
   'human_verified',
   'dealer_verified',
   'second_review_verified',
   'verified'
 ]);
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
 
 function normalizeText(value) {
   return String(value || '')
@@ -48,17 +41,6 @@ function normalizeEnum(value, fallback = 'unknown') {
   return normalizeText(value).replace(/\s+/g, '_') || fallback;
 }
 
-function toNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function normalizeDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -66,15 +48,6 @@ function readJsonFile(filePath) {
 function writeJsonFile(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`);
-}
-
-function getIdentityValue(identity = {}, field) {
-  if (field === 'setName') return identity.setName || identity.set || identity.cardSet;
-  return identity[field];
-}
-
-function hasSubject(identity = {}) {
-  return Boolean(identity.player || identity.subject || identity.character);
 }
 
 function hasProductIdentity(identity = {}) {
@@ -90,9 +63,11 @@ function validateExactIdentity(record = {}) {
   const identity = asObject(record.parsedIdentity || record.identity || record.parsed);
 
   for (const field of REQUIRED_IDENTITY_FIELDS) {
-    if (!getIdentityValue(identity, field)) reasons.push(`missing_identity_${field}`);
+    if (!getIdentityValue(identity, field)) {
+      reasons.push(buildMissingReason(REASON_CODES.MISSING_IDENTITY_PREFIX, field));
+    }
   }
-  if (!hasSubject(identity)) reasons.push('missing_identity_subject');
+  if (!hasIdentitySubject(identity)) reasons.push(REASON_CODES.MISSING_IDENTITY_SUBJECT);
   if (!hasProductIdentity(identity)) reasons.push('missing_identity_brand_or_product');
   if (!hasParallelIdentity(identity)) reasons.push('missing_identity_parallel_or_base');
   if (identity.rookie === undefined && identity.isRookie === undefined) reasons.push('missing_identity_rookie_flag');
@@ -117,17 +92,17 @@ function validateRecordForPilot(record = {}) {
   const reviewStatus = normalizeEnum(record.reviewStatus || review.status, 'unreviewed');
   const identityValidation = validateExactIdentity(record);
 
-  if (evidenceType !== 'true_sold') reasons.push('not_true_sold_evidence');
-  if (status !== 'active_evidence') reasons.push('inactive_or_context_record');
-  if (soldPrice <= 0) reasons.push('missing_sold_price');
-  if (!soldAt) reasons.push('missing_sold_date');
-  if (!record.url && !record.itemWebUrl) reasons.push('missing_source_url');
+  if (evidenceType !== 'true_sold') reasons.push(REASON_CODES.NOT_TRUE_SOLD_EVIDENCE);
+  if (status !== 'active_evidence') reasons.push(REASON_CODES.INACTIVE_OR_CONTEXT_RECORD);
+  if (soldPrice <= 0) reasons.push(REASON_CODES.MISSING_SOLD_PRICE);
+  if (!soldAt) reasons.push(REASON_CODES.MISSING_SOLD_DATE);
+  if (!record.url && !record.itemWebUrl) reasons.push(REASON_CODES.MISSING_SOURCE_URL);
   if (!VERIFIED_REVIEW_STATUSES.has(reviewStatus)) reasons.push('not_human_verified');
   if (!review.reviewer && !record.reviewer) reasons.push('missing_reviewer');
   if (!review.reviewedAt && !record.reviewedAt) reasons.push('missing_reviewed_at');
 
   for (const field of REQUIRED_SOURCE_FIELDS) {
-    if (!source[field]) reasons.push(`missing_source_${field}`);
+    if (!source[field]) reasons.push(buildMissingReason(REASON_CODES.MISSING_SOURCE_PREFIX, field));
   }
   reasons.push(...identityValidation.reasons);
 

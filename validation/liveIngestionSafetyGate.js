@@ -1,6 +1,5 @@
 'use strict';
 
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -17,42 +16,20 @@ const {
 const {
   validateCanonicalRecord
 } = require('./soldEvidenceStoreConformance');
+const {
+  FAILURE_CLASSIFICATIONS,
+  FAILURE_STAGES,
+  INGESTION_MANIFEST_SCHEMA_VERSION,
+  REASON_CODES,
+  asArray,
+  asObject,
+  fingerprint,
+  reasonToFailureStage,
+  stableStringify
+} = require('./canonicalValidationCore');
 
 const GATE_VERSION = '1.0.0';
 const SOURCE = 'canonical_live_ingestion_safety_gate';
-
-const FAILURE_CLASSIFICATIONS = {
-  RETRYABLE: 'retryable',
-  TERMINAL: 'terminal',
-  PARTIAL: 'partial',
-  DEGRADED: 'degraded',
-  RATE_LIMITED: 'rate_limited'
-};
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function fingerprint(value = {}) {
-  return crypto
-    .createHash('sha256')
-    .update(stableStringify(value))
-    .digest('hex');
-}
 
 function createIngestionRunId(input = {}) {
   if (input.runId) return input.runId;
@@ -216,12 +193,11 @@ function buildAcquisitionMethodMetadata(options = {}) {
 }
 
 function reasonStage(reason = '') {
-  if (reason.startsWith('missing_identity_') || reason === 'canonical_card_key_mismatch') return 'identity';
-  if (reason.startsWith('missing_source_') || reason.startsWith('invalid_source_')) return 'provenance';
-  if (reason === 'not_true_sold_evidence' || reason === 'inactive_or_context_record') return 'evidence_type';
-  if (reason === 'missing_sold_price' || reason === 'missing_sold_date' || reason === 'undisclosed_best_offer_price') return 'transaction';
-  if (reason.startsWith('missing_schema_')) return 'schema';
-  return 'store_compatibility';
+  return reasonToFailureStage(reason, {
+    evidenceStage: FAILURE_STAGES.EVIDENCE_TYPE,
+    transactionStage: FAILURE_STAGES.TRANSACTION,
+    defaultStage: FAILURE_STAGES.STORE_COMPATIBILITY
+  });
 }
 
 function buildRejectedRecord(record = {}, details = {}) {
@@ -252,9 +228,9 @@ function validateRecordForAdmission(record = {}, context = {}) {
   const canonical = validateCanonicalRecord(normalized);
   const reasons = [...canonical.reasons];
 
-  if (!context.certificationValid) reasons.push('certification_gate_failed');
-  if (!context.sourcePermissionValid) reasons.push('source_permission_gate_failed');
-  if (!context.acquisitionMethodValid) reasons.push('acquisition_method_gate_failed');
+  if (!context.certificationValid) reasons.push(REASON_CODES.CERTIFICATION_GATE_FAILED);
+  if (!context.sourcePermissionValid) reasons.push(REASON_CODES.SOURCE_PERMISSION_GATE_FAILED);
+  if (!context.acquisitionMethodValid) reasons.push(REASON_CODES.ACQUISITION_METHOD_GATE_FAILED);
 
   return {
     valid: reasons.length === 0,
@@ -294,6 +270,7 @@ function persistRunArtifacts(outputDir, manifest, quarantine) {
 
 function buildManifestSkeleton(input = {}) {
   return {
+    schemaVersion: INGESTION_MANIFEST_SCHEMA_VERSION,
     source: SOURCE,
     version: GATE_VERSION,
     runId: input.runId,

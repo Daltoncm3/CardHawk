@@ -6,6 +6,14 @@ const {
   normalizeCapabilities: normalizeSoldEvidenceCapabilities,
   summarizeEvidenceTypes
 } = require('./soldEvidenceAdapter');
+const {
+  REQUIRED_ACQUISITION_PROVENANCE_FIELDS,
+  REQUIRED_IDENTITY_FIELDS,
+  REASON_CODES,
+  createValidationResult,
+  getIdentityValue,
+  hasIdentitySubject
+} = require('../validation/canonicalValidationCore');
 
 const INTERFACE_VERSION = '1.0.0';
 const SOURCE = 'canonical_acquisition_interface';
@@ -53,20 +61,7 @@ const DEFAULT_CAPABILITIES = {
   }
 };
 
-const REQUIRED_PROVENANCE_FIELDS = [
-  'marketplace',
-  'adapter',
-  'retrievalMethod',
-  'sourceReliability',
-  'acquiredAt'
-];
-
-const REQUIRED_IDENTITY_FIELDS = [
-  'category',
-  'year',
-  'setName',
-  'cardNumber'
-];
+const REQUIRED_PROVENANCE_FIELDS = REQUIRED_ACQUISITION_PROVENANCE_FIELDS;
 
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -192,24 +187,20 @@ function validateAcquisitionRequest(request = {}) {
   };
 }
 
-function getIdentityValue(identity = {}, field) {
-  if (field === 'setName') return identity.setName || identity.set || identity.cardSet;
-  return identity[field];
-}
-
 function validateRecordIdentity(record = {}) {
   const reasons = [];
   const identity = asObject(record.parsedIdentity || record.identity || record.parsed);
 
   for (const field of REQUIRED_IDENTITY_FIELDS) {
-    if (!getIdentityValue(identity, field)) reasons.push(`missing_identity_${field}`);
+    if (!getIdentityValue(identity, field)) reasons.push(`${REASON_CODES.MISSING_IDENTITY_PREFIX}${field}`);
   }
 
-  if (!identity.player && !identity.subject && !identity.character) {
-    reasons.push('missing_identity_subject');
+  if (!hasIdentitySubject(identity)) {
+    reasons.push(REASON_CODES.MISSING_IDENTITY_SUBJECT);
   }
 
   return {
+    ...createValidationResult({ reasons }),
     valid: reasons.length === 0,
     reasons
   };
@@ -227,13 +218,14 @@ function validateRecordProvenance(record = {}, sourceMetadata = {}) {
   };
 
   for (const field of REQUIRED_PROVENANCE_FIELDS) {
-    if (!sourceInfo[field]) reasons.push(`missing_provenance_${field}`);
+    if (!sourceInfo[field]) reasons.push(`${REASON_CODES.MISSING_PROVENANCE_PREFIX}${field}`);
   }
 
-  if (!normalizeDate(sourceInfo.acquiredAt)) reasons.push('invalid_provenance_acquiredAt');
-  if (!sourceInfo.sourceUrl) reasons.push('missing_provenance_sourceUrl');
+  if (!normalizeDate(sourceInfo.acquiredAt)) reasons.push(`${REASON_CODES.INVALID_PROVENANCE_PREFIX}acquiredAt`);
+  if (!sourceInfo.sourceUrl) reasons.push(`${REASON_CODES.MISSING_PROVENANCE_PREFIX}sourceUrl`);
 
   return {
+    ...createValidationResult({ reasons }),
     valid: reasons.length === 0,
     reasons,
     provenance: sourceInfo
@@ -249,13 +241,14 @@ function validateRawEvidenceRecord(record = {}, sourceMetadata = {}) {
 
   if ((record.evidenceType || 'true_sold') === EVIDENCE_TYPES.TRUE_SOLD) {
     const price = Number(record.soldPrice ?? record.salePrice ?? record.price ?? record.amount);
-    if (!Number.isFinite(price) || price <= 0) reasons.push('missing_sold_price');
+    if (!Number.isFinite(price) || price <= 0) reasons.push(REASON_CODES.MISSING_SOLD_PRICE);
     if (!normalizeDate(record.soldAt || record.dateSold || record.soldDate || record.endedAt || record.saleDate)) {
-      reasons.push('missing_sold_date');
+      reasons.push(REASON_CODES.MISSING_SOLD_DATE);
     }
   }
 
   return {
+    ...createValidationResult({ reasons }),
     valid: reasons.length === 0,
     reasons,
     identity,

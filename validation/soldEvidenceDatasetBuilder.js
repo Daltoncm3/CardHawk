@@ -7,6 +7,12 @@ const {
   buildCanonicalCardKey,
   normalizeSoldEvidenceRecord
 } = require('../utils/soldEvidenceStore');
+const {
+  asArray,
+  asObject,
+  normalizeDate,
+  toNumber
+} = require('./canonicalValidationCore');
 
 const DATASET_VERSION = 1;
 const DEFAULT_TARGETS = {
@@ -21,19 +27,6 @@ const VERIFIED_REVIEW_STATUSES = new Set([
   'second_review_verified',
   'verified'
 ]);
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function toNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 
 function round(value, decimals = 2) {
   const factor = 10 ** decimals;
@@ -54,12 +47,6 @@ function normalizeKey(value, fallback = 'unknown') {
 
 function normalizeEnum(value, fallback = 'unknown') {
   return normalizeText(value).replace(/\s+/g, '_') || fallback;
-}
-
-function normalizeDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function daysBetween(later, earlier) {

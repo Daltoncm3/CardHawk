@@ -4,8 +4,14 @@ const {
   runAcquisitionToStorePipelineConformance,
   summarizePipelineConformance
 } = require('./acquisitionToStorePipelineConformance');
+const {
+  CERTIFICATION_ARTIFACT_SCHEMA,
+  CERTIFICATION_ARTIFACT_SCHEMA_VERSION,
+  asArray,
+  asObject
+} = require('./canonicalValidationCore');
 
-const CERTIFICATION_STANDARD_VERSION = '1.0.0';
+const CERTIFICATION_STANDARD_VERSION = CERTIFICATION_ARTIFACT_SCHEMA_VERSION;
 const SOURCE = 'marketplace_adapter_certification';
 
 const CERTIFICATION_LEVELS = {
@@ -22,14 +28,6 @@ const DEFAULT_THRESHOLDS = {
   certifiedProvenancePassRate: 1,
   minimumEligibleRecords: 1
 };
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
 
 function roundRate(value) {
   return Math.round(Number(value || 0) * 10000) / 10000;
@@ -277,6 +275,7 @@ async function runMarketplaceAdapterCertification(adapter = {}, options = {}) {
   const certificationLevel = determineCertificationLevel(requirements);
 
   const report = {
+    schemaVersion: CERTIFICATION_ARTIFACT_SCHEMA.schemaVersion,
     source: SOURCE,
     version: CERTIFICATION_STANDARD_VERSION,
     generatedAt: options.generatedAt || new Date().toISOString(),
@@ -287,6 +286,7 @@ async function runMarketplaceAdapterCertification(adapter = {}, options = {}) {
     dryRun: true,
     standard: {
       version: CERTIFICATION_STANDARD_VERSION,
+      artifactSchema: CERTIFICATION_ARTIFACT_SCHEMA,
       levels: Object.values(CERTIFICATION_LEVELS),
       thresholds,
       mandatoryHarnesses: [

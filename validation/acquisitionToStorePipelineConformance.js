@@ -8,6 +8,13 @@ const {
   runSoldEvidenceStoreConformance,
   summarizeStoreConformance
 } = require('./soldEvidenceStoreConformance');
+const {
+  FAILURE_STAGES,
+  asArray,
+  asObject,
+  reasonToFailureStage,
+  unique
+} = require('./canonicalValidationCore');
 
 const HARNESS_VERSION = '1.0.0';
 const SOURCE = 'acquisition_to_store_pipeline_conformance';
@@ -31,18 +38,6 @@ const DEFAULT_REQUEST = {
   },
   limit: 50
 };
-
-function asObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function unique(values = []) {
-  return [...new Set(values.filter(Boolean))];
-}
 
 function createCheck(name, pass, details = {}) {
   return {
@@ -109,28 +104,11 @@ async function safeAcquire(adapter = {}, request = {}, options = {}) {
 }
 
 function stageFromReason(reason = '') {
-  if (reason.startsWith('missing_identity_') || reason === 'canonical_card_key_mismatch') {
-    return 'identity';
-  }
-
-  if (
-    reason.startsWith('missing_provenance_')
-    || reason.startsWith('invalid_provenance_')
-    || reason.startsWith('missing_source_')
-    || reason.startsWith('invalid_source_')
-  ) {
-    return 'provenance';
-  }
-
-  if (
-    reason === 'not_true_sold_evidence'
-    || reason === 'inactive_or_context_record'
-    || reason === 'undisclosed_best_offer_price'
-  ) {
-    return 'evidence_classification';
-  }
-
-  return 'store_compatibility';
+  return reasonToFailureStage(reason, {
+    evidenceStage: FAILURE_STAGES.EVIDENCE_CLASSIFICATION,
+    transactionStage: FAILURE_STAGES.STORE_COMPATIBILITY,
+    defaultStage: FAILURE_STAGES.STORE_COMPATIBILITY
+  });
 }
 
 function stagesFromReasons(reasons = []) {

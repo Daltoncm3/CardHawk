@@ -1,6 +1,9 @@
 'use strict';
 
 const stateStore = require('./stateStore');
+const {
+  CANONICAL_RECORD_SCHEMA_VERSION
+} = require('../validation/canonicalValidationCore');
 
 const STORE_VERSION = 1;
 const SOURCE = 'sold_evidence_store';
@@ -230,6 +233,7 @@ function normalizeSoldEvidenceRecord(input = {}, options = {}) {
   const quality = inferEvidenceQuality(input);
 
   const normalized = {
+    schemaVersion: input.schemaVersion || CANONICAL_RECORD_SCHEMA_VERSION,
     id: input.id || buildEvidenceId({ ...input, marketplace }, canonicalCardKey),
     evidenceType: 'true_sold',
     marketplace,
