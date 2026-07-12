@@ -1,0 +1,831 @@
+{
+  "metadata": {
+    "fixtureSet": "ebay_sold_listing_scenarios",
+    "version": "1.0.0",
+    "mode": "offline_fixture_only",
+    "source": "synthetic_live_shaped_examples",
+    "networkAccess": false,
+    "notes": "Representative eBay-shaped fixtures for parser, validation, and certification planning. No live eBay data is fetched by these fixtures."
+  },
+  "fixtures": [
+    {
+      "id": "ebay-standard-sold-psa10-rookie",
+      "category": "standard_sold",
+      "description": "Standard sold single-card listing with clear PSA 10 rookie identity.",
+      "ebayRecord": {
+        "itemId": "std-psa10-001",
+        "legacyItemId": "std-psa10-001",
+        "title": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC PSA 10",
+        "itemWebUrl": "https://example.test/ebay/sold/std-psa10-001",
+        "image": { "imageUrl": "https://example.test/ebay/sold/std-psa10-001.jpg" },
+        "price": { "value": "42.50", "currency": "USD" },
+        "shippingOptions": [{ "shippingCost": { "value": "4.99", "currency": "USD" } }],
+        "itemEndDate": "2026-07-01T15:30:00.000Z",
+        "listingFormat": "FIXED_PRICE",
+        "condition": "Graded - PSA 10",
+        "seller": { "username": "trusted-cards", "feedbackScore": 12000, "feedbackPercentage": "99.8" }
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "buy_it_now",
+        "soldPrice": 42.5,
+        "shipping": 4.99,
+        "soldAt": "2026-07-01T15:30:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "mma",
+          "player": "Anthony Hernandez",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm UFC",
+          "cardNumber": "181",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": true,
+          "reasons": []
+        }
+      },
+      "tags": ["standard_sold", "graded", "psa", "rookie", "parallel"]
+    },
+    {
+      "id": "ebay-auction-sale-raw",
+      "category": "auction_sale",
+      "description": "Auction sale for a raw modern sports card.",
+      "ebayRecord": {
+        "itemId": "auction-raw-001",
+        "title": "2020 Panini Mosaic Justin Herbert #262 Rookie RC Raw",
+        "itemWebUrl": "https://example.test/ebay/sold/auction-raw-001",
+        "price": { "value": "18.25", "currency": "USD" },
+        "itemEndDate": "2026-06-27T20:00:00.000Z",
+        "listingFormat": "AUCTION",
+        "condition": "Ungraded",
+        "bidCount": 17
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "auction",
+        "soldPrice": 18.25,
+        "shipping": 0,
+        "soldAt": "2026-06-27T20:00:00.000Z",
+        "condition": "raw",
+        "gradeCompany": "raw",
+        "grade": "unknown",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "football",
+          "player": "Justin Herbert",
+          "year": "2020",
+          "brand": "Panini",
+          "setName": "Mosaic",
+          "cardNumber": "262",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": true,
+          "reasons": []
+        }
+      },
+      "tags": ["auction", "raw", "rookie"]
+    },
+    {
+      "id": "ebay-buy-it-now-sale",
+      "category": "buy_it_now_sale",
+      "description": "Fixed-price Buy It Now sold listing.",
+      "ebayRecord": {
+        "itemId": "bin-001",
+        "title": "2018 Topps Update Juan Soto #US300 Rookie RC",
+        "itemWebUrl": "https://example.test/ebay/sold/bin-001",
+        "price": { "value": "31.00", "currency": "USD" },
+        "itemEndDate": "2026-06-25T12:45:00.000Z",
+        "listingFormat": "FIXED_PRICE",
+        "condition": "Ungraded"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "buy_it_now",
+        "soldPrice": 31,
+        "shipping": 0,
+        "soldAt": "2026-06-25T12:45:00.000Z",
+        "condition": "raw",
+        "gradeCompany": "raw",
+        "grade": "unknown",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "Juan Soto",
+          "year": "2018",
+          "brand": "Topps",
+          "setName": "Update",
+          "cardNumber": "US300",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["buy_it_now", "raw", "rookie"]
+    },
+    {
+      "id": "ebay-best-offer-accepted-disclosed",
+      "category": "best_offer_accepted",
+      "description": "Best Offer accepted with a disclosed final price.",
+      "ebayRecord": {
+        "itemId": "best-offer-001",
+        "title": "2021 Bowman Chrome Julio Rodriguez 1st Auto BGS 9.5",
+        "itemWebUrl": "https://example.test/ebay/sold/best-offer-001",
+        "price": { "value": "525.00", "currency": "USD" },
+        "itemEndDate": "2026-06-24T18:12:00.000Z",
+        "listingFormat": "BEST_OFFER",
+        "bestOfferAccepted": true,
+        "priceDisclosure": "reported_price",
+        "condition": "Graded - BGS 9.5"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "best_offer",
+        "soldPrice": 525,
+        "shipping": 0,
+        "soldAt": "2026-06-24T18:12:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "BGS",
+        "grade": "9.5",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "Julio Rodriguez",
+          "year": "2021",
+          "brand": "Bowman",
+          "setName": "Chrome",
+          "cardNumber": "1st",
+          "parallel": "base",
+          "rookie": false,
+          "autograph": true,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["best_offer", "autograph", "graded", "bgs"]
+    },
+    {
+      "id": "ebay-best-offer-undisclosed",
+      "category": "best_offer_accepted",
+      "description": "Best Offer accepted where final sale price is not disclosed.",
+      "ebayRecord": {
+        "itemId": "best-offer-undisclosed-001",
+        "title": "2019 Prizm Zion Williamson Silver Rookie PSA 10 Best Offer Accepted",
+        "itemWebUrl": "https://example.test/ebay/sold/best-offer-undisclosed-001",
+        "price": { "value": "0.00", "currency": "USD" },
+        "itemEndDate": "2026-06-23T19:00:00.000Z",
+        "listingFormat": "BEST_OFFER",
+        "bestOfferAccepted": true,
+        "priceDisclosure": "undisclosed",
+        "condition": "Graded - PSA 10"
+      },
+      "expected": {
+        "valid": false,
+        "evidenceType": "aggregate_market_price",
+        "saleType": "best_offer",
+        "soldPrice": 0,
+        "soldAt": "2026-06-23T19:00:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "PSA",
+        "grade": "10",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "Zion Williamson",
+          "year": "2019",
+          "brand": "Panini",
+          "setName": "Prizm",
+          "cardNumber": "unknown",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": false,
+          "reasons": ["undisclosed_best_offer_price", "missing_sold_price"]
+        }
+      },
+      "tags": ["best_offer", "undisclosed_price", "not_true_sold"]
+    },
+    {
+      "id": "ebay-multi-variation-listing",
+      "category": "multi_variation",
+      "description": "Multi-variation listing where the exact sold variation is unavailable.",
+      "ebayRecord": {
+        "itemId": "variation-001",
+        "title": "2023 Topps Chrome Baseball You Pick Refractor Singles",
+        "itemWebUrl": "https://example.test/ebay/sold/variation-001",
+        "price": { "value": "4.99", "currency": "USD" },
+        "itemEndDate": "2026-06-22T14:15:00.000Z",
+        "listingFormat": "FIXED_PRICE",
+        "hasVariations": true,
+        "variationSpecifics": []
+      },
+      "expected": {
+        "valid": false,
+        "evidenceType": "active_context",
+        "saleType": "buy_it_now",
+        "soldPrice": 4.99,
+        "soldAt": "2026-06-22T14:15:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "unknown",
+          "year": "2023",
+          "brand": "Topps",
+          "setName": "Chrome",
+          "cardNumber": "unknown",
+          "parallel": "Refractor",
+          "rookie": false,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": false,
+          "reasons": ["multi_variation_identity_ambiguous", "missing_identity_subject", "missing_identity_cardNumber"]
+        }
+      },
+      "tags": ["multi_variation", "identity_ambiguous", "not_true_sold"]
+    },
+    {
+      "id": "ebay-multi-card-lot",
+      "category": "multi_card_lot",
+      "description": "Lot sale that includes multiple cards and cannot price one card exactly.",
+      "ebayRecord": {
+        "itemId": "lot-001",
+        "title": "Lot of 10 2023 Panini Prizm UFC Silver Rookies Hernandez Nickal More",
+        "itemWebUrl": "https://example.test/ebay/sold/lot-001",
+        "price": { "value": "49.99", "currency": "USD" },
+        "itemEndDate": "2026-06-21T13:00:00.000Z",
+        "listingFormat": "AUCTION",
+        "lotSize": 10
+      },
+      "expected": {
+        "valid": false,
+        "evidenceType": "active_context",
+        "saleType": "auction",
+        "soldPrice": 49.99,
+        "soldAt": "2026-06-21T13:00:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "mma",
+          "player": "multiple",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm UFC",
+          "cardNumber": "multiple",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": false,
+          "reasons": ["multi_card_lot_not_single_card_price"]
+        }
+      },
+      "tags": ["lot", "multi_card", "not_true_sold"]
+    },
+    {
+      "id": "ebay-psa-graded-card",
+      "category": "graded_card",
+      "description": "PSA graded card fixture.",
+      "ebayRecord": {
+        "itemId": "psa-001",
+        "title": "1986 Fleer Michael Jordan Rookie #57 PSA 8",
+        "itemWebUrl": "https://example.test/ebay/sold/psa-001",
+        "price": { "value": "7250.00", "currency": "USD" },
+        "itemEndDate": "2026-06-20T21:00:00.000Z",
+        "condition": "Graded - PSA 8"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 7250,
+        "soldAt": "2026-06-20T21:00:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "PSA",
+        "grade": "8",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "Michael Jordan",
+          "year": "1986",
+          "brand": "Fleer",
+          "setName": "Fleer",
+          "cardNumber": "57",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["graded", "psa", "vintage", "high_value"]
+    },
+    {
+      "id": "ebay-bgs-graded-card",
+      "category": "graded_card",
+      "description": "BGS graded card fixture.",
+      "ebayRecord": {
+        "itemId": "bgs-001",
+        "title": "2003 Topps Chrome LeBron James #111 BGS 9.5 Rookie",
+        "itemWebUrl": "https://example.test/ebay/sold/bgs-001",
+        "price": { "value": "2450.00", "currency": "USD" },
+        "itemEndDate": "2026-06-19T16:30:00.000Z",
+        "condition": "Graded - BGS 9.5"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 2450,
+        "soldAt": "2026-06-19T16:30:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "BGS",
+        "grade": "9.5",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "LeBron James",
+          "year": "2003",
+          "brand": "Topps",
+          "setName": "Chrome",
+          "cardNumber": "111",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["graded", "bgs", "rookie"]
+    },
+    {
+      "id": "ebay-sgc-graded-card",
+      "category": "graded_card",
+      "description": "SGC graded vintage card fixture.",
+      "ebayRecord": {
+        "itemId": "sgc-001",
+        "title": "1954 Topps Hank Aaron Rookie #128 SGC 4",
+        "itemWebUrl": "https://example.test/ebay/sold/sgc-001",
+        "price": { "value": "3900.00", "currency": "USD" },
+        "itemEndDate": "2026-06-18T10:15:00.000Z",
+        "condition": "Graded - SGC 4"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 3900,
+        "soldAt": "2026-06-18T10:15:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "SGC",
+        "grade": "4",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "Hank Aaron",
+          "year": "1954",
+          "brand": "Topps",
+          "setName": "Topps",
+          "cardNumber": "128",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["graded", "sgc", "vintage"]
+    },
+    {
+      "id": "ebay-cgc-graded-card",
+      "category": "graded_card",
+      "description": "CGC graded Pokemon card fixture.",
+      "ebayRecord": {
+        "itemId": "cgc-001",
+        "title": "1999 Pokemon Base Set Charizard 4/102 Holo CGC 8",
+        "itemWebUrl": "https://example.test/ebay/sold/cgc-001",
+        "price": { "value": "620.00", "currency": "USD" },
+        "itemEndDate": "2026-06-17T11:00:00.000Z",
+        "condition": "Graded - CGC 8"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 620,
+        "soldAt": "2026-06-17T11:00:00.000Z",
+        "condition": "graded",
+        "gradeCompany": "CGC",
+        "grade": "8",
+        "parsedIdentity": {
+          "category": "tcg_card",
+          "game": "pokemon",
+          "character": "Charizard",
+          "year": "1999",
+          "brand": "Pokemon",
+          "setName": "Base Set",
+          "cardNumber": "4/102",
+          "parallel": "Holo",
+          "rookie": false,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["graded", "cgc", "pokemon", "tcg"]
+    },
+    {
+      "id": "ebay-raw-card-condition-sensitive",
+      "category": "raw_card",
+      "description": "Raw card fixture with condition-sensitive title language.",
+      "ebayRecord": {
+        "itemId": "raw-001",
+        "title": "1996 Topps Kobe Bryant Rookie #138 Raw NM-MT",
+        "itemWebUrl": "https://example.test/ebay/sold/raw-001",
+        "price": { "value": "95.00", "currency": "USD" },
+        "itemEndDate": "2026-06-16T09:00:00.000Z",
+        "condition": "Ungraded"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 95,
+        "soldAt": "2026-06-16T09:00:00.000Z",
+        "condition": "raw",
+        "gradeCompany": "raw",
+        "grade": "unknown",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "Kobe Bryant",
+          "year": "1996",
+          "brand": "Topps",
+          "setName": "Topps",
+          "cardNumber": "138",
+          "parallel": "base",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["raw", "condition_sensitive", "rookie"]
+    },
+    {
+      "id": "ebay-autograph-card",
+      "category": "autograph",
+      "description": "Autographed card fixture.",
+      "ebayRecord": {
+        "itemId": "auto-001",
+        "title": "2022 Panini National Treasures Brock Purdy Rookie Patch Auto RPA /99",
+        "itemWebUrl": "https://example.test/ebay/sold/auto-001",
+        "price": { "value": "1800.00", "currency": "USD" },
+        "itemEndDate": "2026-06-15T22:00:00.000Z",
+        "condition": "Ungraded"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 1800,
+        "soldAt": "2026-06-15T22:00:00.000Z",
+        "condition": "raw",
+        "gradeCompany": "raw",
+        "grade": "unknown",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "football",
+          "player": "Brock Purdy",
+          "year": "2022",
+          "brand": "Panini",
+          "setName": "National Treasures",
+          "cardNumber": "unknown",
+          "parallel": "RPA",
+          "rookie": true,
+          "autograph": true,
+          "memorabilia": true,
+          "serialNumbered": true,
+          "printRun": 99
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["autograph", "relic", "serial_numbered", "rookie"]
+    },
+    {
+      "id": "ebay-relic-card",
+      "category": "relic",
+      "description": "Memorabilia relic card fixture.",
+      "ebayRecord": {
+        "itemId": "relic-001",
+        "title": "2018 Panini Flawless Shohei Ohtani Rookie Patch Relic /25",
+        "itemWebUrl": "https://example.test/ebay/sold/relic-001",
+        "price": { "value": "640.00", "currency": "USD" },
+        "itemEndDate": "2026-06-14T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 640,
+        "soldAt": "2026-06-14T20:00:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "Shohei Ohtani",
+          "year": "2018",
+          "brand": "Panini",
+          "setName": "Flawless",
+          "cardNumber": "unknown",
+          "parallel": "Patch Relic",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": true,
+          "serialNumbered": true,
+          "printRun": 25
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["relic", "serial_numbered", "rookie"]
+    },
+    {
+      "id": "ebay-serial-numbered-card",
+      "category": "serial_numbered",
+      "description": "Serial-numbered parallel fixture.",
+      "ebayRecord": {
+        "itemId": "numbered-001",
+        "title": "2023 Bowman Chrome Jackson Holliday Orange Refractor /25 #BCP20",
+        "itemWebUrl": "https://example.test/ebay/sold/numbered-001",
+        "price": { "value": "310.00", "currency": "USD" },
+        "itemEndDate": "2026-06-13T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 310,
+        "soldAt": "2026-06-13T20:00:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "baseball",
+          "player": "Jackson Holliday",
+          "year": "2023",
+          "brand": "Bowman",
+          "setName": "Chrome",
+          "cardNumber": "BCP20",
+          "parallel": "Orange Refractor",
+          "rookie": false,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": true,
+          "printRun": 25
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["parallel", "serial_numbered"]
+    },
+    {
+      "id": "ebay-parallel-card",
+      "category": "parallel",
+      "description": "Non-numbered parallel fixture.",
+      "ebayRecord": {
+        "itemId": "parallel-001",
+        "title": "2023 Panini Prizm Victor Wembanyama Silver Prizm Rookie #136",
+        "itemWebUrl": "https://example.test/ebay/sold/parallel-001",
+        "price": { "value": "155.00", "currency": "USD" },
+        "itemEndDate": "2026-06-12T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 155,
+        "soldAt": "2026-06-12T20:00:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "Victor Wembanyama",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm",
+          "cardNumber": "136",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["parallel", "rookie"]
+    },
+    {
+      "id": "ebay-missing-fields",
+      "category": "missing_fields",
+      "description": "Listing missing URL and sold date.",
+      "ebayRecord": {
+        "itemId": "missing-001",
+        "title": "2023 Panini Prizm UFC Anthony Hernandez Silver",
+        "price": { "value": "7.50", "currency": "USD" }
+      },
+      "expected": {
+        "valid": false,
+        "evidenceType": "fallback_unknown",
+        "saleType": "unknown",
+        "soldPrice": 7.5,
+        "soldAt": null,
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "mma",
+          "player": "Anthony Hernandez",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm UFC",
+          "cardNumber": "unknown",
+          "parallel": "Silver Prizm",
+          "rookie": false,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": {
+          "shouldImportAsTrueSold": false,
+          "reasons": ["missing_source_url", "missing_sold_date", "missing_identity_cardNumber"]
+        }
+      },
+      "tags": ["missing_fields", "malformed", "not_true_sold"]
+    },
+    {
+      "id": "ebay-malformed-listing",
+      "category": "malformed_listing",
+      "description": "Malformed record with empty title and invalid price.",
+      "ebayRecord": {
+        "itemId": "",
+        "title": "",
+        "itemWebUrl": "not-a-url",
+        "price": { "value": "not-a-number", "currency": "USD" },
+        "itemEndDate": "not-a-date"
+      },
+      "expected": {
+        "valid": false,
+        "evidenceType": "fallback_unknown",
+        "saleType": "unknown",
+        "soldPrice": 0,
+        "soldAt": null,
+        "parsedIdentity": {
+          "category": "unknown",
+          "player": "unknown",
+          "year": "unknown",
+          "setName": "unknown",
+          "cardNumber": "unknown"
+        },
+        "validation": {
+          "shouldImportAsTrueSold": false,
+          "reasons": ["missing_item_id", "missing_title", "invalid_source_url", "missing_sold_price", "missing_sold_date"]
+        }
+      },
+      "tags": ["malformed", "not_true_sold"]
+    },
+    {
+      "id": "ebay-duplicate-listing-a",
+      "category": "duplicate_listing",
+      "description": "First fixture in a duplicate sale pair.",
+      "ebayRecord": {
+        "itemId": "duplicate-001",
+        "title": "2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC",
+        "itemWebUrl": "https://example.test/ebay/sold/duplicate-001",
+        "price": { "value": "8.00", "currency": "USD" },
+        "itemEndDate": "2026-06-11T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 8,
+        "soldAt": "2026-06-11T20:00:00.000Z",
+        "duplicateGroup": "duplicate-001",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "mma",
+          "player": "Anthony Hernandez",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm UFC",
+          "cardNumber": "181",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["duplicate", "standard_sold"]
+    },
+    {
+      "id": "ebay-duplicate-listing-b",
+      "category": "duplicate_listing",
+      "description": "Second fixture in a duplicate sale pair using same source identifiers.",
+      "ebayRecord": {
+        "itemId": "duplicate-001",
+        "title": "Duplicate row for Anthony Hernandez Silver Prizm",
+        "itemWebUrl": "https://example.test/ebay/sold/duplicate-001",
+        "price": { "value": "8.00", "currency": "USD" },
+        "itemEndDate": "2026-06-11T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 8,
+        "soldAt": "2026-06-11T20:00:00.000Z",
+        "duplicateGroup": "duplicate-001",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "mma",
+          "player": "Anthony Hernandez",
+          "year": "2023",
+          "brand": "Panini",
+          "setName": "Prizm UFC",
+          "cardNumber": "181",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["duplicate", "standard_sold"]
+    },
+    {
+      "id": "ebay-edge-case-title-only-card-number",
+      "category": "edge_case",
+      "description": "Edge case where the title uses card number without hash and mixed punctuation.",
+      "ebayRecord": {
+        "itemId": "edge-001",
+        "title": "2023-24 Prizm NBA Brandon Miller RC SILVER 152 Hornets",
+        "itemWebUrl": "https://example.test/ebay/sold/edge-001",
+        "price": { "value": "22.00", "currency": "USD" },
+        "itemEndDate": "2026-06-10T20:00:00.000Z"
+      },
+      "expected": {
+        "valid": true,
+        "evidenceType": "true_sold",
+        "saleType": "unknown",
+        "soldPrice": 22,
+        "soldAt": "2026-06-10T20:00:00.000Z",
+        "parsedIdentity": {
+          "category": "sports_card",
+          "sport": "basketball",
+          "player": "Brandon Miller",
+          "year": "2023-24",
+          "brand": "Panini",
+          "setName": "Prizm",
+          "cardNumber": "152",
+          "parallel": "Silver Prizm",
+          "rookie": true,
+          "autograph": false,
+          "memorabilia": false,
+          "serialNumbered": false
+        },
+        "validation": { "shouldImportAsTrueSold": true, "reasons": [] }
+      },
+      "tags": ["edge_case", "parallel", "rookie"]
+    }
+  ]
+}
