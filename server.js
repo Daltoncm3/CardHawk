@@ -848,6 +848,90 @@ function buildSignalAnnotationsForDisplay(item = {}, display = {}) {
   return signalAnnotation.annotateSignals(getSignalRawValuesForDisplay(item, display));
 }
 
+function getDealGateDisplayGroup(rule = {}) {
+  if (rule.category === 'evidence') return 'evidence_support';
+  if (['roi', 'valuation'].includes(rule.category)) return 'financial_context';
+  if (rule.category === 'final_approval') return 'production_decision';
+  return 'legacy_context_signals';
+}
+
+function buildProductionDecisionExplanation(dealGateData = null) {
+  if (!dealGateData || typeof dealGateData !== 'object') {
+    return {
+      source: 'deal_gate_presentation',
+      authoritativeDecisionSource: 'unknown',
+      decisionType: 'production_decision',
+      authoritative: false,
+      decision: 'UNREVIEWED',
+      label: 'Pending Deal Gate',
+      primaryExplanation: 'Deal Gate has not evaluated this listing yet.',
+      failedReasons: [],
+      passedReasons: [],
+      ruleBreakdown: [],
+      sections: {
+        productionDecision: [],
+        financialContext: [],
+        evidenceSupport: [],
+        legacyContextSignals: []
+      }
+    };
+  }
+
+  const breakdown = dealGateData.dealGateBreakdown || {};
+  const rules = Array.isArray(breakdown.rules) ? breakdown.rules : [];
+  const failedReasons = Array.isArray(breakdown.failedReasons)
+    ? [...breakdown.failedReasons]
+    : [...(dealGateData.reasons || dealGateData.rejectionReasons || [])];
+  const passedReasons = Array.isArray(breakdown.passedReasons)
+    ? [...breakdown.passedReasons]
+    : [...(dealGateData.positives || [])];
+  const passed = dealGateData.passed === true || breakdown.passed === true;
+  const failed = dealGateData.passed === false || breakdown.passed === false;
+  const decision = passed ? 'BUY_NOW' : failed ? 'REJECTED' : 'UNREVIEWED';
+  const label = passed ? 'Passed Deal Gate' : failed ? 'Rejected by Deal Gate' : 'Pending Deal Gate';
+  const primaryExplanation = failed
+    ? (failedReasons[0] || 'Deal Gate blocked this listing.')
+    : passed
+      ? (passedReasons[0] || 'Deal Gate passed with all required rules satisfied.')
+      : 'Deal Gate has not evaluated this listing yet.';
+  const ruleBreakdown = rules.map((rule) => ({
+    ruleId: rule.ruleId,
+    category: rule.category,
+    displayGroup: getDealGateDisplayGroup(rule),
+    label: rule.label,
+    requiredValue: rule.requiredValue,
+    actualValue: rule.actualValue,
+    passed: Boolean(rule.passed),
+    applies: rule.applies !== false,
+    reason: rule.reason || ''
+  }));
+
+  return {
+    source: 'deal_gate_presentation',
+    authoritativeDecisionSource: 'deal_gate',
+    decisionType: 'production_decision',
+    authoritative: true,
+    decision,
+    label,
+    primaryExplanation,
+    failedReasons,
+    passedReasons,
+    reasonOrder: ['failedReasons', 'passedReasons'],
+    ruleBreakdown,
+    sections: {
+      productionDecision: ruleBreakdown.filter((rule) => rule.displayGroup === 'production_decision'),
+      financialContext: ruleBreakdown.filter((rule) => rule.displayGroup === 'financial_context'),
+      evidenceSupport: ruleBreakdown.filter((rule) => rule.displayGroup === 'evidence_support'),
+      legacyContextSignals: ruleBreakdown.filter((rule) => rule.displayGroup === 'legacy_context_signals')
+    },
+    diagnostic: {
+      sourceBreakdownVersion: breakdown.version || '',
+      decisionImpact: 'presentation_only',
+      rawDealGatePreserved: true
+    }
+  };
+}
+
 function buildDisplayInterpretation(item = {}) {
   const dealGateData = item.dealGate && typeof item.dealGate === 'object' ? item.dealGate : null;
   const rejectedByDealGate = dealGateData?.passed === false;
@@ -857,14 +941,19 @@ function buildDisplayInterpretation(item = {}) {
   const rawRoiRecommendation = item.roiData?.recommendation || '';
   const soldEvidenceCount = getSoldEvidenceCountForDisplay(item, dealGateData || {});
   const legacyGradeActionLabel = rawDealAction ? signalSemantics.getAllowedSignalLabel('deal_grade', rawDealAction) : '';
+  const productionDecisionExplanation = buildProductionDecisionExplanation(dealGateData);
 
   const display = {
     source: 'presentation_display_guard',
     authoritativeDecisionSource: dealGateData ? 'deal_gate' : 'unknown',
     authoritativeDecision: acceptedByDealGate ? 'BUY_NOW' : rejectedByDealGate ? 'REJECTED' : 'UNREVIEWED',
     primaryDecisionLabel: acceptedByDealGate ? 'BUY_NOW' : rejectedByDealGate ? 'Rejected by Deal Gate' : 'Pending Deal Gate',
+    primaryDecisionExplanation: productionDecisionExplanation.primaryExplanation,
+    productionDecisionExplanation,
     recommendationImpact: dealGateData ? (acceptedByDealGate ? 'approved_by_deal_gate' : 'blocked_by_deal_gate') : 'unknown',
-    rejectionReasons: rejectedByDealGate ? [...(dealGateData.reasons || dealGateData.rejectionReasons || [])] : [],
+    rejectionReasons: rejectedByDealGate ? [...productionDecisionExplanation.failedReasons] : [],
+    passedReasons: acceptedByDealGate ? [...productionDecisionExplanation.passedReasons] : [],
+    dealGateRuleBreakdown: productionDecisionExplanation.ruleBreakdown,
     qualityBucketLabel: getQualityBucketForDisplay(rawQualityBucket, rejectedByDealGate),
     qualityContextLabel: rawQualityBucket ? 'Desirability context' : '',
     dealGradeLabel: item.dealGrade?.grade || '',
@@ -2681,7 +2770,7 @@ function listingCard(rawItem) {
       <img src="${escapeHtml(item.image || "")}" />
       <div class="title">${escapeHtml(item.title)}</div>
       <div>${parsedTags(item.parsed, item.lane)}</div>
-      ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.rejectionReasons?.length ? ` — ${escapeHtml(display.rejectionReasons.slice(0, 1).join(" | "))}` : ""}</div>` : ""}
+      ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.primaryDecisionExplanation ? ` — ${escapeHtml(display.primaryDecisionExplanation)}` : ""}</div>` : ""}
       ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
       ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
       <div class="score">${escapeHtml(display.legacyScoreLabel || "Legacy Context Score")}: ${Math.round(item.score || 0)}/100</div>
