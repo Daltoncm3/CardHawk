@@ -409,7 +409,7 @@ function estimateMarketValue(listing) {
   return Math.max(0, listing.totalCost * multiplier);
 }
 
-function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProfit = 0, roi = 0, combinedConfidence = 0, marketData = {}, listing = {} } = {}) {
+function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProfit = 0, roi = 0, combinedConfidence = 0, marketData = {}, compData = {}, listing = {} } = {}) {
   const flags = parsed.flags || {};
   const adders = [];
   const adjustments = [];
@@ -427,40 +427,81 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
     adjustments.push({ category, id, label, previousScore, value });
   };
 
-  add('trend', 'trend_score_bonus', 'Trend score bonus', trendData.scoreBonus || 0);
+  const soldCompCount = Math.max(
+    Number(marketData.soldCompCount || 0),
+    Number(compData.trueSoldCompCount || 0),
+    Number(compData.soldCompCount || 0)
+  );
+  const activeCompCount = Math.max(Number(marketData.activeCompCount || 0), Number(compData.activeCompCount || 0));
+  const fallbackUnknownCompCount = Number(compData.fallbackUnknownCompCount || 0);
+  const marketSource = String(marketData.source || compData.source || '').toLowerCase();
+  const compSource = String(compData.source || compData.compSource || '').toLowerCase();
+  const fallbackEvidence = marketSource.includes('fallback') || compSource.includes('fallback') || fallbackUnknownCompCount > 0;
+  const activeOnlyEvidence = soldCompCount <= 0 && (activeCompCount > 0 || marketSource === 'active_market' || marketSource === 'insufficient_evidence');
+  const fallbackOnlyEvidence = soldCompCount <= 0 && fallbackEvidence && activeCompCount <= 0;
 
-  if (parsed.qualityTier === "premium") add('parsed_card_tier', 'premium', 'Premium card profile', 45);
-  if (parsed.qualityTier === "strong") add('parsed_card_tier', 'strong', 'Strong card profile', 35);
-  if (parsed.qualityTier === "watch") add('parsed_card_tier', 'watch', 'Watch card profile', 20);
-  if (parsed.qualityTier === "generic") add('parsed_card_tier', 'generic', 'Generic card profile', 3);
-  if (parsed.qualityTier === "low-confidence") add('parsed_card_tier', 'low_confidence', 'Low-confidence card profile', -30);
+  add('trend', 'trend_score_bonus', 'Trend score bonus', Math.max(-8, Math.min(8, trendData.scoreBonus || 0)));
+
+  if (parsed.qualityTier === "premium") add('parsed_card_tier', 'premium', 'Premium card profile', 20);
+  if (parsed.qualityTier === "strong") add('parsed_card_tier', 'strong', 'Strong card profile', 15);
+  if (parsed.qualityTier === "watch") add('parsed_card_tier', 'watch', 'Watch card profile', 8);
+  if (parsed.qualityTier === "generic") add('parsed_card_tier', 'generic', 'Generic card profile', 0);
+  if (parsed.qualityTier === "low-confidence") add('parsed_card_tier', 'low_confidence', 'Low-confidence card profile', -20);
   if (parsed.qualityTier === "avoid") setScore('parsed_card_tier', 'avoid', 'Avoid-tier card profile resets legacy score', 0);
 
-  if (estimatedProfit >= 20) add('profit', 'profit_20', 'Estimated profit >= $20', 15);
-  if (estimatedProfit >= 40) add('profit', 'profit_40', 'Estimated profit >= $40', 15);
-  if (estimatedProfit >= 75) add('profit', 'profit_75', 'Estimated profit >= $75', 10);
+  if (soldCompCount >= 8) add('evidence', 'sold_comps_8', '8+ true sold comps', 28);
+  else if (soldCompCount >= 5) add('evidence', 'sold_comps_5', '5+ true sold comps', 22);
+  else if (soldCompCount >= 3) add('evidence', 'sold_comps_3', '3+ true sold comps', 16);
+  else if (soldCompCount >= 1) add('evidence', 'sold_comps_thin', 'Thin true sold support', 6);
+  else add('evidence', 'zero_true_sold_comps', 'No true sold comps', -28);
 
-  if (roi >= 0.25) add('roi', 'roi_25', 'ROI >= 25%', 12);
-  if (roi >= 0.4) add('roi', 'roi_40', 'ROI >= 40%', 10);
-  if (roi >= 0.6) add('roi', 'roi_60', 'ROI >= 60%', 8);
+  if (activeOnlyEvidence) add('evidence', 'active_only_context', 'Active-only context', 4);
+  if (fallbackOnlyEvidence) add('evidence', 'fallback_only_context', 'Fallback-only context', -18);
+  else if (fallbackEvidence && soldCompCount <= 0) add('evidence', 'fallback_context', 'Fallback context without sold support', -12);
 
-  if (combinedConfidence >= 75) add('confidence', 'confidence_75', 'Combined confidence >= 75', 14);
-  else if (combinedConfidence >= 60) add('confidence', 'confidence_60', 'Combined confidence >= 60', 10);
-  else if (combinedConfidence >= 40) add('confidence', 'confidence_40', 'Combined confidence >= 40', 5);
-  else if (combinedConfidence <= 15) add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+  if (estimatedProfit >= 150) add('profit', 'profit_150', 'Estimated profit >= $150', 18);
+  else if (estimatedProfit >= 75) add('profit', 'profit_75', 'Estimated profit >= $75', 12);
+  else if (estimatedProfit >= 30) add('profit', 'profit_30', 'Estimated profit >= $30', 8);
+  else if (estimatedProfit >= 10) add('profit', 'profit_10', 'Estimated profit >= $10', 4);
+  else if (estimatedProfit < -50) add('profit', 'profit_negative_50', 'Estimated profit worse than -$50', -28);
+  else if (estimatedProfit < 0) add('profit', 'profit_negative', 'Negative expected profit', -20);
 
-  if (marketData.source === "sold_market") add('market_source', 'sold_market', 'Sold-market source', 8);
-  if (marketData.source === "blended_market") add('market_source', 'blended_market', 'Blended-market source', 5);
-  if (marketData.source === "active_market") add('market_source', 'active_market', 'Active-market source', 3);
-  if (marketData.source === "fallback") add('market_source', 'fallback', 'Fallback market source', -6);
+  if (roi >= 0.8) add('roi', 'roi_80', 'ROI >= 80%', 18);
+  else if (roi >= 0.5) add('roi', 'roi_50', 'ROI >= 50%', 12);
+  else if (roi >= 0.3) add('roi', 'roi_30', 'ROI >= 30%', 8);
+  else if (roi >= 0.15) add('roi', 'roi_15', 'ROI >= 15%', 4);
+  else if (roi <= -0.25) add('roi', 'roi_negative_25', 'ROI <= -25%', -24);
+  else if (roi < 0) add('roi', 'roi_negative', 'Negative ROI', -18);
 
-  if (flags.firstBowman) add('card_traits', 'first_bowman', '1st Bowman trait', 8);
-  if (flags.numbered) add('card_traits', 'numbered', 'Numbered trait', 7);
-  if (parsed.grade === 10) add('card_traits', 'grade_10', 'Grade 10 trait', 8);
-  if (parsed.setName === "Bowman Chrome") add('card_traits', 'bowman_chrome', 'Bowman Chrome set', 6);
-  if (parsed.setName === "Topps Chrome") add('card_traits', 'topps_chrome', 'Topps Chrome set', 5);
-  if (parsed.setName === "Prizm") add('card_traits', 'prizm', 'Prizm set', 5);
-  if (flags.pokemon && parsed.grade === 10) add('card_traits', 'pokemon_grade_10', 'Pokemon grade 10 trait', 8);
+  const soldSupportedConfidence = soldCompCount > 0 && ['sold_market', 'blended_market'].includes(marketData.source);
+  if (soldSupportedConfidence) {
+    if (combinedConfidence >= 80) add('confidence', 'sold_confidence_80', 'Sold-supported confidence >= 80', 12);
+    else if (combinedConfidence >= 65) add('confidence', 'sold_confidence_65', 'Sold-supported confidence >= 65', 8);
+    else if (combinedConfidence >= 45) add('confidence', 'sold_confidence_45', 'Sold-supported confidence >= 45', 4);
+    else if (combinedConfidence <= 15) add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+  } else if (activeOnlyEvidence) {
+    if (combinedConfidence >= 70) add('confidence', 'active_context_confidence', 'Active-context confidence', 4);
+    else if (combinedConfidence >= 45) add('confidence', 'active_context_confidence_limited', 'Limited active-context confidence', 2);
+    else if (combinedConfidence <= 15) add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+  } else if (fallbackEvidence) {
+    if (combinedConfidence <= 15) add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+  } else if (combinedConfidence <= 15) {
+    add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+  }
+
+  if (marketData.source === "sold_market") add('market_source', 'sold_market', 'Sold-market source', 10);
+  if (marketData.source === "blended_market") add('market_source', 'blended_market', 'Blended-market source', 6);
+  if (marketData.source === "active_market") add('market_source', 'active_market', 'Active-market source', 2);
+  if (marketData.source === "insufficient_evidence") add('market_source', 'insufficient_evidence', 'Insufficient evidence source', -15);
+  if (marketData.source === "fallback") add('market_source', 'fallback', 'Fallback market source', -18);
+
+  if (flags.firstBowman) add('card_traits', 'first_bowman', '1st Bowman trait', 5);
+  if (flags.numbered) add('card_traits', 'numbered', 'Numbered trait', 4);
+  if (parsed.grade === 10) add('card_traits', 'grade_10', 'Grade 10 trait', 5);
+  if (parsed.setName === "Bowman Chrome") add('card_traits', 'bowman_chrome', 'Bowman Chrome set', 4);
+  if (parsed.setName === "Topps Chrome") add('card_traits', 'topps_chrome', 'Topps Chrome set', 3);
+  if (parsed.setName === "Prizm") add('card_traits', 'prizm', 'Prizm set', 3);
+  if (flags.pokemon && parsed.grade === 10) add('card_traits', 'pokemon_grade_10', 'Pokemon grade 10 trait', 4);
 
   if (flags.lot) add('risk_traits', 'lot', 'Lot risk trait', -45);
   if (flags.sealed) add('risk_traits', 'sealed', 'Sealed risk trait', -80);
@@ -468,14 +509,31 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
   if (flags.digital) add('risk_traits', 'digital', 'Digital risk trait', -100);
   if (flags.custom) add('risk_traits', 'custom', 'Custom risk trait', -90);
 
-  if (listing.sellerFeedbackPercentage >= 99) add('seller', 'seller_feedback_percentage_99', 'Seller feedback percentage >= 99', 3);
-  if (listing.sellerFeedbackScore >= 100) add('seller', 'seller_feedback_score_100', 'Seller feedback score >= 100', 3);
+  if (listing.sellerFeedbackPercentage >= 99) add('seller', 'seller_feedback_percentage_99', 'Seller feedback percentage >= 99', 2);
+  if (listing.sellerFeedbackScore >= 100) add('seller', 'seller_feedback_score_100', 'Seller feedback score >= 100', 2);
 
   if (listing.totalCost <= 0) setScore('safety_capital', 'non_positive_total_cost', 'Non-positive total cost resets legacy score', 0);
   if (listing.totalCost > 750 && estimatedProfit < 150) add('safety_capital', 'high_capital_limited_profit', 'High capital with limited profit', -20);
 
   const preClampTotal = score;
-  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  let scoreCap = 100;
+  let scoreCapReason = 'sufficient_sold_evidence';
+
+  if (soldCompCount <= 0) {
+    scoreCap = 45;
+    scoreCapReason = 'zero_true_sold_comps';
+  }
+
+  if (fallbackOnlyEvidence) {
+    scoreCap = Math.min(scoreCap, 35);
+    scoreCapReason = 'fallback_only_evidence';
+  } else if (activeOnlyEvidence) {
+    scoreCap = Math.min(scoreCap, 45);
+    scoreCapReason = 'active_only_evidence';
+  }
+
+  const uncappedScore = Math.max(0, Math.round(score));
+  const finalScore = Math.max(0, Math.min(scoreCap, uncappedScore));
 
   const sumCategory = (category) => adders
     .filter((entry) => entry.category === category)
@@ -513,6 +571,15 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
       contribution: sumCategory('market_source'),
       contributions: adders.filter((entry) => entry.category === 'market_source')
     },
+    evidence: {
+      trueSoldCompCount: soldCompCount,
+      activeCompCount,
+      fallbackUnknownCompCount,
+      activeOnlyEvidence,
+      fallbackOnlyEvidence,
+      contribution: sumCategory('evidence'),
+      contributions: adders.filter((entry) => entry.category === 'evidence')
+    },
     cardTraits: {
       contribution: sumCategory('card_traits'),
       contributions: adders.filter((entry) => entry.category === 'card_traits')
@@ -533,6 +600,9 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
     contributions: adders,
     adjustments,
     preClampTotal,
+    uncappedScore,
+    scoreCap,
+    scoreCapReason,
     finalScore
   };
 }
@@ -607,6 +677,7 @@ const roi = roiData.roi;
     roi,
     combinedConfidence,
     marketData,
+    compData,
     listing
   });
   const finalScore = scoreBreakdown.finalScore;
