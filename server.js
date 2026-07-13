@@ -1194,6 +1194,171 @@ function buildEvidenceReadinessExplanation(item = {}, dealGateData = null) {
   };
 }
 
+function buildUnifiedDecisionSection({
+  sectionId,
+  order,
+  label,
+  sectionType,
+  authoritative = false,
+  signalId = '',
+  signalAnnotation = null,
+  content = {}
+}) {
+  return {
+    sectionId,
+    order,
+    label,
+    sectionType,
+    authoritative,
+    signalId,
+    signalAnnotation,
+    content
+  };
+}
+
+function buildUnifiedDecisionPresentation(item = {}, display = {}) {
+  const annotations = display.signalAnnotations || {};
+  const productionDecision = display.productionDecisionExplanation || buildProductionDecisionExplanation(item.dealGate);
+  const financialContext = {
+    estimatedValue: item.estimatedValue ?? null,
+    estimatedProfit: item.estimatedProfit ?? null,
+    roi: item.roi ?? null,
+    roiRecommendationLabel: display.roiRecommendationLabel || '',
+    valuationConfidence: display.valuationConfidence || null
+  };
+  const sections = [
+    buildUnifiedDecisionSection({
+      sectionId: 'deal_gate_production_decision',
+      order: 1,
+      label: 'Deal Gate Production Decision',
+      sectionType: 'production decision',
+      authoritative: true,
+      signalId: 'deal_gate',
+      signalAnnotation: annotations.deal_gate || null,
+      content: {
+        decision: display.authoritativeDecision,
+        primaryDecisionLabel: display.primaryDecisionLabel,
+        authoritativeDecisionSource: display.authoritativeDecisionSource,
+        failedReasons: [...(display.rejectionReasons || [])],
+        passedReasons: [...(display.passedReasons || [])]
+      }
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'production_decision_explanation',
+      order: 2,
+      label: 'Production Decision Explanation',
+      sectionType: 'production decision',
+      authoritative: true,
+      signalId: 'deal_gate',
+      signalAnnotation: annotations.deal_gate || null,
+      content: productionDecision
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'sold_evidence_support',
+      order: 3,
+      label: 'Sold Evidence Support',
+      sectionType: 'evidence support',
+      signalId: 'sold_evidence_confidence',
+      signalAnnotation: annotations.sold_evidence_confidence || null,
+      content: display.soldEvidenceSupport || {
+        label: display.soldEvidenceConfidenceLabel,
+        rawValue: display.soldEvidenceCount
+      }
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'valuation_financial_context',
+      order: 4,
+      label: 'Valuation and Financial Context',
+      sectionType: 'financial context',
+      signalId: 'roi_recommendation',
+      signalAnnotation: annotations.roi_recommendation || null,
+      content: financialContext
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'evidence_readiness',
+      order: 5,
+      label: 'Evidence Readiness',
+      sectionType: 'evidence support',
+      signalId: 'decision_intelligence',
+      signalAnnotation: annotations.decision_intelligence || null,
+      content: display.evidenceReadinessExplanation || null
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'market_context_confidence',
+      order: 6,
+      label: 'Market Context Confidence',
+      sectionType: 'market context',
+      signalId: 'market_confidence',
+      signalAnnotation: annotations.market_confidence || null,
+      content: display.marketContextConfidence || null
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'legacy_context_score',
+      order: 7,
+      label: 'Legacy Context Score',
+      sectionType: 'legacy/context only',
+      signalId: 'legacy_score',
+      signalAnnotation: annotations.legacy_score || null,
+      content: {
+        label: display.legacyScoreLabel,
+        rawValue: item.score ?? null,
+        scoreBreakdown: item.scoreBreakdown || null
+      }
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'desirability_context',
+      order: 8,
+      label: 'Desirability Context',
+      sectionType: 'legacy/context only',
+      signalId: 'quality_score',
+      signalAnnotation: annotations.quality_score || null,
+      content: {
+        label: display.qualityScoreLabel,
+        rawValue: item.investmentQuality ?? item.qualityData?.investmentQuality ?? null,
+        bucketLabel: display.qualityBucketLabel,
+        qualityBreakdown: item.qualityBreakdown || null
+      }
+    }),
+    buildUnifiedDecisionSection({
+      sectionId: 'legacy_deal_grade',
+      order: 9,
+      label: 'Legacy Deal Grade',
+      sectionType: 'legacy/context only',
+      signalId: 'deal_grade',
+      signalAnnotation: annotations.deal_grade || null,
+      content: {
+        label: display.dealGradeScoreLabel,
+        rawValue: item.dealGrade || null,
+        displayGrade: display.dealGradeLabel,
+        legacyGradeActionLabel: display.legacyGradeActionLabel,
+        hiddenLegacyGradeAction: display.hiddenLegacyGradeAction,
+        dealGradeBreakdown: item.dealGradeBreakdown || null
+      }
+    })
+  ];
+
+  return {
+    source: 'unified_decision_presentation',
+    version: '1.0.0',
+    authoritativeDecisionSource: 'deal_gate',
+    productionDecisionSignal: 'deal_gate',
+    productionImpact: 'none',
+    rawFieldsPreserved: true,
+    failedReasonsFirst: true,
+    hierarchy: sections.map((section) => section.sectionId),
+    sections,
+    dealGateProductionDecision: sections[0],
+    productionDecisionExplanation: sections[1],
+    soldEvidenceSupport: sections[2],
+    valuationAndFinancialContext: sections[3],
+    evidenceReadiness: sections[4],
+    marketContextConfidence: sections[5],
+    legacyContextScore: sections[6],
+    desirabilityContext: sections[7],
+    legacyDealGrade: sections[8]
+  };
+}
+
 function buildDisplayInterpretation(item = {}) {
   const dealGateData = item.dealGate && typeof item.dealGate === 'object' ? item.dealGate : null;
   const rejectedByDealGate = dealGateData?.passed === false;
@@ -1257,6 +1422,7 @@ function buildDisplayInterpretation(item = {}) {
   );
 
   display.signalAnnotations = buildSignalAnnotationsForDisplay(item, display);
+  display.unifiedDecisionPresentation = buildUnifiedDecisionPresentation(item, display);
 
   return {
     ...item,
