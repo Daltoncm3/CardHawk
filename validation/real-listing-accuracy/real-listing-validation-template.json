@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "real_listing_accuracy_validation",
+  "mode": "offline_manual_review",
+  "batchId": "real-listing-pilot-001",
+  "createdAt": "YYYY-MM-DDTHH:mm:ss.sssZ",
+  "targetListingCount": 25,
+  "reviewer": "Dalton",
+  "immutableSnapshots": true,
+  "records": [
+    {
+      "schemaVersion": "1.0.0",
+      "recordId": "real-listing-001",
+      "snapshotLockedAt": "YYYY-MM-DDTHH:mm:ss.sssZ",
+      "listing": {
+        "identity": {
+          "title": "Exact listing title",
+          "parsed": {
+            "year": "",
+            "player": "",
+            "set": "",
+            "cardNumber": "",
+            "parallel": "",
+            "grade": "",
+            "condition": ""
+          }
+        },
+        "itemId": "",
+        "url": "",
+        "marketplace": "ebay",
+        "askingPrice": null,
+        "totalCost": null
+      },
+      "cardhawkSnapshot": {
+        "capturedAt": "YYYY-MM-DDTHH:mm:ss.sssZ",
+        "dealGateDecision": "REJECT",
+        "buyNow": false,
+        "productionDecisionExplanation": {},
+        "estimatedValue": null,
+        "estimatedProfit": null,
+        "roi": null,
+        "soldEvidenceSupport": {},
+        "valuationConfidence": {},
+        "marketContextConfidence": {},
+        "evidenceReadiness": {},
+        "legacyContextScore": {},
+        "desirabilityContext": {},
+        "legacyDealGrade": {},
+        "rejectionReasons": [],
+        "unifiedDecisionPresentation": {}
+      },
+      "snapshotHash": "sha256-of-cardhawkSnapshot",
+      "daltonReview": {
+        "judgment": "unreviewed",
+        "expectedFairValue": null,
+        "judgmentConfidence": null,
+        "agreementDisagreementReason": "",
+        "notes": ""
+      },
+      "validation": {
+        "outcomeCategory": "uncertain",
+        "disagreementCategories": [],
+        "recurringFailurePattern": "",
+        "reviewedAt": null
+      }
+    }
+  ]
+}

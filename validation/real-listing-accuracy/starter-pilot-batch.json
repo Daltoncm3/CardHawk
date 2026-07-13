@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "real_listing_accuracy_validation",
+  "mode": "offline_manual_review",
+  "batchId": "real-listing-pilot-001",
+  "createdAt": "2026-07-13T00:00:00.000Z",
+  "targetListingCount": 25,
+  "reviewer": "Dalton",
+  "immutableSnapshots": true,
+  "records": [
+    {
+      "schemaVersion": "1.0.0",
+      "recordId": "starter-example-replace-before-review",
+      "snapshotLockedAt": "2026-07-13T00:00:00.000Z",
+      "listing": {
+        "identity": {
+          "title": "Starter example only - replace with a real CardHawk listing",
+          "parsed": {}
+        },
+        "itemId": "replace-with-real-item-id",
+        "url": "replace-with-real-listing-url",
+        "marketplace": "ebay",
+        "askingPrice": null,
+        "totalCost": null
+      },
+      "cardhawkSnapshot": {
+        "capturedAt": "2026-07-13T00:00:00.000Z",
+        "dealGateDecision": "REJECT",
+        "buyNow": false,
+        "productionDecisionExplanation": {
+          "label": "Rejected by Deal Gate",
+          "primaryExplanation": "Starter example only; replace with real CardHawk output."
+        },
+        "estimatedValue": null,
+        "estimatedProfit": null,
+        "roi": null,
+        "soldEvidenceSupport": {
+          "label": "Sold Evidence Support",
+          "rawValue": 0,
+          "sourceDetails": {
+            "trueSoldCompCount": 0,
+            "activeCompCount": 0
+          }
+        },
+        "valuationConfidence": {
+          "rawValue": null
+        },
+        "marketContextConfidence": {
+          "rawValue": null
+        },
+        "evidenceReadiness": {
+          "label": "Evidence Readiness",
+          "productionImpact": "none",
+          "evidenceReadiness": "unknown"
+        },
+        "legacyContextScore": {
+          "label": "Legacy Context Score",
+          "rawValue": null,
+          "scoreBreakdown": null
+        },
+        "desirabilityContext": {
+          "label": "Desirability Context",
+          "rawValue": null,
+          "bucketLabel": "",
+          "qualityBreakdown": null
+        },
+        "legacyDealGrade": {
+          "label": "Legacy Deal Grade",
+          "rawValue": null,
+          "displayGrade": "",
+          "dealGradeBreakdown": null
+        },
+        "rejectionReasons": [
+          "Starter example only; replace with real CardHawk output."
+        ],
+        "unifiedDecisionPresentation": null
+      },
+      "snapshotHash": "cf7443fe7bf030cd38a22718bbf8a86d253976209b1e3eaf52cadef4456d6851",
+      "daltonReview": {
+        "judgment": "unreviewed",
+        "expectedFairValue": null,
+        "judgmentConfidence": null,
+        "agreementDisagreementReason": "",
+        "notes": "Replace this starter example before using the pilot batch."
+      },
+      "validation": {
+        "outcomeCategory": "uncertain",
+        "disagreementCategories": [],
+        "recurringFailurePattern": "",
+        "reviewedAt": null
+      }
+    }
+  ]
+}
