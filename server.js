@@ -409,6 +409,134 @@ function estimateMarketValue(listing) {
   return Math.max(0, listing.totalCost * multiplier);
 }
 
+function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProfit = 0, roi = 0, combinedConfidence = 0, marketData = {}, listing = {} } = {}) {
+  const flags = parsed.flags || {};
+  const adders = [];
+  const adjustments = [];
+  let score = 0;
+
+  const add = (category, id, label, value) => {
+    if (!value) return;
+    score += value;
+    adders.push({ category, id, label, value });
+  };
+
+  const setScore = (category, id, label, value) => {
+    const previousScore = score;
+    score = value;
+    adjustments.push({ category, id, label, previousScore, value });
+  };
+
+  add('trend', 'trend_score_bonus', 'Trend score bonus', trendData.scoreBonus || 0);
+
+  if (parsed.qualityTier === "premium") add('parsed_card_tier', 'premium', 'Premium card profile', 45);
+  if (parsed.qualityTier === "strong") add('parsed_card_tier', 'strong', 'Strong card profile', 35);
+  if (parsed.qualityTier === "watch") add('parsed_card_tier', 'watch', 'Watch card profile', 20);
+  if (parsed.qualityTier === "generic") add('parsed_card_tier', 'generic', 'Generic card profile', 3);
+  if (parsed.qualityTier === "low-confidence") add('parsed_card_tier', 'low_confidence', 'Low-confidence card profile', -30);
+  if (parsed.qualityTier === "avoid") setScore('parsed_card_tier', 'avoid', 'Avoid-tier card profile resets legacy score', 0);
+
+  if (estimatedProfit >= 20) add('profit', 'profit_20', 'Estimated profit >= $20', 15);
+  if (estimatedProfit >= 40) add('profit', 'profit_40', 'Estimated profit >= $40', 15);
+  if (estimatedProfit >= 75) add('profit', 'profit_75', 'Estimated profit >= $75', 10);
+
+  if (roi >= 0.25) add('roi', 'roi_25', 'ROI >= 25%', 12);
+  if (roi >= 0.4) add('roi', 'roi_40', 'ROI >= 40%', 10);
+  if (roi >= 0.6) add('roi', 'roi_60', 'ROI >= 60%', 8);
+
+  if (combinedConfidence >= 75) add('confidence', 'confidence_75', 'Combined confidence >= 75', 14);
+  else if (combinedConfidence >= 60) add('confidence', 'confidence_60', 'Combined confidence >= 60', 10);
+  else if (combinedConfidence >= 40) add('confidence', 'confidence_40', 'Combined confidence >= 40', 5);
+  else if (combinedConfidence <= 15) add('confidence', 'confidence_15_or_lower', 'Combined confidence <= 15', -10);
+
+  if (marketData.source === "sold_market") add('market_source', 'sold_market', 'Sold-market source', 8);
+  if (marketData.source === "blended_market") add('market_source', 'blended_market', 'Blended-market source', 5);
+  if (marketData.source === "active_market") add('market_source', 'active_market', 'Active-market source', 3);
+  if (marketData.source === "fallback") add('market_source', 'fallback', 'Fallback market source', -6);
+
+  if (flags.firstBowman) add('card_traits', 'first_bowman', '1st Bowman trait', 8);
+  if (flags.numbered) add('card_traits', 'numbered', 'Numbered trait', 7);
+  if (parsed.grade === 10) add('card_traits', 'grade_10', 'Grade 10 trait', 8);
+  if (parsed.setName === "Bowman Chrome") add('card_traits', 'bowman_chrome', 'Bowman Chrome set', 6);
+  if (parsed.setName === "Topps Chrome") add('card_traits', 'topps_chrome', 'Topps Chrome set', 5);
+  if (parsed.setName === "Prizm") add('card_traits', 'prizm', 'Prizm set', 5);
+  if (flags.pokemon && parsed.grade === 10) add('card_traits', 'pokemon_grade_10', 'Pokemon grade 10 trait', 8);
+
+  if (flags.lot) add('risk_traits', 'lot', 'Lot risk trait', -45);
+  if (flags.sealed) add('risk_traits', 'sealed', 'Sealed risk trait', -80);
+  if (flags.reprint) add('risk_traits', 'reprint', 'Reprint risk trait', -100);
+  if (flags.digital) add('risk_traits', 'digital', 'Digital risk trait', -100);
+  if (flags.custom) add('risk_traits', 'custom', 'Custom risk trait', -90);
+
+  if (listing.sellerFeedbackPercentage >= 99) add('seller', 'seller_feedback_percentage_99', 'Seller feedback percentage >= 99', 3);
+  if (listing.sellerFeedbackScore >= 100) add('seller', 'seller_feedback_score_100', 'Seller feedback score >= 100', 3);
+
+  if (listing.totalCost <= 0) setScore('safety_capital', 'non_positive_total_cost', 'Non-positive total cost resets legacy score', 0);
+  if (listing.totalCost > 750 && estimatedProfit < 150) add('safety_capital', 'high_capital_limited_profit', 'High capital with limited profit', -20);
+
+  const preClampTotal = score;
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  const sumCategory = (category) => adders
+    .filter((entry) => entry.category === category)
+    .reduce((sum, entry) => sum + entry.value, 0);
+
+  return {
+    source: 'legacy_score_breakdown',
+    trend: {
+      scoreBonus: trendData.scoreBonus || 0,
+      contribution: sumCategory('trend')
+    },
+    parsedCardTier: {
+      tier: parsed.qualityTier || 'unknown',
+      contribution: sumCategory('parsed_card_tier'),
+      adjustments: adjustments.filter((entry) => entry.category === 'parsed_card_tier')
+    },
+    profit: {
+      estimatedProfit,
+      contribution: sumCategory('profit'),
+      contributions: adders.filter((entry) => entry.category === 'profit')
+    },
+    roi: {
+      roi,
+      roiPercent: Math.round(Number(roi || 0) * 1000) / 10,
+      contribution: sumCategory('roi'),
+      contributions: adders.filter((entry) => entry.category === 'roi')
+    },
+    confidence: {
+      combinedConfidence,
+      contribution: sumCategory('confidence'),
+      contributions: adders.filter((entry) => entry.category === 'confidence')
+    },
+    marketSource: {
+      source: marketData.source || 'unknown',
+      contribution: sumCategory('market_source'),
+      contributions: adders.filter((entry) => entry.category === 'market_source')
+    },
+    cardTraits: {
+      contribution: sumCategory('card_traits'),
+      contributions: adders.filter((entry) => entry.category === 'card_traits')
+    },
+    riskTraits: {
+      contribution: sumCategory('risk_traits'),
+      penalties: adders.filter((entry) => entry.category === 'risk_traits')
+    },
+    seller: {
+      contribution: sumCategory('seller'),
+      contributions: adders.filter((entry) => entry.category === 'seller')
+    },
+    safetyCapital: {
+      contribution: sumCategory('safety_capital'),
+      penalties: adders.filter((entry) => entry.category === 'safety_capital'),
+      adjustments: adjustments.filter((entry) => entry.category === 'safety_capital')
+    },
+    contributions: adders,
+    adjustments,
+    preClampTotal,
+    finalScore
+  };
+}
+
 function scoreListing(listing, compUniverse = []) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
 
@@ -471,57 +599,17 @@ const ebayFees = roiData.costs?.fees?.totalSellerFees || estimatedValue * 0.1325
 const estimatedProfit = roiData.netProfit;
 const roi = roiData.roi;
 
-  let score = 0;
-
-  score += trendData.scoreBonus || 0;
-
-  if (parsed.qualityTier === "premium") score += 45;
-  if (parsed.qualityTier === "strong") score += 35;
-  if (parsed.qualityTier === "watch") score += 20;
-  if (parsed.qualityTier === "generic") score += 3;
-  if (parsed.qualityTier === "low-confidence") score -= 30;
-  if (parsed.qualityTier === "avoid") score = 0;
-
-  if (estimatedProfit >= 20) score += 15;
-  if (estimatedProfit >= 40) score += 15;
-  if (estimatedProfit >= 75) score += 10;
-  if (roi >= 0.25) score += 12;
-  if (roi >= 0.4) score += 10;
-  if (roi >= 0.6) score += 8;
-
   const combinedConfidence = Math.max(confidenceData.confidence || 0, marketData.confidence || 0);
-
-  if (combinedConfidence >= 75) score += 14;
-  else if (combinedConfidence >= 60) score += 10;
-  else if (combinedConfidence >= 40) score += 5;
-  else if (combinedConfidence <= 15) score -= 10;
-
-  if (marketData.source === "sold_market") score += 8;
-  if (marketData.source === "blended_market") score += 5;
-  if (marketData.source === "active_market") score += 3;
-  if (marketData.source === "fallback") score -= 6;
-
-  if (parsed.flags.firstBowman) score += 8;
-  if (parsed.flags.numbered) score += 7;
-  if (parsed.grade === 10) score += 8;
-  if (parsed.setName === "Bowman Chrome") score += 6;
-  if (parsed.setName === "Topps Chrome") score += 5;
-  if (parsed.setName === "Prizm") score += 5;
-  if (parsed.flags.pokemon && parsed.grade === 10) score += 8;
-
-  if (parsed.flags.lot) score -= 45;
-  if (parsed.flags.sealed) score -= 80;
-  if (parsed.flags.reprint) score -= 100;
-  if (parsed.flags.digital) score -= 100;
-  if (parsed.flags.custom) score -= 90;
-
-  if (listing.sellerFeedbackPercentage >= 99) score += 3;
-  if (listing.sellerFeedbackScore >= 100) score += 3;
-
-  if (listing.totalCost <= 0) score = 0;
-  if (listing.totalCost > 750 && estimatedProfit < 150) score -= 20;
-
-  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  const scoreBreakdown = createLegacyScoreBreakdown({
+    parsed,
+    trendData,
+    estimatedProfit,
+    roi,
+    combinedConfidence,
+    marketData,
+    listing
+  });
+  const finalScore = scoreBreakdown.finalScore;
 
   const qualityData = qualityEngine.evaluateQuality({
     ...listing,
@@ -597,6 +685,7 @@ const decisionData = decisionEngine.makeDecision({
 
   return {
     score: finalScore,
+    scoreBreakdown,
     estimatedValue,
     estimatedProfit,
     roi,
@@ -717,6 +806,8 @@ function buildDisplayInterpretation(item = {}) {
     marketConfidenceAuthority: signalSemantics.describeSignalAuthority('market_confidence'),
     soldEvidenceConfidenceLabel: 'Sold Evidence Support',
     soldEvidenceConfidenceAuthority: signalSemantics.describeSignalAuthority('sold_evidence_confidence'),
+    legacyScoreLabel: 'Legacy Context Score',
+    legacyScoreAuthority: signalSemantics.describeSignalAuthority('legacy_score'),
     soldEvidenceCount,
     suppressedBuyLikeLabels: false
   };
@@ -1876,6 +1967,7 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
     },
     grade: scoring.dealGrade,
     quality: scoring.qualityData,
+    scoreBreakdown: scoring.scoreBreakdown,
     display: buildDisplayInterpretation(displayListing).display
   });
 });
@@ -1896,6 +1988,7 @@ app.get("/api/quality/listing/:itemId", (req, res) => {
     },
     quality: scoring.qualityData,
     grade: scoring.dealGrade,
+    scoreBreakdown: scoring.scoreBreakdown,
     display: buildDisplayInterpretation(displayListing).display
   });
 });
@@ -2394,7 +2487,7 @@ function listingCard(rawItem) {
       ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.rejectionReasons?.length ? ` — ${escapeHtml(display.rejectionReasons.slice(0, 1).join(" | "))}` : ""}</div>` : ""}
       ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
       ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
-      <div class="score">Score: ${Math.round(item.score || 0)}/100</div>
+      <div class="score">${escapeHtml(display.legacyScoreLabel || "Legacy Context Score")}: ${Math.round(item.score || 0)}/100</div>
       ${item.qualityReasons?.length ? `<div class="meta">Quality Context: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}
       ${item.qualityWarnings?.length ? `<div class="meta">Warnings: ${escapeHtml(item.qualityWarnings.slice(0, 2).join(" | "))}</div>` : ""}
       <div class="price">$${money(item.totalCost || item.price)}</div>
@@ -2439,6 +2532,7 @@ module.exports = {
   app,
   dealGate,
   scoreListing,
+  createLegacyScoreBreakdown,
   buildDisplayInterpretation,
   buildSignalAnnotationsForDisplay,
   isShadowModeEnabled,
