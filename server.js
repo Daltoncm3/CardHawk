@@ -848,6 +848,216 @@ function buildSignalAnnotationsForDisplay(item = {}, display = {}) {
   return signalAnnotation.annotateSignals(getSignalRawValuesForDisplay(item, display));
 }
 
+function toDisplayNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function pickDisplayNumber(sources = [], keys = [], fallback = null) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    for (const key of keys) {
+      if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+        const number = Number(source[key]);
+        if (Number.isFinite(number)) return number;
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function hasConfidenceReason(reasons = [], pattern) {
+  return (Array.isArray(reasons) ? reasons : []).some((reason) => pattern.test(String(reason || '')));
+}
+
+function getIdentityConfidenceForDisplay(item = {}) {
+  const direct = pickDisplayNumber([
+    item,
+    item.identity,
+    item.listingIdentity,
+    item.canonicalSoldEvidence
+  ], ['identityConfidence', 'confidence'], null);
+
+  if (direct !== null) return direct;
+
+  const records = item.canonicalSoldEvidence?.records;
+  if (!Array.isArray(records) || !records.length) return null;
+
+  const values = records
+    .map((record) => Number(record.identityConfidence))
+    .filter(Number.isFinite);
+
+  if (!values.length) return null;
+  return Math.max(...values);
+}
+
+function buildConfidenceDimension({
+  dimensionId,
+  label,
+  rawValue,
+  whatItMeasures,
+  evidenceSourcesAllowed,
+  productionEligible = false,
+  capApplied = null,
+  sourceDetails = {},
+  authority = 'context_only_non_authoritative'
+}) {
+  return {
+    dimensionId,
+    label,
+    rawValue,
+    whatItMeasures,
+    evidenceSourcesAllowed,
+    productionEligible,
+    capApplied,
+    sourceDetails,
+    authority
+  };
+}
+
+function buildConfidenceBreakdown(item = {}, display = {}) {
+  const marketIntelligenceData = item.marketIntelligenceData || {};
+  const confidenceData = item.confidenceData || {};
+  const marketData = item.marketData || {};
+  const compData = item.compData || {};
+  const decisionData = item.decision || item.decisionData || {};
+  const confidenceReasons = Array.isArray(item.confidenceReasons)
+    ? item.confidenceReasons
+    : Array.isArray(confidenceData.reasons)
+      ? confidenceData.reasons
+      : [];
+  const soldEvidenceCount = display.soldEvidenceCount ?? getSoldEvidenceCountForDisplay(item, item.dealGate || {});
+  const marketContextConfidence = toDisplayNumber(item.marketConfidence, 0);
+  const valuationConfidence = pickDisplayNumber([marketData], ['confidence', 'confidenceScore', 'marketConfidence'], 0);
+  const marketIntelligenceConfidence = pickDisplayNumber([marketIntelligenceData], ['confidenceScore'], 0);
+  const identityConfidence = getIdentityConfidenceForDisplay(item);
+  const decisionConfidence = pickDisplayNumber([
+    decisionData,
+    marketIntelligenceData.decisionIntelligence
+  ], ['decisionConfidence', 'confidence'], null);
+  const confidenceCap = pickDisplayNumber([
+    item,
+    confidenceData
+  ], ['confidenceCap', 'cap'], null);
+
+  const dimensions = {
+    marketContextConfidence: buildConfidenceDimension({
+      dimensionId: 'market_context_confidence',
+      label: 'Market Context Confidence',
+      rawValue: marketContextConfidence,
+      whatItMeasures: 'Broad confidence in available market context, including comps, similarity, seller trust, listing history, price sanity, and card traits.',
+      evidenceSourcesAllowed: ['true_sold', 'active_context', 'fallback_context', 'historical_observations', 'seller_trust', 'card_traits'],
+      productionEligible: false,
+      capApplied: confidenceCap,
+      sourceDetails: {
+        confidenceEngineValue: pickDisplayNumber([confidenceData], ['confidence'], null),
+        valuationConfidence,
+        selectedBy: 'max(confidenceEngine.confidence, marketData.confidence)',
+        compSource: item.compSource || compData.source || compData.compSource || marketData.source || '',
+        compCount: toDisplayNumber(item.compCount ?? compData.compCount, 0),
+        averageSimilarity: pickDisplayNumber([confidenceData, compData], ['avgSimilarity', 'averageSimilarity'], null),
+        sellerTrust: hasConfidenceReason(confidenceReasons, /seller trust/i),
+        listingHistory: hasConfidenceReason(confidenceReasons, /history signal/i),
+        priceSanity: hasConfidenceReason(confidenceReasons, /price sanity/i),
+        cardTraits: hasConfidenceReason(confidenceReasons, /card trait|strong card traits|premium tier|strong tier/i),
+        activeContext: String(item.compSource || compData.source || marketData.source || '').includes('active'),
+        fallbackContext: /fallback|heuristic/i.test(String(item.compSource || compData.source || marketData.source || '')),
+        reasons: confidenceReasons.slice()
+      },
+      authority: signalSemantics.describeSignalAuthority('market_confidence')
+    }),
+    soldEvidenceSupport: buildConfidenceDimension({
+      dimensionId: 'sold_evidence_support',
+      label: 'Sold Evidence Support',
+      rawValue: soldEvidenceCount,
+      whatItMeasures: 'Count and presence of true sold evidence only; active and aggregate context cannot satisfy this support.',
+      evidenceSourcesAllowed: ['true_sold'],
+      productionEligible: false,
+      capApplied: null,
+      sourceDetails: {
+        trueSoldCompCount: soldEvidenceCount,
+        activeCompCount: toDisplayNumber(compData.activeCompCount ?? marketIntelligenceData.activeCompCount, 0),
+        fallbackUnknownCompCount: toDisplayNumber(compData.fallbackUnknownCompCount, 0),
+        activeOnlyFlag: soldEvidenceCount <= 0 && toDisplayNumber(compData.activeCompCount ?? marketIntelligenceData.activeCompCount, 0) > 0,
+        fallbackOnlyFlag: soldEvidenceCount <= 0 && toDisplayNumber(compData.fallbackUnknownCompCount, 0) > 0
+      },
+      authority: signalSemantics.describeSignalAuthority('sold_evidence_confidence')
+    }),
+    valuationConfidence: buildConfidenceDimension({
+      dimensionId: 'valuation_confidence',
+      label: 'Valuation Confidence',
+      rawValue: valuationConfidence,
+      whatItMeasures: 'Confidence attached to the current market value estimate and its valuation evidence source.',
+      evidenceSourcesAllowed: ['true_sold', 'active_context', 'fallback_context'],
+      productionEligible: false,
+      capApplied: ['active_market', 'insufficient_evidence', 'fallback'].includes(String(marketData.source || '')) ? marketData.source : null,
+      sourceDetails: {
+        marketSource: marketData.source || '',
+        method: marketData.method || '',
+        soldCompCount: toDisplayNumber(marketData.soldCompCount ?? compData.trueSoldCompCount ?? compData.soldCompCount, 0),
+        activeCompCount: toDisplayNumber(marketData.activeCompCount ?? compData.activeCompCount, 0)
+      },
+      authority: 'context_only_non_authoritative'
+    }),
+    marketIntelligenceConfidence: buildConfidenceDimension({
+      dimensionId: 'market_intelligence_confidence',
+      label: 'Market Intelligence Confidence',
+      rawValue: marketIntelligenceConfidence,
+      whatItMeasures: 'Composite Market Intelligence confidence from raw market confidence, comp strength, pricing reliability, and market depth.',
+      evidenceSourcesAllowed: ['true_sold', 'active_context', 'fallback_context', 'market_depth', 'pricing_reliability'],
+      productionEligible: false,
+      capApplied: null,
+      sourceDetails: {
+        intelligenceScore: toDisplayNumber(marketIntelligenceData.intelligenceScore, 0),
+        trustLevel: marketIntelligenceData.trustLevel || '',
+        compStrength: toDisplayNumber(marketIntelligenceData.compStrength ?? marketIntelligenceData.componentScores?.compStrength, 0),
+        pricingReliability: toDisplayNumber(marketIntelligenceData.pricingReliability ?? marketIntelligenceData.componentScores?.pricingReliability, 0),
+        marketDepth: toDisplayNumber(marketIntelligenceData.marketDepth ?? marketIntelligenceData.componentScores?.marketDepth, 0)
+      },
+      authority: signalSemantics.describeSignalAuthority('confidence_score')
+    }),
+    identityConfidence: buildConfidenceDimension({
+      dimensionId: 'identity_confidence',
+      label: 'Identity Confidence',
+      rawValue: identityConfidence,
+      whatItMeasures: 'Confidence that imported or canonical evidence matches the intended card identity when such metadata is available.',
+      evidenceSourcesAllowed: ['canonical_sold_evidence', 'manual_review', 'adapter_identity_metadata'],
+      productionEligible: false,
+      capApplied: null,
+      sourceDetails: {
+        available: identityConfidence !== null,
+        source: identityConfidence !== null ? 'canonical_or_listing_identity_metadata' : 'not_available'
+      },
+      authority: 'evidence_only_non_authoritative'
+    }),
+    decisionConfidence: buildConfidenceDimension({
+      dimensionId: 'decision_confidence',
+      label: 'Decision Confidence',
+      rawValue: decisionConfidence,
+      whatItMeasures: 'Confidence emitted by non-authoritative Decision Engine or Decision Intelligence outputs when available.',
+      evidenceSourcesAllowed: ['decision_matrix', 'decision_intelligence_signals'],
+      productionEligible: false,
+      capApplied: null,
+      sourceDetails: {
+        available: decisionConfidence !== null,
+        decisionEngineRecommendation: decisionData.recommendation || decisionData.decision || '',
+        decisionIntelligenceReadiness: marketIntelligenceData.decisionIntelligence?.overallReadiness || ''
+      },
+      authority: 'context_only_non_authoritative'
+    })
+  };
+
+  return {
+    source: 'confidence_display_taxonomy',
+    version: '1.0.0',
+    decisionImpact: 'none',
+    rawFieldsPreserved: true,
+    productionDecisionSource: 'deal_gate',
+    dimensions
+  };
+}
+
 function getDealGateDisplayGroup(rule = {}) {
   if (rule.category === 'evidence') return 'evidence_support';
   if (['roi', 'valuation'].includes(rule.category)) return 'financial_context';
@@ -968,11 +1178,21 @@ function buildDisplayInterpretation(item = {}) {
     marketConfidenceAuthority: signalSemantics.describeSignalAuthority('market_confidence'),
     soldEvidenceConfidenceLabel: 'Sold Evidence Support',
     soldEvidenceConfidenceAuthority: signalSemantics.describeSignalAuthority('sold_evidence_confidence'),
+    marketIntelligenceConfidenceLabel: 'Market Intelligence Confidence',
+    marketIntelligenceConfidenceAuthority: signalSemantics.describeSignalAuthority('confidence_score'),
     legacyScoreLabel: 'Legacy Context Score',
     legacyScoreAuthority: signalSemantics.describeSignalAuthority('legacy_score'),
     soldEvidenceCount,
     suppressedBuyLikeLabels: false
   };
+
+  display.confidenceBreakdown = buildConfidenceBreakdown(item, display);
+  display.marketContextConfidence = display.confidenceBreakdown.dimensions.marketContextConfidence;
+  display.soldEvidenceSupport = display.confidenceBreakdown.dimensions.soldEvidenceSupport;
+  display.valuationConfidence = display.confidenceBreakdown.dimensions.valuationConfidence;
+  display.marketIntelligenceConfidence = display.confidenceBreakdown.dimensions.marketIntelligenceConfidence;
+  display.identityConfidence = display.confidenceBreakdown.dimensions.identityConfidence;
+  display.decisionConfidence = display.confidenceBreakdown.dimensions.decisionConfidence;
 
   display.suppressedBuyLikeLabels = rejectedByDealGate && (
     hasBuyLikeWording(rawQualityBucket) ||
