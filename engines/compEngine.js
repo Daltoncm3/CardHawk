@@ -973,12 +973,164 @@ function addContributionMetadata(comps, marketValue) {
   });
 }
 
+function normalizeIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getListingIdentifiers(item = {}) {
+  return [
+    item.listingId,
+    item.marketplaceListingId,
+    item.ebayItemId,
+    item.itemId,
+    item.id,
+    item.url,
+    item.itemWebUrl
+  ]
+    .map(normalizeIdentifier)
+    .filter(Boolean);
+}
+
+function isSelfListing(listing = {}, candidate = {}) {
+  if (listing === candidate) return true;
+
+  const listingIds = new Set(getListingIdentifiers(listing));
+  if (!listingIds.size) return false;
+
+  return getListingIdentifiers(candidate).some((identifier) => listingIds.has(identifier));
+}
+
+function incrementBreakdown(target, key) {
+  const normalizedKey = key || 'unknown';
+  target[normalizedKey] = (target[normalizedKey] || 0) + 1;
+}
+
+function getCandidateSource(comp = {}) {
+  return comp.source || comp.marketplace || comp.platform || comp.marketplaceLabel || comp.compSource || 'unknown';
+}
+
+function getCandidateLane(comp = {}) {
+  return comp.lane || comp.queryLane || comp.scanLane || '';
+}
+
+function getSimilarityBucket(similarity) {
+  if (similarity >= 90) return '90_100';
+  if (similarity >= 75) return '75_89';
+  if (similarity >= 60) return '60_74';
+  if (similarity >= 40) return '40_59';
+  if (similarity > 0) return '1_39';
+  return '0';
+}
+
+function getCandidateRejectionReasons(comp = {}) {
+  const reasons = [];
+
+  if (!comp.soldPrice || comp.soldPrice <= 0) reasons.push('missing price');
+  if (comp.similarity < 60) reasons.push('similarity below acceptance threshold');
+  reasons.push(...(comp.fatalMismatches || []));
+  reasons.push(...(comp.identityCaps || []));
+
+  return uniqueMessages(reasons.length ? reasons : ['not selected']);
+}
+
+function createParserIdentitySummary(profile = {}) {
+  return {
+    subject: profile.subject || '',
+    year: profile.year || '',
+    sport: profile.sport || '',
+    setName: profile.setName || '',
+    cardNumber: profile.cardNumber || '',
+    rookie: Boolean(profile.rookie),
+    autograph: Boolean(profile.autograph),
+    patch: Boolean(profile.patch),
+    refractor: Boolean(profile.refractor),
+    serialNumbered: Boolean(profile.serialNumbered),
+    serialPrintRun: profile.serialPrintRun || 0,
+    variation: profile.variation || '',
+    grader: profile.grader || '',
+    grade: profile.grade || '',
+    sealed: Boolean(profile.sealed),
+    lot: Boolean(profile.lot),
+    reprint: Boolean(profile.reprint)
+  };
+}
+
+function createCompCandidateDiagnostics({
+  listingProfile,
+  rawCandidateCount,
+  selfMatchesRemoved,
+  allScoredComps,
+  scoredComps
+}) {
+  const candidateSources = {};
+  const evidenceTypeCounts = {
+    true_sold: 0,
+    active: 0,
+    fallback_unknown: 0
+  };
+  const laneBreakdown = {};
+  const rejectionReasonBreakdown = {};
+  const similarityDistribution = {
+    '90_100': 0,
+    '75_89': 0,
+    '60_74': 0,
+    '40_59': 0,
+    '1_39': 0,
+    '0': 0
+  };
+
+  allScoredComps.forEach((comp) => {
+    incrementBreakdown(candidateSources, getCandidateSource(comp));
+    incrementBreakdown(evidenceTypeCounts, comp.evidenceType || 'fallback_unknown');
+    incrementBreakdown(similarityDistribution, getSimilarityBucket(comp.similarity));
+
+    const lane = getCandidateLane(comp);
+    if (lane) incrementBreakdown(laneBreakdown, lane);
+  });
+
+  const acceptedCandidateIds = new Set(scoredComps);
+  const rejectedCandidates = allScoredComps.filter((comp) => !acceptedCandidateIds.has(comp));
+
+  rejectedCandidates.forEach((comp) => {
+    getCandidateRejectionReasons(comp).forEach((reason) => {
+      incrementBreakdown(rejectionReasonBreakdown, reason);
+    });
+  });
+
+  const activeCandidateCount = evidenceTypeCounts.active || 0;
+  const soldCandidateCount = evidenceTypeCounts.true_sold || 0;
+  const fallbackCandidateCount = evidenceTypeCounts.fallback_unknown || 0;
+
+  return {
+    source: 'comp_engine',
+    version: '5.9C',
+    totalCandidates: allScoredComps.length,
+    selfMatchesRemoved,
+    candidateSources,
+    evidenceTypeCounts,
+    activeCandidateCount,
+    soldCandidateCount,
+    fallbackCandidateCount,
+    acceptedCandidateCount: scoredComps.length,
+    rejectedCandidateCount: rejectedCandidates.length,
+    rejectionReasonBreakdown,
+    similarityDistribution,
+    laneBreakdown,
+    parserIdentitySummary: createParserIdentitySummary(listingProfile),
+    candidateUniverseDescription: `Comp candidates are drawn from the provided local comp universe. ${rawCandidateCount} raw candidate${rawCandidateCount === 1 ? '' : 's'} were provided; ${selfMatchesRemoved} self-match${selfMatchesRemoved === 1 ? '' : 'es'} were removed before similarity scoring. Diagnostics are evidence-only and do not affect production decisions.`,
+    productionImpact: 'none'
+  };
+}
+
 function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   const warnings = [];
   const positives = [];
   const listingProfile = getComparableProfile(listing);
+  const rawCandidates = asArray(compUniverse);
+  const candidateUniverse = rawCandidates.filter((comp) => !isSelfListing(listing, comp));
+  const selfMatchesRemoved = rawCandidates.length - candidateUniverse.length;
 
-  const allScoredComps = asArray(compUniverse)
+  const allScoredComps = candidateUniverse
     .map((comp) => {
       const comparison = compareSimilarity(listingProfile, getComparableProfile(comp));
       const soldPrice = getSoldPrice(comp);
@@ -1009,6 +1161,13 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
   const scoredComps = allScoredComps
     .filter((comp) => comp.soldPrice > 0 && comp.similarity >= 60)
     .sort((a, b) => b.similarity - a.similarity || a.ageDays - b.ageDays);
+  const compCandidateDiagnostics = createCompCandidateDiagnostics({
+    listingProfile,
+    rawCandidateCount: rawCandidates.length,
+    selfMatchesRemoved,
+    allScoredComps,
+    scoredComps
+  });
 
   const usableCandidates = scoredComps.filter((comp) => comp.similarity >= 75);
   const outlierResult = detectOutliers(usableCandidates.length ? usableCandidates : scoredComps);
@@ -1142,6 +1301,7 @@ function evaluateListing(listing = {}, compUniverse = [], options = {}) {
     })),
     cappedCompCount: cappedComps.length,
     rejectedCompCount: rejectedByIdentity.length,
+    compCandidateDiagnostics,
     summary: ''
   };
 
