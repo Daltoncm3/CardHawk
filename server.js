@@ -1252,6 +1252,131 @@ function dealGate(listing = {}) {
     !['high', 'very_high', 'very high', 'severe', 'critical'].includes(riskLevel) &&
     marketRecommendation !== 'do_not_trust';
 
+  const buildDealGateBreakdown = () => {
+    const rules = [];
+
+    const addRule = ({ ruleId, category, label, requiredValue, actualValue, passed, reason = '', applies = true, metadata = {} }) => {
+      rules.push({
+        ruleId,
+        category,
+        label,
+        requiredValue,
+        actualValue,
+        passed: Boolean(passed),
+        applies: Boolean(applies),
+        reason,
+        metadata
+      });
+    };
+
+    const badRiskLevels = ['high', 'very_high', 'very high', 'severe', 'critical'];
+    const badLiquidityLevels = ['weak', 'poor', 'thin', 'unreliable'];
+    const badPricingLevels = ['weak', 'poor', 'unreliable'];
+    const badTrustLevels = ['weak', 'unreliable'];
+    const roiHasStrongSupport =
+      soldCompCount >= 8 &&
+      confidenceScore >= 85 &&
+      marketIntelligenceScore >= 85 &&
+      liquidityScore >= 75 &&
+      priceConsistencyScore >= 75 &&
+      ['excellent', 'good', ''].includes(marketTrustLevel) &&
+      !badRiskLevels.includes(riskLevel) &&
+      !usesHeuristicFallback;
+    const heuristicHasStrongSupport =
+      soldCompCount >= 8 &&
+      confidenceScore >= 88 &&
+      marketIntelligenceScore >= 85 &&
+      liquidityScore >= 80 &&
+      priceConsistencyScore >= 80 &&
+      ['excellent', 'good'].includes(marketTrustLevel) &&
+      ['excellent', 'good', ''].includes(liquidityLevel) &&
+      ['excellent', 'good', ''].includes(pricingLevel) &&
+      !conditionUnknown &&
+      !badRiskLevels.includes(riskLevel) &&
+      roiPercent <= 150;
+    const unknownConditionHasSupport =
+      soldCompCount >= 5 &&
+      confidenceScore >= 75 &&
+      marketIntelligenceScore >= 75 &&
+      liquidityScore >= 65 &&
+      priceConsistencyScore >= 65 &&
+      roiPercent <= 100 &&
+      !usesHeuristicFallback &&
+      !badRiskLevels.includes(riskLevel);
+
+    addRule({
+      ruleId: 'sold_comp_minimum',
+      category: 'evidence',
+      label: 'At least 3 true sold comps are required.',
+      requiredValue: '>= 3 true sold comps',
+      actualValue: soldCompCount,
+      passed: soldCompCount >= 3,
+      reason: soldCompCount <= 0
+        ? 'Zero sold comps available.'
+        : soldCompCount < 3
+          ? `Only ${soldCompCount} sold comp${soldCompCount === 1 ? '' : 's'} available; minimum is 3.`
+          : `Supported by ${soldCompCount} sold comps.`
+    });
+    addRule({ ruleId: 'market_confidence_floor', category: 'confidence', label: 'Market confidence cannot be below 60 when present.', requiredValue: '0 or >= 60', actualValue: confidenceScore, passed: !(confidenceScore > 0 && confidenceScore < 60), reason: confidenceScore > 0 && confidenceScore < 60 ? `Market confidence is too low (${confidenceScore}/100).` : '' });
+    addRule({ ruleId: 'market_intelligence_floor', category: 'market_intelligence', label: 'Market Intelligence score cannot be below 60 when present.', requiredValue: '0 or >= 60', actualValue: marketIntelligenceScore, passed: !(marketIntelligenceScore > 0 && marketIntelligenceScore < 60), reason: marketIntelligenceScore > 0 && marketIntelligenceScore < 60 ? `Market Intelligence score is too low (${marketIntelligenceScore}/100).` : '' });
+    addRule({ ruleId: 'liquidity_score_floor', category: 'liquidity', label: 'Liquidity score cannot be below 55 when present.', requiredValue: '0 or >= 55', actualValue: liquidityScore, passed: !(liquidityScore > 0 && liquidityScore < 55), reason: liquidityScore > 0 && liquidityScore < 55 ? `Liquidity score is weak (${liquidityScore}/100).` : '' });
+    addRule({ ruleId: 'liquidity_level_allowed', category: 'liquidity', label: 'Liquidity level cannot be weak, poor, thin, or unreliable.', requiredValue: 'not weak/poor/thin/unreliable', actualValue: liquidityLevel || '', passed: !badLiquidityLevels.includes(liquidityLevel), reason: badLiquidityLevels.includes(liquidityLevel) ? `Liquidity level is ${liquidityLevel}.` : '' });
+    addRule({ ruleId: 'pricing_reliability_floor', category: 'pricing', label: 'Pricing reliability cannot be below 55 when present.', requiredValue: '0 or >= 55', actualValue: priceConsistencyScore, passed: !(priceConsistencyScore > 0 && priceConsistencyScore < 55), reason: priceConsistencyScore > 0 && priceConsistencyScore < 55 ? `Pricing reliability is too low (${priceConsistencyScore}/100).` : '' });
+    addRule({ ruleId: 'pricing_level_allowed', category: 'pricing', label: 'Pricing level cannot be weak, poor, or unreliable.', requiredValue: 'not weak/poor/unreliable', actualValue: pricingLevel || '', passed: !badPricingLevels.includes(pricingLevel), reason: badPricingLevels.includes(pricingLevel) ? `Pricing level is ${pricingLevel}.` : '' });
+    addRule({ ruleId: 'risk_level_allowed', category: 'risk', label: 'Risk level cannot be high, severe, or critical.', requiredValue: 'not high/severe/critical', actualValue: riskLevel || '', passed: !badRiskLevels.includes(riskLevel), reason: badRiskLevels.includes(riskLevel) ? `Risk level is ${riskLevel}.` : '' });
+    addRule({ ruleId: 'market_trust_allowed', category: 'market_intelligence', label: 'Market trust level cannot be weak or unreliable.', requiredValue: 'not weak/unreliable', actualValue: marketTrustLevel || '', passed: !badTrustLevels.includes(marketTrustLevel), reason: badTrustLevels.includes(marketTrustLevel) ? `Market trust level is ${marketTrustLevel}.` : '' });
+    addRule({ ruleId: 'market_recommendation_allowed', category: 'market_intelligence', label: 'Market Intelligence cannot recommend do_not_trust.', requiredValue: 'not do_not_trust', actualValue: marketRecommendation || '', passed: marketRecommendation !== 'do_not_trust', reason: marketRecommendation === 'do_not_trust' ? 'Market Intelligence recommendation is do_not_trust.' : '' });
+    addRule({ ruleId: 'grade_confidence_consistency', category: 'consistency', label: 'A/A+ grade cannot coexist with low confidence.', requiredValue: 'not A/A+ with confidence < 60', actualValue: { dealGrade, confidenceScore }, passed: !(confidenceScore > 0 && confidenceScore < 60 && ['A', 'A+'].includes(dealGrade)), reason: confidenceScore > 0 && confidenceScore < 60 && ['A', 'A+'].includes(dealGrade) ? `Impossible grade/confidence combination: ${dealGrade} with ${confidenceScore}/100 confidence.` : '' });
+    addRule({ ruleId: 'heuristic_grade_consistency', category: 'consistency', label: 'Heuristic fallback cannot support A/A+ approval.', requiredValue: 'not heuristic fallback with A/A+', actualValue: { usesHeuristicFallback, dealGrade }, passed: !(usesHeuristicFallback && ['A', 'A+'].includes(dealGrade)), reason: usesHeuristicFallback && ['A', 'A+'].includes(dealGrade) ? `Heuristic fallback cannot support ${dealGrade} approval.` : '' });
+    addRule({ ruleId: 'estimated_value_market_support', category: 'valuation', label: 'Estimated value cannot exceed 2.5x reference market support.', requiredValue: '<= 2.5x reference market value', actualValue: { estimatedValue, referenceMarketValue }, passed: !(referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 2.5), reason: referenceMarketValue > 0 && estimatedValue > referenceMarketValue * 2.5 ? `Estimated value (${estimatedValue}) is more than 2.5x market support (${referenceMarketValue}).` : '' });
+    addRule({ ruleId: 'profit_requires_sold_history', category: 'evidence', label: 'High projected profit requires sold history.', requiredValue: 'sold comps > 0 or profit <= 50', actualValue: { soldCompCount, estimatedProfit }, passed: !(soldCompCount <= 0 && estimatedProfit > 50), reason: soldCompCount <= 0 && estimatedProfit > 50 ? 'Projected profit is high despite no sold history.' : '' });
+    addRule({ ruleId: 'excessive_roi_support', category: 'roi', label: 'ROI above 150% requires very strong independent support.', requiredValue: 'ROI <= 150% or strong support', actualValue: { roiPercent, soldCompCount, confidenceScore, marketIntelligenceScore, liquidityScore, priceConsistencyScore }, passed: !(roiPercent > 150 && !roiHasStrongSupport), reason: roiPercent > 150 && !roiHasStrongSupport ? `ROI is excessive (${roiPercent}%) without very strong independent support.` : '', applies: roiPercent > 150 });
+    addRule({ ruleId: 'heuristic_fallback_support', category: 'valuation', label: 'Heuristic fallback needs very strong independent support.', requiredValue: 'not heuristic fallback or strong support', actualValue: { usesHeuristicFallback, soldCompCount, confidenceScore, marketIntelligenceScore, liquidityScore, priceConsistencyScore, roiPercent }, passed: !usesHeuristicFallback || heuristicHasStrongSupport, reason: usesHeuristicFallback && !heuristicHasStrongSupport ? 'Heuristic fallback valuation lacks enough independent support.' : '', applies: usesHeuristicFallback });
+    addRule({ ruleId: 'unknown_condition_support', category: 'condition', label: 'Unknown condition needs stronger support.', requiredValue: 'known condition or strong support', actualValue: { condition: condition || 'unknown', conditionUnknown, soldCompCount, confidenceScore, marketIntelligenceScore, liquidityScore, priceConsistencyScore, roiPercent }, passed: !conditionUnknown || unknownConditionHasSupport, reason: conditionUnknown && !unknownConditionHasSupport ? 'Unknown condition does not have enough support to approve.' : '', applies: conditionUnknown });
+
+    addRule({ ruleId: 'final_no_rejection_reasons', category: 'final_approval', label: 'No rejection reasons may be present.', requiredValue: '0 rejection reasons', actualValue: reasons.length, passed: reasons.length === 0, reason: reasons.length ? `${reasons.length} rejection reason${reasons.length === 1 ? '' : 's'} present.` : '' });
+    addRule({ ruleId: 'final_score_minimum', category: 'final_approval', label: 'Legacy Context Score must be at least 75.', requiredValue: '>= 75', actualValue: score, passed: score >= 75, reason: score >= 75 ? '' : `Legacy Context Score is below 75 (${score}/100).` });
+    addRule({ ruleId: 'final_profit_positive', category: 'final_approval', label: 'Estimated profit must be positive.', requiredValue: '> 0', actualValue: estimatedProfit, passed: estimatedProfit > 0, reason: estimatedProfit > 0 ? '' : 'Estimated profit is not positive.' });
+    addRule({ ruleId: 'final_sold_comp_minimum', category: 'final_approval', label: 'At least 3 sold comps are required for BUY_NOW.', requiredValue: '>= 3', actualValue: soldCompCount, passed: soldCompCount >= 3, reason: soldCompCount >= 3 ? '' : 'Fewer than 3 sold comps for final approval.' });
+    addRule({ ruleId: 'final_confidence_minimum', category: 'final_approval', label: 'Confidence score must be at least 75.', requiredValue: '>= 75', actualValue: confidenceScore, passed: confidenceScore >= 75, reason: confidenceScore >= 75 ? '' : `Confidence score is below 75 (${confidenceScore}/100).` });
+    addRule({ ruleId: 'final_market_intelligence_minimum', category: 'final_approval', label: 'Market Intelligence score must be at least 80.', requiredValue: '>= 80', actualValue: marketIntelligenceScore, passed: marketIntelligenceScore >= 80, reason: marketIntelligenceScore >= 80 ? '' : `Market Intelligence score is below 80 (${marketIntelligenceScore}/100).` });
+    addRule({ ruleId: 'final_liquidity_minimum', category: 'final_approval', label: 'Liquidity score must be at least 65.', requiredValue: '>= 65', actualValue: liquidityScore, passed: liquidityScore >= 65, reason: liquidityScore >= 65 ? '' : `Liquidity score is below 65 (${liquidityScore}/100).` });
+    addRule({ ruleId: 'final_pricing_minimum', category: 'final_approval', label: 'Pricing consistency score must be at least 65.', requiredValue: '>= 65', actualValue: priceConsistencyScore, passed: priceConsistencyScore >= 65, reason: priceConsistencyScore >= 65 ? '' : `Pricing consistency score is below 65 (${priceConsistencyScore}/100).` });
+    addRule({ ruleId: 'final_market_trust_allowed', category: 'final_approval', label: 'Market trust level must be acceptable.', requiredValue: 'not weak/unreliable', actualValue: marketTrustLevel || '', passed: !badTrustLevels.includes(marketTrustLevel), reason: badTrustLevels.includes(marketTrustLevel) ? `Market trust level is ${marketTrustLevel}.` : '' });
+    addRule({ ruleId: 'final_liquidity_level_allowed', category: 'final_approval', label: 'Liquidity level must be acceptable.', requiredValue: 'not weak/poor/thin/unreliable', actualValue: liquidityLevel || '', passed: !badLiquidityLevels.includes(liquidityLevel), reason: badLiquidityLevels.includes(liquidityLevel) ? `Liquidity level is ${liquidityLevel}.` : '' });
+    addRule({ ruleId: 'final_pricing_level_allowed', category: 'final_approval', label: 'Pricing level must be acceptable.', requiredValue: 'not weak/poor/unreliable', actualValue: pricingLevel || '', passed: !badPricingLevels.includes(pricingLevel), reason: badPricingLevels.includes(pricingLevel) ? `Pricing level is ${pricingLevel}.` : '' });
+    addRule({ ruleId: 'final_risk_level_allowed', category: 'final_approval', label: 'Risk level must be acceptable.', requiredValue: 'not high/severe/critical', actualValue: riskLevel || '', passed: !badRiskLevels.includes(riskLevel), reason: badRiskLevels.includes(riskLevel) ? `Risk level is ${riskLevel}.` : '' });
+    addRule({ ruleId: 'final_market_recommendation_allowed', category: 'final_approval', label: 'Market recommendation must be acceptable.', requiredValue: 'not do_not_trust', actualValue: marketRecommendation || '', passed: marketRecommendation !== 'do_not_trust', reason: marketRecommendation === 'do_not_trust' ? 'Market Intelligence recommendation is do_not_trust.' : '' });
+
+    const failedRules = rules.filter((rule) => !rule.passed);
+    const passedRules = rules.filter((rule) => rule.passed);
+
+    return {
+      source: 'deal_gate_breakdown',
+      version: '1.0.0',
+      decisionImpact: 'none',
+      passed: buyNowAllowed,
+      buyNowAllowed,
+      decision: buyNowAllowed ? 'BUY_NOW' : 'REJECT',
+      rules,
+      passedRules: passedRules.map((rule) => rule.ruleId),
+      failedRules: failedRules.map((rule) => rule.ruleId),
+      passedReasons: positives.slice(),
+      failedReasons: reasons.slice(),
+      diagnostic: {
+        totalRules: rules.length,
+        passedRuleCount: passedRules.length,
+        failedRuleCount: failedRules.length,
+        appliedRuleCount: rules.filter((rule) => rule.applies).length,
+        skippedRuleCount: rules.filter((rule) => !rule.applies).length,
+        authoritativeDecisionSource: 'deal_gate',
+        productionBehaviorChanged: false
+      }
+    };
+  };
+
+  const dealGateBreakdown = buildDealGateBreakdown();
+
   return {
     passed: buyNowAllowed,
     approved: buyNowAllowed,
@@ -1263,6 +1388,7 @@ function dealGate(listing = {}) {
     reasons,
     rejectionReasons: reasons,
     positives,
+    dealGateBreakdown,
     gate: {
       score,
       estimatedProfit,
