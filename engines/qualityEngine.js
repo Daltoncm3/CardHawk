@@ -23,13 +23,26 @@ function getParsed(listing = {}) {
   return listing.parsed || { flags: {}, qualityTier: "generic" };
 }
 
-function add(points, reason, state) {
+function recordContribution(state, contribution = {}) {
+  if (!Array.isArray(state.contributions)) return;
+  const value = toNumber(contribution.value, 0);
+  state.contributions.push({
+    category: contribution.category || "uncategorized",
+    id: contribution.id || contribution.reason || "quality_adjustment",
+    label: contribution.reason || "",
+    value
+  });
+}
+
+function add(points, reason, state, contribution = {}) {
   state.score += points;
+  recordContribution(state, { ...contribution, reason, value: points });
   if (reason) state.reasons.push(reason);
 }
 
-function warn(points, reason, state) {
+function warn(points, reason, state, contribution = {}) {
   state.score -= points;
+  recordContribution(state, { ...contribution, reason, value: -points });
   if (reason) state.warnings.push(reason);
 }
 
@@ -170,7 +183,8 @@ function evaluateQuality(listing = {}) {
   const parsed = getParsed(listing);
   const flags = parsed.flags || {};
   const title = titleOf(listing);
-  const state = { score: 45, reasons: [], warnings: [], traits: [] };
+  const baseScore = 45;
+  const state = { score: baseScore, reasons: [], warnings: [], traits: [], contributions: [] };
 
   const confidence = toNumber(listing.marketConfidence || listing.confidence || listing.confidenceData?.confidence, 0);
   const profit = toNumber(listing.estimatedProfit, 0);
@@ -179,67 +193,82 @@ function evaluateQuality(listing = {}) {
   const sellerPct = toNumber(listing.sellerFeedbackPercentage, 0);
   const sellerScore = toNumber(listing.sellerFeedbackScore, 0);
 
-  if (parsed.qualityTier === "premium") add(14, "Premium card profile", state);
-  if (parsed.qualityTier === "strong") add(9, "Strong collector profile", state);
-  if (parsed.qualityTier === "watch") add(4, "Watchable card profile", state);
-  if (parsed.qualityTier === "low-confidence") warn(18, "Low-confidence category", state);
-  if (parsed.qualityTier === "avoid") warn(50, "Avoid category", state);
+  if (parsed.qualityTier === "premium") add(14, "Premium card profile", state, { category: "parsed_tier", id: "premium" });
+  if (parsed.qualityTier === "strong") add(9, "Strong collector profile", state, { category: "parsed_tier", id: "strong" });
+  if (parsed.qualityTier === "watch") add(4, "Watchable card profile", state, { category: "parsed_tier", id: "watch" });
+  if (parsed.qualityTier === "low-confidence") warn(18, "Low-confidence category", state, { category: "parsed_tier", id: "low_confidence" });
+  if (parsed.qualityTier === "avoid") warn(50, "Avoid category", state, { category: "parsed_tier", id: "avoid" });
 
-  if (flags.graded) add(7, "Graded card", state); else warn(5, "Raw/ungraded card", state);
-  if (parsed.grade === 10) add(12, "Gem Mint 10", state);
-  else if (parsed.grade === 9.5) add(8, "Gem Mint 9.5", state);
-  else if (parsed.grade && parsed.grade < 9) warn(8, `Lower grade ${parsed.grade}`, state);
+  if (flags.graded) add(7, "Graded card", state, { category: "grade_profile", id: "graded" }); else warn(5, "Raw/ungraded card", state, { category: "grade_profile", id: "raw_ungraded" });
+  if (parsed.grade === 10) add(12, "Gem Mint 10", state, { category: "grade_profile", id: "grade_10" });
+  else if (parsed.grade === 9.5) add(8, "Gem Mint 9.5", state, { category: "grade_profile", id: "grade_9_5" });
+  else if (parsed.grade && parsed.grade < 9) warn(8, `Lower grade ${parsed.grade}`, state, { category: "grade_profile", id: "lower_grade" });
 
-  if (flags.rookie) add(8, "Rookie/RC demand", state);
-  if (flags.autograph) add(8, "Autograph demand", state);
-  if (flags.firstBowman) add(12, "1st Bowman upside", state);
-  if (flags.refractor) add(6, "Refractor/parallel demand", state);
-  if (flags.pokemon && parsed.grade === 10) add(8, "PSA 10 Pokémon demand", state);
+  if (flags.rookie) add(8, "Rookie/RC demand", state, { category: "card_traits", id: "rookie" });
+  if (flags.autograph) add(8, "Autograph demand", state, { category: "card_traits", id: "autograph" });
+  if (flags.firstBowman) add(12, "1st Bowman upside", state, { category: "card_traits", id: "first_bowman" });
+  if (flags.refractor) add(6, "Refractor/parallel demand", state, { category: "card_traits", id: "refractor_parallel" });
+  if (flags.pokemon && parsed.grade === 10) add(8, "PSA 10 Pokémon demand", state, { category: "card_traits", id: "pokemon_grade_10" });
 
   const serial = detectSerialStrength(parsed, title);
-  if (serial.points) add(serial.points, serial.label, state);
+  if (serial.points) add(serial.points, serial.label, state, { category: "card_traits", id: "serial_strength" });
 
   for (const trait of detectPremiumTerms(title)) {
     state.traits.push(trait);
-    add(4, trait, state);
+    add(4, trait, state, { category: "card_traits", id: `premium_term_${trait.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` });
   }
 
   for (const risk of detectRiskTerms(title)) {
-    warn(8, risk, state);
+    warn(8, risk, state, { category: "risk_title_penalties", id: `risk_term_${risk.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` });
   }
 
-  if (profit >= 300) add(13, "Large profit spread", state);
-  else if (profit >= 150) add(10, "Strong profit spread", state);
-  else if (profit >= 75) add(7, "Profitable enough for alerts", state);
-  else if (profit > 0) add(3, "Positive expected profit", state);
-  else warn(20, "No expected profit", state);
+  if (profit >= 300) add(13, "Large profit spread", state, { category: "profit", id: "profit_300" });
+  else if (profit >= 150) add(10, "Strong profit spread", state, { category: "profit", id: "profit_150" });
+  else if (profit >= 75) add(7, "Profitable enough for alerts", state, { category: "profit", id: "profit_75" });
+  else if (profit > 0) add(3, "Positive expected profit", state, { category: "profit", id: "profit_positive" });
+  else warn(20, "No expected profit", state, { category: "profit", id: "profit_none" });
 
-  if (roi >= 1) add(12, "Excellent ROI", state);
-  else if (roi >= 0.6) add(9, "Strong ROI", state);
-  else if (roi >= 0.35) add(6, "Good ROI", state);
-  else if (roi > 0) add(2, "Thin ROI", state);
-  else warn(15, "Negative ROI", state);
+  if (roi >= 1) add(12, "Excellent ROI", state, { category: "roi", id: "roi_100" });
+  else if (roi >= 0.6) add(9, "Strong ROI", state, { category: "roi", id: "roi_60" });
+  else if (roi >= 0.35) add(6, "Good ROI", state, { category: "roi", id: "roi_35" });
+  else if (roi > 0) add(2, "Thin ROI", state, { category: "roi", id: "roi_positive" });
+  else warn(15, "Negative ROI", state, { category: "roi", id: "roi_negative" });
 
-  if (confidence >= 85) add(12, "High market confidence", state);
-  else if (confidence >= 70) add(9, "Alert-level confidence", state);
-  else if (confidence >= 50) add(4, "Moderate confidence", state);
-  else warn(12, "Low market confidence", state);
+  if (confidence >= 85) add(12, "High market confidence", state, { category: "confidence", id: "confidence_85" });
+  else if (confidence >= 70) add(9, "Alert-level confidence", state, { category: "confidence", id: "confidence_70" });
+  else if (confidence >= 50) add(4, "Moderate confidence", state, { category: "confidence", id: "confidence_50" });
+  else warn(12, "Low market confidence", state, { category: "confidence", id: "confidence_low" });
 
-  if (compCount >= 10) add(8, "Deep comp pool", state);
-  else if (compCount >= 5) add(6, "Healthy comp pool", state);
-  else if (compCount >= 2) add(3, "Some comp support", state);
-  else warn(10, "No/weak comp support", state);
+  if (compCount >= 10) add(8, "Deep comp pool", state, { category: "comp_count", id: "comp_count_10" });
+  else if (compCount >= 5) add(6, "Healthy comp pool", state, { category: "comp_count", id: "comp_count_5" });
+  else if (compCount >= 2) add(3, "Some comp support", state, { category: "comp_count", id: "comp_count_2" });
+  else warn(10, "No/weak comp support", state, { category: "comp_count", id: "comp_count_weak" });
 
-  if (sellerPct >= 99 && sellerScore >= 100) add(6, "Trusted seller profile", state);
-  else if (sellerPct >= 98) add(3, "Acceptable seller profile", state);
-  else if (sellerPct > 0 && sellerPct < 97) warn(8, "Seller feedback risk", state);
+  if (sellerPct >= 99 && sellerScore >= 100) add(6, "Trusted seller profile", state, { category: "seller", id: "trusted_seller" });
+  else if (sellerPct >= 98) add(3, "Acceptable seller profile", state, { category: "seller", id: "acceptable_seller" });
+  else if (sellerPct > 0 && sellerPct < 97) warn(8, "Seller feedback risk", state, { category: "seller", id: "seller_feedback_risk" });
 
   const liquidity = calculateLiquidity(listing);
   const risk = calculateRisk(listing);
 
-  state.score += Math.round((liquidity.score - 50) * 0.25);
-  state.score -= Math.round((risk.score - 35) * 0.25);
+  const liquidityAdjustment = Math.round((liquidity.score - 50) * 0.25);
+  const riskAdjustment = -Math.round((risk.score - 35) * 0.25);
+  state.score += liquidityAdjustment;
+  recordContribution(state, {
+    category: "liquidity_adjustment",
+    id: "liquidity_score_adjustment",
+    reason: "Liquidity score adjustment",
+    value: liquidityAdjustment
+  });
+  state.score += riskAdjustment;
+  recordContribution(state, {
+    category: "risk_adjustment",
+    id: "risk_score_adjustment",
+    reason: "Risk score adjustment",
+    value: riskAdjustment
+  });
 
+  const preClampTotal = state.score;
   const investmentQuality = clamp(state.score);
   let bucket = "Speculative";
   if (investmentQuality >= 90) bucket = "Elite";
@@ -252,10 +281,81 @@ function evaluateQuality(listing = {}) {
   const positives = [...new Set(state.reasons)].slice(0, 12);
   const warnings = [...new Set(state.warnings)].slice(0, 12);
   const traits = [...new Set(state.traits)].slice(0, 12);
+  const sumCategory = (category) => state.contributions
+    .filter((entry) => entry.category === category)
+    .reduce((sum, entry) => sum + entry.value, 0);
+  const qualityBreakdown = {
+    source: "quality_breakdown",
+    version: "1.0.0",
+    decisionImpact: "none",
+    baseScore,
+    parsedTier: {
+      tier: parsed.qualityTier || "generic",
+      contribution: sumCategory("parsed_tier"),
+      contributions: state.contributions.filter((entry) => entry.category === "parsed_tier")
+    },
+    gradeProfile: {
+      grade: parsed.grade || null,
+      graded: Boolean(flags.graded),
+      contribution: sumCategory("grade_profile"),
+      contributions: state.contributions.filter((entry) => entry.category === "grade_profile")
+    },
+    cardTraits: {
+      contribution: sumCategory("card_traits"),
+      contributions: state.contributions.filter((entry) => entry.category === "card_traits")
+    },
+    riskTitlePenalties: {
+      contribution: sumCategory("risk_title_penalties"),
+      contributions: state.contributions.filter((entry) => entry.category === "risk_title_penalties")
+    },
+    profit: {
+      estimatedProfit: profit,
+      contribution: sumCategory("profit"),
+      contributions: state.contributions.filter((entry) => entry.category === "profit")
+    },
+    roi: {
+      roi,
+      roiPercent: Math.round(roi * 1000) / 10,
+      contribution: sumCategory("roi"),
+      contributions: state.contributions.filter((entry) => entry.category === "roi")
+    },
+    confidence: {
+      confidence,
+      contribution: sumCategory("confidence"),
+      contributions: state.contributions.filter((entry) => entry.category === "confidence")
+    },
+    compCount: {
+      compCount,
+      contribution: sumCategory("comp_count"),
+      contributions: state.contributions.filter((entry) => entry.category === "comp_count")
+    },
+    seller: {
+      sellerFeedbackPercentage: sellerPct,
+      sellerFeedbackScore: sellerScore,
+      contribution: sumCategory("seller"),
+      contributions: state.contributions.filter((entry) => entry.category === "seller")
+    },
+    liquidityAdjustment: {
+      liquidityScore: liquidity.score,
+      contribution: sumCategory("liquidity_adjustment"),
+      contributions: state.contributions.filter((entry) => entry.category === "liquidity_adjustment")
+    },
+    riskAdjustment: {
+      riskScore: risk.score,
+      riskLevel: risk.level,
+      contribution: sumCategory("risk_adjustment"),
+      contributions: state.contributions.filter((entry) => entry.category === "risk_adjustment")
+    },
+    contributions: state.contributions.slice(),
+    preClampTotal,
+    finalQualityScore: investmentQuality,
+    rawBucket: bucket
+  };
 
   return {
     investmentQuality,
     bucket,
+    qualityBreakdown,
     liquidityScore: liquidity.score,
     liquidityReasons: liquidity.reasons.slice(0, 8),
     riskScore: risk.score,

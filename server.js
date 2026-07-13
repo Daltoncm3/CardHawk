@@ -954,6 +954,7 @@ function buildDisplayInterpretation(item = {}) {
     rejectionReasons: rejectedByDealGate ? [...productionDecisionExplanation.failedReasons] : [],
     passedReasons: acceptedByDealGate ? [...productionDecisionExplanation.passedReasons] : [],
     dealGateRuleBreakdown: productionDecisionExplanation.ruleBreakdown,
+    qualityScoreLabel: 'Desirability Context',
     qualityBucketLabel: getQualityBucketForDisplay(rawQualityBucket, rejectedByDealGate),
     qualityContextLabel: rawQualityBucket ? 'Desirability context' : '',
     dealGradeLabel: item.dealGrade?.grade || '',
@@ -2772,7 +2773,7 @@ function listingCard(rawItem) {
       <div>${parsedTags(item.parsed, item.lane)}</div>
       ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.primaryDecisionExplanation ? ` — ${escapeHtml(display.primaryDecisionExplanation)}` : ""}</div>` : ""}
       ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
-      ${item.investmentQuality ? `<div class="quality-chip">Quality: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
+      ${item.investmentQuality ? `<div class="quality-chip">${escapeHtml(display.qualityScoreLabel || "Desirability Context")}: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
       <div class="score">${escapeHtml(display.legacyScoreLabel || "Legacy Context Score")}: ${Math.round(item.score || 0)}/100</div>
       ${item.qualityReasons?.length ? `<div class="meta">Quality Context: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}
       ${item.qualityWarnings?.length ? `<div class="meta">Warnings: ${escapeHtml(item.qualityWarnings.slice(0, 2).join(" | "))}</div>` : ""}

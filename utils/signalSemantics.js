@@ -20,6 +20,9 @@ function neutralizeRecommendationLabel(label, fallback) {
   if (lower === 'elite') return 'Premium desirability context';
   if (lower === 'strong buy candidate') return 'Strong desirability context';
   if (lower === 'good flip candidate') return 'Good desirability context';
+  if (lower === 'review carefully') return 'Mixed desirability context';
+  if (lower === 'low priority') return 'Low desirability context';
+  if (lower === 'avoid') return 'Poor desirability context';
   if (lower === 'buy_now' || lower === 'buy now' || lower === 'buy') return fallback;
   if (lower === 'strong_review') return fallback;
   if (lower.includes('buy')) return normalized.replace(/buy/ig, 'desirability');
