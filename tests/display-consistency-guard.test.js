@@ -55,7 +55,7 @@ test('rejected listings cannot expose buy-like primary display labels', () => {
   assert.equal(displayListing.display.authoritativeDecision, 'REJECTED');
   assert.equal(displayListing.display.primaryDecisionLabel, 'Rejected by Deal Gate');
   assert.equal(displayListing.display.legacyGradeActionLabel, '');
-  assert.equal(displayListing.display.hiddenLegacyGradeAction, 'Legacy context');
+  assert.equal(displayListing.display.hiddenLegacyGradeAction, 'Legacy grade context');
   assert.equal(displayListing.display.qualityBucketLabel.includes('Buy'), false);
   assert.equal(displayListing.display.qualityBucketLabel.includes('Candidate'), false);
   assert.equal(displayListing.display.hiddenLegacyGradeAction.includes('BUY'), false);
@@ -76,7 +76,7 @@ test('accepted listings keep Deal Gate decision while context labels remain neut
   assert.equal(displayListing.display.authoritativeDecision, 'BUY_NOW');
   assert.equal(displayListing.display.primaryDecisionLabel, 'BUY_NOW');
   assert.equal(displayListing.display.qualityBucketLabel, 'Strong desirability context');
-  assert.equal(displayListing.display.legacyGradeActionLabel, 'Legacy context');
+  assert.equal(displayListing.display.legacyGradeActionLabel, 'Legacy grade context');
   assert.equal(displayListing.display.roiRecommendationLabel, 'Financial ROI context');
   assert.equal(displayListing.display.suppressedBuyLikeLabels, false);
   assert.equal(displayListing.display.soldEvidenceCount, 5);

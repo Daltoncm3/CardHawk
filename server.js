@@ -957,6 +957,7 @@ function buildDisplayInterpretation(item = {}) {
     qualityScoreLabel: 'Desirability Context',
     qualityBucketLabel: getQualityBucketForDisplay(rawQualityBucket, rejectedByDealGate),
     qualityContextLabel: rawQualityBucket ? 'Desirability context' : '',
+    dealGradeScoreLabel: 'Legacy Deal Grade',
     dealGradeLabel: item.dealGrade?.grade || '',
     legacyGradeActionLabel: rejectedByDealGate ? '' : legacyGradeActionLabel,
     hiddenLegacyGradeAction: rejectedByDealGate ? legacyGradeActionLabel : '',
@@ -2772,7 +2773,7 @@ function listingCard(rawItem) {
       <div class="title">${escapeHtml(item.title)}</div>
       <div>${parsedTags(item.parsed, item.lane)}</div>
       ${item.dealGate ? `<div class="deal-grade">Decision: ${escapeHtml(display.primaryDecisionLabel)}${display.primaryDecisionExplanation ? ` — ${escapeHtml(display.primaryDecisionExplanation)}` : ""}</div>` : ""}
-      ${item.dealGrade?.grade ? `<div class="deal-grade">Grade: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
+      ${item.dealGrade?.grade ? `<div class="deal-grade">${escapeHtml(display.dealGradeScoreLabel || "Legacy Deal Grade")}: ${escapeHtml(item.dealGrade.grade)}${display.legacyGradeActionLabel ? ` — ${escapeHtml(display.legacyGradeActionLabel)}` : rejectedByDealGate ? " — Legacy grade context" : ""}</div>` : ""}
       ${item.investmentQuality ? `<div class="quality-chip">${escapeHtml(display.qualityScoreLabel || "Desirability Context")}: ${Math.round(item.investmentQuality)}/100 — ${escapeHtml(display.qualityBucketLabel || item.qualityBucket || "")}</div>` : ""}
       <div class="score">${escapeHtml(display.legacyScoreLabel || "Legacy Context Score")}: ${Math.round(item.score || 0)}/100</div>
       ${item.qualityReasons?.length ? `<div class="meta">Quality Context: ${escapeHtml(item.qualityReasons.slice(0, 2).join(" | "))}</div>` : ""}

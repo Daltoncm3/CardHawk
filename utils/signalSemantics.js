@@ -47,6 +47,13 @@ function getAllowedSignalLabel(signalId, rawLabel) {
     return label;
   }
 
+  if (signalId === 'deal_grade') {
+    const lower = label.toLowerCase();
+    if (['buy_now', 'buy now', 'buy', 'strong_review', 'review', 'watch', 'low_priority', 'low priority', 'pass'].includes(lower)) {
+      return 'Legacy grade context';
+    }
+  }
+
   const fallback = getFallbackLabel(contract);
   const neutralLabel = neutralizeRecommendationLabel(label, fallback);
   const safeLabel = hasBuyLikeWording(neutralLabel) ? fallback : neutralLabel;

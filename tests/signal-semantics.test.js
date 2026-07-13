@@ -34,11 +34,11 @@ test('ROI recommendation labels use neutral financial language', () => {
 test('legacy grade actions are labeled as legacy context', () => {
   assert.equal(
     signalSemantics.getAllowedSignalLabel('deal_grade', 'BUY_NOW'),
-    'Legacy context'
+    'Legacy grade context'
   );
   assert.equal(
     signalSemantics.getAllowedSignalLabel('deal_grade', 'REVIEW'),
-    'REVIEW legacy context'
+    'Legacy grade context'
   );
 });
 
@@ -66,4 +66,3 @@ test('Deal Gate remains the only production-decision signal allowed to keep deci
   assert.equal(signalSemantics.describeSignalAuthority('deal_gate'), 'production_decision');
   assert.deepEqual(registry.getProductionDecisionSignals().map((contract) => contract.signalId), ['deal_gate']);
 });
-
