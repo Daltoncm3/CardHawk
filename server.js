@@ -1142,6 +1142,58 @@ function buildProductionDecisionExplanation(dealGateData = null) {
   };
 }
 
+function getEvidenceReadinessAlignment(decisionIntelligence = {}, dealGateData = null) {
+  if (!dealGateData || typeof dealGateData !== 'object') return 'not_evaluated';
+
+  const readiness = String(decisionIntelligence.overallReadiness || '').trim().toLowerCase();
+  const positiveReadiness = ['supported_context', 'limited_context', 'cautious_context'].includes(readiness);
+  const negativeReadiness = readiness === 'not_ready';
+
+  if (dealGateData.passed === true) {
+    return positiveReadiness ? 'aligned' : 'conflicting';
+  }
+
+  if (dealGateData.passed === false) {
+    return negativeReadiness ? 'aligned' : 'conflicting';
+  }
+
+  return 'not_evaluated';
+}
+
+function buildEvidenceReadinessExplanation(item = {}, dealGateData = null) {
+  const decisionIntelligence = item.marketIntelligenceData?.decisionIntelligence || {};
+  const readiness = decisionIntelligence.overallReadiness || 'unknown';
+  const alignment = getEvidenceReadinessAlignment(decisionIntelligence, dealGateData);
+  const dealGateRejected = dealGateData?.passed === false;
+  const positiveReadiness = ['supported_context', 'limited_context', 'cautious_context'].includes(String(readiness).toLowerCase());
+
+  return {
+    source: 'evidence_readiness_presentation',
+    version: '1.0.0',
+    label: 'Evidence Readiness',
+    readinessLabel: 'Evidence Readiness',
+    authoritativeDecisionSource: 'deal_gate',
+    productionImpact: 'none',
+    explainsDealGate: false,
+    dealGateAlignment: alignment,
+    evidenceReadiness: readiness,
+    evidencePosture: decisionIntelligence.evidencePosture || 'unknown',
+    compPosture: decisionIntelligence.compPosture || 'unknown',
+    valuationPosture: decisionIntelligence.valuationPosture || 'unknown',
+    resalePressurePosture: decisionIntelligence.resalePressurePosture || 'unknown',
+    blockers: Array.isArray(decisionIntelligence.blockers) ? [...decisionIntelligence.blockers] : [],
+    cautions: Array.isArray(decisionIntelligence.cautionSignals) ? [...decisionIntelligence.cautionSignals] : [],
+    conflicts: Array.isArray(decisionIntelligence.conflicts) ? [...decisionIntelligence.conflicts] : [],
+    supportingContext: Array.isArray(decisionIntelligence.supportingSignals) ? [...decisionIntelligence.supportingSignals] : [],
+    contextualOnly: true,
+    contextualOnlyReason: dealGateRejected && positiveReadiness
+      ? 'Evidence Readiness is contextual only and cannot override a Deal Gate rejection.'
+      : 'Evidence Readiness is contextual only and does not make production decisions.',
+    summary: decisionIntelligence.summary || '',
+    rawDecisionIntelligencePreserved: true
+  };
+}
+
 function buildDisplayInterpretation(item = {}) {
   const dealGateData = item.dealGate && typeof item.dealGate === 'object' ? item.dealGate : null;
   const rejectedByDealGate = dealGateData?.passed === false;
@@ -1193,6 +1245,9 @@ function buildDisplayInterpretation(item = {}) {
   display.marketIntelligenceConfidence = display.confidenceBreakdown.dimensions.marketIntelligenceConfidence;
   display.identityConfidence = display.confidenceBreakdown.dimensions.identityConfidence;
   display.decisionConfidence = display.confidenceBreakdown.dimensions.decisionConfidence;
+  display.decisionIntelligenceLabel = 'Evidence Readiness';
+  display.evidenceReadinessLabel = 'Evidence Readiness';
+  display.evidenceReadinessExplanation = buildEvidenceReadinessExplanation(item, dealGateData);
 
   display.suppressedBuyLikeLabels = rejectedByDealGate && (
     hasBuyLikeWording(rawQualityBucket) ||
