@@ -17,6 +17,7 @@ const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
 const canonicalSoldComparisonService = require("./services/canonicalSoldComparisonService");
+const shadowValuationEngine = require("./engines/shadowValuationEngine");
 const populationEngine = require("./engines/populationEngine");
 const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
@@ -601,6 +602,149 @@ function buildShadowSoldComparison({ listing = {}, compData = {}, canonicalSoldE
   }
 }
 
+function roundShadowMoney(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.round(number * 100) / 100;
+}
+
+function getProductionEstimatedValue({ estimatedValue = null, marketData = {}, compData = {} } = {}) {
+  const candidates = [
+    estimatedValue,
+    marketData.marketValue,
+    marketData.estimatedValue,
+    compData.marketValue
+  ];
+
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) return roundShadowMoney(value);
+  }
+
+  return null;
+}
+
+function buildShadowValuationComparison({ production = {}, shadowValuation = {}, shadowSoldComparison = {} } = {}) {
+  const productionEstimatedValue = getProductionEstimatedValue(production);
+  const shadowRecommendedValue = shadowValuation.recommendedMarketValue ?? null;
+  const hasBothValues = productionEstimatedValue !== null && shadowRecommendedValue !== null;
+  const absoluteValueDifference = hasBothValues
+    ? roundShadowMoney(shadowRecommendedValue - productionEstimatedValue)
+    : null;
+  const percentageDifference = hasBothValues && productionEstimatedValue > 0
+    ? Math.round(((shadowRecommendedValue - productionEstimatedValue) / productionEstimatedValue) * 1000) / 10
+    : null;
+  const productionConfidence = Number(production.marketData?.confidence ?? production.marketConfidence ?? 0);
+  const shadowConfidence = Number(shadowValuation.valuationConfidence ?? 0);
+  const disagreementReasons = [];
+
+  if (shadowValuation.insufficientEvidence) disagreementReasons.push(shadowValuation.insufficientEvidenceReason || 'shadow_insufficient_evidence');
+  if (hasBothValues && Math.abs(percentageDifference) >= 25) disagreementReasons.push('valuation_difference_25_percent_or_more');
+  if ((shadowSoldComparison.acceptedExactMatches || []).length <= 0) disagreementReasons.push('no_shadow_exact_matches');
+  if ((production.compData?.trueSoldCompCount || production.compData?.soldCompCount || 0) <= 0) disagreementReasons.push('production_lacks_true_sold_comp_support');
+
+  let agreementSummary = 'not_comparable';
+  if (hasBothValues && Math.abs(percentageDifference) < 15) agreementSummary = 'aligned';
+  else if (hasBothValues) agreementSummary = 'divergent';
+  else if (shadowValuation.insufficientEvidence) agreementSummary = 'shadow_insufficient_evidence';
+
+  return {
+    source: 'production_vs_shadow_valuation_comparison',
+    productionImpact: 'none',
+    decisionImpact: 'none',
+    productionEstimatedValue,
+    shadowRecommendedValue,
+    absoluteValueDifference,
+    percentageDifference,
+    confidenceComparison: {
+      productionConfidence: Number.isFinite(productionConfidence) ? productionConfidence : 0,
+      shadowValuationConfidence: Number.isFinite(shadowConfidence) ? shadowConfidence : 0,
+      confidenceDifference: Number.isFinite(shadowConfidence) && Number.isFinite(productionConfidence)
+        ? Math.round((shadowConfidence - productionConfidence) * 10) / 10
+        : null
+    },
+    evidenceComparison: {
+      productionCompCount: production.compData?.compCount || 0,
+      productionTrueSoldCompCount: production.compData?.trueSoldCompCount || production.compData?.soldCompCount || 0,
+      shadowExactMatchCount: shadowValuation.evidenceSummary?.exactMatchCount || 0,
+      shadowContextualMatchCount: shadowValuation.evidenceSummary?.contextualMatchCount || 0,
+      shadowRejectedMatchCount: shadowValuation.evidenceSummary?.rejectedMatchCount || 0,
+      shadowStaleMatchCount: shadowValuation.evidenceSummary?.staleMatchCount || 0
+    },
+    valuationEligibilityComparison: {
+      productionValuationAvailable: productionEstimatedValue !== null,
+      shadowValuationAvailable: shadowValuation.insufficientEvidence !== true && shadowRecommendedValue !== null,
+      shadowInsufficientEvidence: shadowValuation.insufficientEvidence === true,
+      shadowInsufficientEvidenceReason: shadowValuation.insufficientEvidenceReason || ''
+    },
+    agreementSummary,
+    disagreementReasons
+  };
+}
+
+function buildShadowValuation({
+  listing = {},
+  canonicalSoldEvidence = {},
+  shadowSoldComparison = {},
+  marketData = {},
+  compData = {},
+  estimatedValue = null,
+  marketConfidence = null
+} = {}) {
+  try {
+    const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+    const valuation = shadowValuationEngine.evaluateShadowValuation({
+      canonicalIdentity: diagnostics.canonicalIdentity,
+      canonicalSoldComparisonResults: shadowSoldComparison,
+      canonicalSoldEvidenceRecords: canonicalSoldEvidence.records || []
+    });
+    const comparison = buildShadowValuationComparison({
+      production: { estimatedValue, marketData, compData, marketConfidence },
+      shadowValuation: valuation,
+      shadowSoldComparison
+    });
+
+    return {
+      valuationPerformed: valuation.insufficientEvidence !== true,
+      valuationSource: 'shadow_valuation_engine',
+      canonicalIdentityKey: valuation.canonicalIdentityKey || diagnostics.canonicalIdentity?.canonicalIdentityKey || '',
+      fairMarketRange: valuation.fairMarketRange,
+      recommendedMarketValue: valuation.recommendedMarketValue,
+      valuationConfidence: valuation.valuationConfidence,
+      evidenceSummary: valuation.evidenceSummary,
+      marketTrendSummary: valuation.marketTrendSummary,
+      valuationDiagnostics: valuation.valuationDiagnostics,
+      insufficientEvidence: valuation.insufficientEvidence,
+      insufficientEvidenceReason: valuation.insufficientEvidenceReason,
+      productionVsShadowValuation: comparison,
+      productionImpact: 'none',
+      decisionImpact: 'none'
+    };
+  } catch (_) {
+    const valuation = shadowValuationEngine.evaluateShadowValuation({});
+    return {
+      valuationPerformed: false,
+      valuationSource: 'shadow_valuation_engine',
+      canonicalIdentityKey: '',
+      fairMarketRange: null,
+      recommendedMarketValue: null,
+      valuationConfidence: 0,
+      evidenceSummary: valuation.evidenceSummary,
+      marketTrendSummary: valuation.marketTrendSummary,
+      valuationDiagnostics: valuation.valuationDiagnostics,
+      insufficientEvidence: true,
+      insufficientEvidenceReason: 'shadow_valuation_failed_safe',
+      productionVsShadowValuation: buildShadowValuationComparison({
+        production: { estimatedValue, marketData, compData, marketConfidence },
+        shadowValuation: { ...valuation, insufficientEvidenceReason: 'shadow_valuation_failed_safe' },
+        shadowSoldComparison
+      }),
+      productionImpact: 'none',
+      decisionImpact: 'none'
+    };
+  }
+}
+
 function loadStore() {
   try {
     store = appStore.loadStore(DATA_FILE, store);
@@ -1107,6 +1251,15 @@ const roi = roiData.roi;
     compData,
     canonicalSoldEvidence
   });
+  const shadowValuation = buildShadowValuation({
+    listing: { ...listing, parsed },
+    canonicalSoldEvidence,
+    shadowSoldComparison,
+    marketData,
+    compData,
+    estimatedValue,
+    marketConfidence: combinedConfidence
+  });
   runShadowModeDecisionIntelligence(marketIntelligenceData, {
     listing: { ...listing, parsed }
   });
@@ -1172,6 +1325,7 @@ const decisionData = decisionEngine.makeDecision({
 riskData,
     marketIntelligenceData,
     shadowSoldComparison,
+    shadowValuation,
 marketIntelligenceScore: marketIntelligenceData.intelligenceScore,
 marketTrustLevel: marketIntelligenceData.trustLevel,
 marketRecommendation: marketIntelligenceData.recommendation,
@@ -3660,6 +3814,7 @@ module.exports = {
   buildSignalAnnotationsForDisplay,
   buildCanonicalIdentityDiagnostics: legacyIdentityAdapter.buildLegacyIdentityDiagnostics,
   buildShadowSoldComparison,
+  buildShadowValuation,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
