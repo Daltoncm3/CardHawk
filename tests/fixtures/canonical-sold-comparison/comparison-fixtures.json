@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "fixtureSet": "canonical_sold_comparison_v1",
+    "version": "1.0.0",
+    "networkAccess": false,
+    "description": "Offline fixture matrix for the standalone Canonical Sold Comparison Service."
+  },
+  "targetFixtureId": "sports-psa10-rookie-base",
+  "asOf": "2026-07-14T00:00:00.000Z",
+  "staleDays": 180,
+  "cases": [
+    {
+      "id": "exact-match",
+      "category": "exact matches",
+      "variant": "exact",
+      "expectedClassification": "exact_match"
+    },
+    {
+      "id": "base-vs-parallel",
+      "category": "base vs parallel",
+      "variant": "parallel",
+      "expectedClassification": "contextual_match",
+      "expectedReason": "parallel_mismatch"
+    },
+    {
+      "id": "numbered-vs-unnumbered",
+      "category": "numbered vs unnumbered",
+      "variant": "numbered",
+      "expectedClassification": "contextual_match",
+      "expectedReason": "serial_numbered_mismatch"
+    },
+    {
+      "id": "autograph-vs-non-autograph",
+      "category": "autograph vs non-autograph",
+      "variant": "autograph",
+      "expectedClassification": "contextual_match",
+      "expectedReason": "autograph_mismatch"
+    },
+    {
+      "id": "relic-vs-non-relic",
+      "category": "relic vs non-relic",
+      "variant": "relic",
+      "expectedClassification": "contextual_match",
+      "expectedReason": "memorabilia_mismatch"
+    },
+    {
+      "id": "grading-difference",
+      "category": "grading differences",
+      "variant": "psa9",
+      "expectedClassification": "contextual_match",
+      "expectedReason": "grade_mismatch"
+    },
+    {
+      "id": "player-mismatch",
+      "category": "player mismatches",
+      "variant": "player",
+      "expectedClassification": "rejected_match",
+      "expectedReason": "subject_mismatch"
+    },
+    {
+      "id": "card-number-mismatch",
+      "category": "card-number mismatches",
+      "variant": "cardNumber",
+      "expectedClassification": "rejected_match",
+      "expectedReason": "card_number_mismatch"
+    },
+    {
+      "id": "year-mismatch",
+      "category": "year mismatches",
+      "variant": "year",
+      "expectedClassification": "rejected_match",
+      "expectedReason": "year_mismatch"
+    },
+    {
+      "id": "stale-sale",
+      "category": "stale sales",
+      "variant": "stale",
+      "expectedClassification": "stale_match",
+      "expectedReason": "stale_sale"
+    },
+    {
+      "id": "incomplete-identity",
+      "category": "incomplete identities",
+      "variant": "incomplete",
+      "expectedClassification": "insufficient_identity",
+      "expectedReason": "sold_record_identity_insufficient"
+    },
+    {
+      "id": "malformed-sold-record",
+      "category": "malformed sold records",
+      "variant": "malformed",
+      "expectedClassification": "insufficient_identity",
+      "expectedReason": "sold_record_identity_insufficient"
+    },
+    {
+      "id": "active-context-rejected",
+      "category": "Constitution evidence safeguards",
+      "variant": "active_context",
+      "expectedClassification": "rejected_match",
+      "expectedReason": "not_true_sold_evidence"
+    }
+  ]
+}
