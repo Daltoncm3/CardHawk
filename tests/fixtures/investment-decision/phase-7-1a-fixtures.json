@@ -1,0 +1,176 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "investment_decision_engine_phase_7_1a_fixtures",
+  "fixtures": [
+    {
+      "id": "failed-deal-gate",
+      "description": "Deal Gate rejection must prevent buy-like investment posture.",
+      "overrides": {
+        "dealGate": { "passed": false, "buyNowAllowed": false, "decision": "REJECT", "reasons": ["Fixture rejection."] }
+      },
+      "expectedPosture": "IGNORE"
+    },
+    {
+      "id": "strong-quick-flip",
+      "description": "Strong evidence, strong margin, fast hold, and high exit confidence.",
+      "overrides": {
+        "exactMatchCount": 6,
+        "recentSoldCount": 6,
+        "totalCost": 70,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 30,
+        "roi": 0.42,
+        "expectedHoldDays": 21,
+        "liquidity": "high",
+        "exitConfidence": "strong",
+        "preferredStrategyLanes": ["QUICK_FLIP"]
+      },
+      "expectedPosture": "PRIORITY_BUY"
+    },
+    {
+      "id": "strong-medium-hold",
+      "description": "Good evidence and medium hold profile.",
+      "overrides": {
+        "exactMatchCount": 4,
+        "recentSoldCount": 3,
+        "totalCost": 80,
+        "maximumBuyPrice": 105,
+        "expectedNetProfit": 28,
+        "roi": 0.35,
+        "expectedHoldDays": 90,
+        "liquidity": "high",
+        "exitConfidence": "high",
+        "preferredStrategyLanes": ["MEDIUM_HOLD"]
+      },
+      "expectedPosture": "BUY"
+    },
+    {
+      "id": "strong-long-term",
+      "description": "Longer hold with explicit thesis and strong evidence.",
+      "overrides": {
+        "exactMatchCount": 5,
+        "recentSoldCount": 3,
+        "totalCost": 180,
+        "maximumBuyPrice": 245,
+        "expectedNetProfit": 80,
+        "roi": 0.44,
+        "expectedHoldDays": 365,
+        "liquidity": "moderate",
+        "exitConfidence": "high",
+        "preferredStrategyLanes": ["LONG_TERM_INVESTMENT"],
+        "investmentThesis": "Durable long-term demand fixture."
+      },
+      "expectedPosture": "BUY"
+    },
+    {
+      "id": "high-roi-weak-evidence",
+      "description": "High ROI cannot overcome weak exact sold evidence.",
+      "overrides": {
+        "exactMatchCount": 1,
+        "recentSoldCount": 0,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "fewer_than_three_exact_sold_matches",
+        "totalCost": 20,
+        "maximumBuyPrice": 80,
+        "expectedNetProfit": 60,
+        "roi": 3
+      },
+      "expectedPosture": "MONITOR"
+    },
+    {
+      "id": "positive-profit-no-shadow-valuation",
+      "description": "Positive profit cannot create buy posture without Shadow Valuation.",
+      "overrides": {
+        "exactMatchCount": 0,
+        "recentSoldCount": 0,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "no_exact_sold_matches",
+        "totalCost": 40,
+        "expectedNetProfit": 35,
+        "roi": 0.87
+      },
+      "expectedPosture": "MONITOR"
+    },
+    {
+      "id": "negotiate-case",
+      "description": "Asking price above Maximum Buy Price should produce negotiation posture.",
+      "overrides": {
+        "exactMatchCount": 4,
+        "recentSoldCount": 4,
+        "totalCost": 112,
+        "maximumBuyPrice": 100,
+        "suggestedOffer": 120,
+        "expectedNetProfit": 20,
+        "roi": 0.22
+      },
+      "expectedPosture": "NEGOTIATE"
+    },
+    {
+      "id": "monitor-case",
+      "description": "Valid but caution-heavy evidence should produce monitor/low aggression.",
+      "overrides": {
+        "exactMatchCount": 3,
+        "recentSoldCount": 0,
+        "totalCost": 75,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 7,
+        "roi": 0.09,
+        "liquidity": "unknown",
+        "exitConfidence": "unknown",
+        "expectedHoldDays": null
+      },
+      "expectedPosture": "NEGOTIATE"
+    },
+    {
+      "id": "limited-bankroll",
+      "description": "Position size above preferred bankroll allocation should reduce to negotiate.",
+      "overrides": {
+        "exactMatchCount": 4,
+        "recentSoldCount": 4,
+        "totalCost": 250,
+        "maximumBuyPrice": 320,
+        "expectedNetProfit": 80,
+        "roi": 0.32,
+        "availableCapital": 500,
+        "maximumCapitalAllocationPerPosition": 100
+      },
+      "expectedPosture": "NEGOTIATE"
+    },
+    {
+      "id": "high-uncertainty",
+      "description": "High uncertainty should reduce aggressiveness.",
+      "overrides": {
+        "exactMatchCount": 3,
+        "recentSoldCount": 0,
+        "totalCost": 80,
+        "maximumBuyPrice": 105,
+        "expectedNetProfit": 12,
+        "roi": 0.15,
+        "liquidity": "thin",
+        "exitConfidence": "low",
+        "marketRegime": "volatile"
+      },
+      "expectedPosture": "NEGOTIATE"
+    },
+    {
+      "id": "portfolio-concentration",
+      "description": "Concentration risk should prevent aggressive buying.",
+      "overrides": {
+        "exactMatchCount": 4,
+        "recentSoldCount": 4,
+        "totalCost": 70,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 25,
+        "roi": 0.35,
+        "currentConcentrationPercentage": 35
+      },
+      "expectedPosture": "MONITOR"
+    },
+    {
+      "id": "malformed-input",
+      "description": "Malformed input should return deterministic safe output.",
+      "malformed": true,
+      "expectedPosture": "IGNORE"
+    }
+  ]
+}
