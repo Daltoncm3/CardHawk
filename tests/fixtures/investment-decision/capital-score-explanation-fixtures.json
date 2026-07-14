@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "capital_score_explanation_phase_7_1b_fixtures",
+  "fixtures": [
+    {
+      "id": "fully-ready-except-weights",
+      "description": "All core inputs available but Capital Score remains withheld because weights are not validated.",
+      "overrides": {
+        "exactMatchCount": 5,
+        "recentSoldCount": 5,
+        "totalCost": 70,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 30,
+        "roi": 0.42,
+        "liquidity": "high",
+        "exitConfidence": "strong",
+        "expectedHoldDays": 21,
+        "availableCapital": 5000,
+        "currentConcentrationPercentage": 5,
+        "reserveCapitalPercentage": 25,
+        "competingOpportunities": [{ "id": "alternate-1" }]
+      },
+      "expectedBlockedCategories": []
+    },
+    {
+      "id": "weak-evidence",
+      "description": "Weak exact sold evidence blocks Capital Score readiness.",
+      "overrides": {
+        "exactMatchCount": 1,
+        "recentSoldCount": 0,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "fewer_than_three_exact_sold_matches",
+        "expectedNetProfit": 80,
+        "roi": 2.5
+      },
+      "expectedBlockedCategories": ["Evidence Readiness", "Downside Protection Readiness"]
+    },
+    {
+      "id": "failed-deal-gate",
+      "description": "Failed Deal Gate blocks evidence readiness.",
+      "overrides": {
+        "dealGate": { "passed": false, "buyNowAllowed": false, "decision": "REJECT", "reasons": ["Fixture rejection."] }
+      },
+      "expectedBlockedCategories": ["Evidence Readiness"]
+    },
+    {
+      "id": "insufficient-shadow-valuation",
+      "description": "Unavailable Shadow Valuation blocks evidence and downside readiness.",
+      "overrides": {
+        "exactMatchCount": 0,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "no_exact_sold_matches"
+      },
+      "expectedBlockedCategories": ["Evidence Readiness", "Downside Protection Readiness"]
+    },
+    {
+      "id": "limited-bankroll",
+      "description": "Capital required exceeds available bankroll.",
+      "overrides": {
+        "totalCost": 600,
+        "maximumBuyPrice": 700,
+        "availableCapital": 500,
+        "reserveCapitalPercentage": 20
+      },
+      "expectedBlockedCategories": ["Bankroll Readiness"]
+    },
+    {
+      "id": "no-competing-opportunities",
+      "description": "Opportunity Cost Readiness is partial without comparison context.",
+      "overrides": {
+        "competingOpportunities": []
+      },
+      "expectedPartialCategories": ["Opportunity Cost Readiness"]
+    },
+    {
+      "id": "malformed-inputs",
+      "description": "Malformed empty inputs produce safe blocked/partial readiness with no score.",
+      "malformed": true,
+      "expectedBlockedCategories": ["Evidence Readiness"]
+    }
+  ]
+}
