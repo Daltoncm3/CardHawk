@@ -120,6 +120,37 @@ function soldRecord(identity, overrides = {}) {
   };
 }
 
+function shadowInput(overrides = {}) {
+  const identity = overrides.identity || targetIdentity();
+  return {
+    listing: buildListing({ canonicalIdentity: identity, ...(overrides.listing || {}) }),
+    compData: overrides.compData || { compCount: 0, trueSoldCompCount: 0, selectedComps: [] },
+    canonicalSoldEvidence: {
+      records: overrides.records || [],
+      queryDiagnostics: {
+        storeLoaded: true,
+        storeRecordCount: overrides.storeRecordCount ?? (overrides.records || []).length,
+        identityLookupKey: overrides.identityLookupKey ?? 'sports-card-key',
+        identityLookupSource: overrides.identityLookupSource || 'listing.canonicalIdentity',
+        legacySoldEvidenceKey: overrides.legacySoldEvidenceKey || 'legacy-card-key',
+        recordsBeforeTrueSoldFilter: overrides.recordsBeforeTrueSoldFilter ?? (overrides.records || []).length,
+        recordsAfterTrueSoldFilter: overrides.recordsAfterTrueSoldFilter ?? (overrides.records || []).length,
+        sourceTraceSummaries: (overrides.records || []).map((record) => ({
+          recordId: record.id,
+          marketplace: record.marketplace,
+          marketplaceSaleId: record.marketplaceSaleId,
+          marketplaceListingId: record.marketplaceListingId || null,
+          sourceAdapter: record.source?.adapter || 'fixture_adapter',
+          sourceReliability: record.source?.sourceReliability || 'fixture',
+          retrievalMethod: record.source?.retrievalMethod || 'fixture',
+          sourceUrl: record.url || ''
+        }))
+      },
+      ...(overrides.canonicalSoldEvidence || {})
+    }
+  };
+}
+
 test('scoreListing exposes shadowSoldComparison as an additive runtime object with missing evidence handled safely', () => {
   server.__setCanonicalSoldEvidenceStoreForTest(createEmptySoldEvidenceStore());
   try {
@@ -213,4 +244,166 @@ test('shadow comparison never affects runtime decisions', () => {
   } finally {
     server.__setCanonicalSoldEvidenceStoreForTest(null);
   }
+});
+
+test('empty-result causes are distinguishable with explicit reason codes', () => {
+  const identity = targetIdentity();
+  const exact = soldRecord(identity, {
+    id: 'exact-diagnostic',
+    marketplaceSaleId: 'exact-diagnostic',
+    source: {
+      adapter: 'manual_import',
+      sourceReliability: 'verified',
+      retrievalMethod: 'manual_review'
+    },
+    url: 'https://example.test/exact-diagnostic'
+  });
+  const stale = soldRecord(identity, {
+    id: 'stale-diagnostic',
+    marketplaceSaleId: 'stale-diagnostic',
+    soldAt: '2025-01-01T00:00:00.000Z'
+  });
+  const rejectedIdentity = clone(identity);
+  rejectedIdentity.normalized.subject.name = 'justin herbert';
+  const rejected = soldRecord(canonicalIdentityEngine.buildCanonicalIdentity({
+    canonicalSoldEvidenceIdentity: rejectedIdentity
+  }), {
+    id: 'rejected-diagnostic',
+    marketplaceSaleId: 'rejected-diagnostic'
+  });
+
+  const noStore = server.buildShadowSoldComparison(shadowInput({
+    records: [],
+    storeRecordCount: 0,
+    canonicalSoldEvidence: {
+      queryDiagnostics: {
+        storeLoaded: false,
+        storeRecordCount: 0,
+        identityLookupKey: '',
+        identityLookupSource: 'listing.canonicalIdentity',
+        legacySoldEvidenceKey: '',
+        recordsBeforeTrueSoldFilter: 0,
+        recordsAfterTrueSoldFilter: 0,
+        sourceTraceSummaries: []
+      }
+    }
+  }));
+  const emptyStore = server.buildShadowSoldComparison(shadowInput({ records: [], storeRecordCount: 0 }));
+  const noLookupKey = server.buildShadowSoldComparison(shadowInput({
+    records: [],
+    storeRecordCount: 2,
+    identityLookupKey: ''
+  }));
+  const noRecordsForIdentity = server.buildShadowSoldComparison(shadowInput({
+    records: [],
+    storeRecordCount: 2,
+    recordsBeforeTrueSoldFilter: 0,
+    recordsAfterTrueSoldFilter: 0
+  }));
+  const filtered = server.buildShadowSoldComparison(shadowInput({
+    records: [],
+    storeRecordCount: 2,
+    recordsBeforeTrueSoldFilter: 2,
+    recordsAfterTrueSoldFilter: 0
+  }));
+  const staleOnly = server.buildShadowSoldComparison(shadowInput({
+    records: [stale],
+    storeRecordCount: 1,
+    recordsBeforeTrueSoldFilter: 1,
+    recordsAfterTrueSoldFilter: 1
+  }));
+  const allRejected = server.buildShadowSoldComparison(shadowInput({
+    records: [rejected],
+    storeRecordCount: 1,
+    recordsBeforeTrueSoldFilter: 1,
+    recordsAfterTrueSoldFilter: 1
+  }));
+  const exactFound = server.buildShadowSoldComparison(shadowInput({
+    records: [exact],
+    storeRecordCount: 1,
+    recordsBeforeTrueSoldFilter: 1,
+    recordsAfterTrueSoldFilter: 1
+  }));
+  const insufficientTarget = server.buildShadowSoldComparison(shadowInput({
+    identity: canonicalIdentityEngine.buildCanonicalIdentity({}),
+    listing: { parsed: {} },
+    records: [exact],
+    storeRecordCount: 1,
+    recordsBeforeTrueSoldFilter: 1,
+    recordsAfterTrueSoldFilter: 1
+  }));
+
+  assert.equal(noStore.emptyReasonCode, 'no_canonical_store');
+  assert.equal(emptyStore.emptyReasonCode, 'empty_canonical_store');
+  assert.equal(noLookupKey.emptyReasonCode, 'no_identity_lookup_key');
+  assert.equal(noRecordsForIdentity.emptyReasonCode, 'no_records_for_identity');
+  assert.equal(filtered.emptyReasonCode, 'records_filtered_not_true_sold');
+  assert.equal(staleOnly.emptyReasonCode, 'stale_only_records');
+  assert.equal(allRejected.emptyReasonCode, 'all_records_rejected');
+  assert.equal(exactFound.emptyReasonCode, 'exact_matches_found');
+  assert.equal(insufficientTarget.emptyReasonCode, 'insufficient_target_identity');
+});
+
+test('pre-filter and post-filter counts reconcile and target identity diagnostics are exposed', () => {
+  const identity = targetIdentity();
+  const result = server.buildShadowSoldComparison(shadowInput({
+    identity,
+    records: [],
+    storeRecordCount: 4,
+    recordsBeforeTrueSoldFilter: 4,
+    recordsAfterTrueSoldFilter: 0
+  }));
+
+  assert.equal(result.label, 'shadow canonical evidence only');
+  assert.equal(result.storeLoaded, true);
+  assert.equal(result.storeRecordCount, 4);
+  assert.equal(result.identityLookupKey, 'sports-card-key');
+  assert.equal(result.identityLookupSource, 'listing.canonicalIdentity');
+  assert.equal(result.legacySoldEvidenceKey, 'legacy-card-key');
+  assert.equal(result.canonicalIdentityKey, identity.canonicalIdentityKey);
+  assert.equal(result.recordsBeforeTrueSoldFilter, 4);
+  assert.equal(result.recordsAfterTrueSoldFilter, 0);
+  assert.equal(result.targetExactCompEligible, true);
+  assert.equal(result.targetValuationEligible, true);
+  assert.equal(Array.isArray(result.targetUnknownFields), true);
+  assert.equal(Array.isArray(result.targetNormalizationWarnings), true);
+  assert.equal(result.targetIdentityDiagnostics.canonicalIdentitySummary.includes('valuation eligible'), true);
+});
+
+test('provenance/source trace summaries are deterministic for compared records', () => {
+  const identity = targetIdentity();
+  const record = soldRecord(identity, {
+    id: 'provenance-sale',
+    marketplace: 'ebay',
+    marketplaceSaleId: 'sale-provenance',
+    marketplaceListingId: 'listing-provenance',
+    url: 'https://example.test/provenance-sale',
+    source: {
+      adapter: 'manual_import_adapter',
+      sourceReliability: 'verified_manual',
+      retrievalMethod: 'reviewed_batch'
+    }
+  });
+  const input = shadowInput({
+    records: [record],
+    recordsBeforeTrueSoldFilter: 1,
+    recordsAfterTrueSoldFilter: 1
+  });
+
+  const first = server.buildShadowSoldComparison(input);
+  const second = server.buildShadowSoldComparison(input);
+
+  assert.deepEqual(second.sourceTraceSummaries, first.sourceTraceSummaries);
+  assert.deepEqual(first.sourceTraceSummaries, [{
+    recordId: 'provenance-sale',
+    marketplace: 'ebay',
+    marketplaceSaleId: 'sale-provenance',
+    marketplaceListingId: 'listing-provenance',
+    sourceAdapter: 'manual_import_adapter',
+    sourceReliability: 'verified_manual',
+    retrievalMethod: 'reviewed_batch',
+    sourceUrl: 'https://example.test/provenance-sale'
+  }]);
+  assert.equal(first.productionImpact, 'none');
+  assert.equal(first.decisionImpact, 'none');
 });

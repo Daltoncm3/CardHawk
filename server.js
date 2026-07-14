@@ -201,19 +201,100 @@ function getListingCanonicalIdentity(listing = {}) {
     listing;
 }
 
-function getCanonicalSoldEvidenceForListing(listing = {}) {
+function getListingIdentityLookupSource(listing = {}) {
+  if (listing.canonicalIdentity) return 'listing.canonicalIdentity';
+  if (listing.parsedIdentity) return 'listing.parsedIdentity';
+  if (listing.identity) return 'listing.identity';
+  if (listing.parsed) return 'listing.parsed';
+  return 'listing';
+}
+
+function getStoreRecordCount(store = {}) {
+  return Object.keys(store.records || {}).length;
+}
+
+function summarizeRecordProvenance(record = {}) {
+  return {
+    recordId: getRecordKey(record),
+    marketplace: record.marketplace || record.marketplaceLabel || 'unknown',
+    marketplaceSaleId: record.marketplaceSaleId || null,
+    marketplaceListingId: record.marketplaceListingId || record.ebayItemId || record.itemId || null,
+    sourceAdapter: record.source?.adapter || record.adapter || 'unknown',
+    sourceReliability: record.source?.sourceReliability || record.sourceReliability || 'unknown',
+    retrievalMethod: record.source?.retrievalMethod || record.retrievalMethod || 'unknown',
+    sourceUrl: record.url || record.itemWebUrl || record.sourceUrl || ''
+  };
+}
+
+function buildCanonicalSoldEvidenceQueryDiagnostics({
+  store = {},
+  listing = {},
+  identityInput = {},
+  rawIdentityRecords = [],
+  filteredRecords = [],
+  storeLoaded = true
+} = {}) {
+  let identityLookupKey = '';
+
   try {
-    return soldEvidenceService.querySoldEvidence(
-      loadCanonicalSoldEvidenceStore(),
-      getListingCanonicalIdentity(listing),
-      { trueSoldOnly: true }
-    );
+    identityLookupKey = soldEvidenceStore.buildCanonicalCardKey(identityInput);
   } catch (_) {
-    return soldEvidenceService.querySoldEvidence(
-      soldEvidenceStore.createEmptySoldEvidenceStore(),
-      getListingCanonicalIdentity(listing),
-      { trueSoldOnly: true }
-    );
+    identityLookupKey = '';
+  }
+
+  let legacySoldEvidenceKey = '';
+  try {
+    legacySoldEvidenceKey = soldEvidenceStore.buildCanonicalCardKey(listing.parsed || listing);
+  } catch (_) {
+    legacySoldEvidenceKey = '';
+  }
+
+  return {
+    storeLoaded,
+    storeRecordCount: getStoreRecordCount(store),
+    identityLookupKey,
+    identityLookupSource: getListingIdentityLookupSource(listing),
+    legacySoldEvidenceKey,
+    recordsBeforeTrueSoldFilter: rawIdentityRecords.length,
+    recordsAfterTrueSoldFilter: filteredRecords.length,
+    sourceTraceSummaries: filteredRecords.map(summarizeRecordProvenance)
+  };
+}
+
+function getCanonicalSoldEvidenceForListing(listing = {}) {
+  const identityInput = getListingCanonicalIdentity(listing);
+
+  try {
+    const store = loadCanonicalSoldEvidenceStore();
+    const rawIdentityRecords = soldEvidenceService.getIdentityRecords(store, identityInput).records;
+    const result = soldEvidenceService.querySoldEvidence(store, identityInput, { trueSoldOnly: true });
+
+    return {
+      ...result,
+      queryDiagnostics: buildCanonicalSoldEvidenceQueryDiagnostics({
+        store,
+        listing,
+        identityInput,
+        rawIdentityRecords,
+        filteredRecords: result.records || [],
+        storeLoaded: true
+      })
+    };
+  } catch (_) {
+    const emptyStore = soldEvidenceStore.createEmptySoldEvidenceStore();
+    const result = soldEvidenceService.querySoldEvidence(emptyStore, identityInput, { trueSoldOnly: true });
+
+    return {
+      ...result,
+      queryDiagnostics: buildCanonicalSoldEvidenceQueryDiagnostics({
+        store: emptyStore,
+        listing,
+        identityInput,
+        rawIdentityRecords: [],
+        filteredRecords: result.records || [],
+        storeLoaded: false
+      })
+    };
   }
 }
 
@@ -304,11 +385,102 @@ function summarizeLegacyVsCanonicalComparison(compData = {}, canonicalResult = {
   };
 }
 
-function buildEmptyShadowSoldComparison({ canonicalIdentityKey = '', compData = {}, canonicalRecords = [], reason = 'no_canonical_sold_records' } = {}) {
+function buildTargetIdentityDiagnostics(canonicalIdentity = {}, diagnostics = {}) {
+  return {
+    targetExactCompEligible: canonicalIdentity.eligibility?.exactCompEligible === true,
+    targetValuationEligible: canonicalIdentity.eligibility?.valuationEligible === true,
+    targetUnknownFields: Array.isArray(canonicalIdentity.unknownFields) ? [...canonicalIdentity.unknownFields] : [],
+    targetNormalizationWarnings: Array.isArray(canonicalIdentity.normalizationWarnings) ? [...canonicalIdentity.normalizationWarnings] : [],
+    overallIdentityConfidence: canonicalIdentity.overallIdentityConfidence || 0,
+    canonicalIdentitySummary: diagnostics.canonicalIdentitySummary || ''
+  };
+}
+
+function inferShadowSoldComparisonReason({
+  queryDiagnostics = {},
+  canonicalIdentity = {},
+  comparison = null,
+  records = []
+} = {}) {
+  if (queryDiagnostics.storeLoaded === false) return 'no_canonical_store';
+  if ((queryDiagnostics.storeRecordCount || 0) <= 0) return 'empty_canonical_store';
+  if (!queryDiagnostics.identityLookupKey) return 'no_identity_lookup_key';
+  if ((queryDiagnostics.recordsBeforeTrueSoldFilter || 0) <= 0) return 'no_records_for_identity';
+  if ((queryDiagnostics.recordsBeforeTrueSoldFilter || 0) > 0 && (queryDiagnostics.recordsAfterTrueSoldFilter || 0) <= 0) {
+    return 'records_filtered_not_true_sold';
+  }
+  if (!canonicalIdentity.eligibility?.exactCompEligible) return 'insufficient_target_identity';
+  if (comparison?.acceptedExactMatches?.length > 0) return 'exact_matches_found';
+  if (comparison?.staleMatches?.length > 0 && records.length === comparison.staleMatches.length) return 'stale_only_records';
+  if (comparison && records.length > 0) return 'all_records_rejected';
+  return 'no_records_for_identity';
+}
+
+function buildShadowComparisonDiagnosticFields({
+  canonicalSoldEvidence = {},
+  canonicalIdentity = {},
+  identityDiagnostics = {},
+  emptyReasonCode = '',
+  records = [],
+  comparison = null
+} = {}) {
+  const queryDiagnostics = canonicalSoldEvidence.queryDiagnostics || {};
+  const targetDiagnostics = buildTargetIdentityDiagnostics(canonicalIdentity, identityDiagnostics);
+  const sourceTraceSummaries = comparison
+    ? [
+        ...(comparison.acceptedExactMatches || []),
+        ...(comparison.contextualMatches || []),
+        ...(comparison.rejectedMatches || []),
+        ...(comparison.staleMatches || []),
+        ...(comparison.insufficientIdentityMatches || [])
+      ].map((entry) => {
+        const sourceRecord = records.find((record) => getRecordKey(record) === getRecordKey(entry)) || entry;
+        return summarizeRecordProvenance(sourceRecord);
+      })
+    : (queryDiagnostics.sourceTraceSummaries || records.map(summarizeRecordProvenance));
+
+  return {
+    label: 'shadow canonical evidence only',
+    emptyReasonCode,
+    storeLoaded: queryDiagnostics.storeLoaded === true,
+    storeRecordCount: queryDiagnostics.storeRecordCount || 0,
+    identityLookupKey: queryDiagnostics.identityLookupKey || '',
+    identityLookupSource: queryDiagnostics.identityLookupSource || 'unknown',
+    legacySoldEvidenceKey: queryDiagnostics.legacySoldEvidenceKey || '',
+    canonicalIdentityKey: canonicalIdentity.canonicalIdentityKey || '',
+    recordsBeforeTrueSoldFilter: queryDiagnostics.recordsBeforeTrueSoldFilter || 0,
+    recordsAfterTrueSoldFilter: queryDiagnostics.recordsAfterTrueSoldFilter || records.length,
+    targetExactCompEligible: targetDiagnostics.targetExactCompEligible,
+    targetValuationEligible: targetDiagnostics.targetValuationEligible,
+    targetUnknownFields: targetDiagnostics.targetUnknownFields,
+    targetNormalizationWarnings: targetDiagnostics.targetNormalizationWarnings,
+    targetIdentityDiagnostics: targetDiagnostics,
+    sourceTraceSummaries
+  };
+}
+
+function buildEmptyShadowSoldComparison({
+  canonicalIdentityKey = '',
+  compData = {},
+  canonicalRecords = [],
+  canonicalSoldEvidence = {},
+  canonicalIdentity = {},
+  identityDiagnostics = {},
+  reason = 'no_records_for_identity'
+} = {}) {
+  const diagnosticFields = buildShadowComparisonDiagnosticFields({
+    canonicalSoldEvidence,
+    canonicalIdentity: { ...canonicalIdentity, canonicalIdentityKey: canonicalIdentity.canonicalIdentityKey || canonicalIdentityKey },
+    identityDiagnostics,
+    emptyReasonCode: reason,
+    records: canonicalRecords
+  });
+
   return {
     comparisonPerformed: false,
     comparisonSource: 'canonical_sold_comparison_service_shadow',
-    canonicalIdentityKey,
+    ...diagnosticFields,
+    canonicalIdentityKey: diagnosticFields.canonicalIdentityKey || canonicalIdentityKey,
     acceptedExactMatches: [],
     contextualMatches: [],
     rejectedMatches: [],
@@ -345,21 +517,38 @@ function buildShadowSoldComparison({ listing = {}, compData = {}, canonicalSoldE
     const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
     const canonicalIdentity = diagnostics.canonicalIdentity;
     const records = Array.isArray(canonicalSoldEvidence?.records) ? canonicalSoldEvidence.records : [];
+    const queryDiagnostics = canonicalSoldEvidence?.queryDiagnostics || {};
 
     if (!canonicalIdentity || !canonicalIdentity.canonicalIdentityKey) {
+      const reason = inferShadowSoldComparisonReason({
+        queryDiagnostics,
+        canonicalIdentity,
+        records
+      });
       return buildEmptyShadowSoldComparison({
         compData,
         canonicalRecords: records,
-        reason: 'canonical_identity_unavailable'
+        canonicalSoldEvidence,
+        canonicalIdentity,
+        identityDiagnostics: diagnostics,
+        reason: reason === 'empty_canonical_store' ? reason : 'no_identity_lookup_key'
       });
     }
 
     if (!records.length) {
+      const reason = inferShadowSoldComparisonReason({
+        queryDiagnostics,
+        canonicalIdentity,
+        records
+      });
       return buildEmptyShadowSoldComparison({
         canonicalIdentityKey: canonicalIdentity.canonicalIdentityKey,
         compData,
         canonicalRecords: records,
-        reason: 'no_canonical_sold_records'
+        canonicalSoldEvidence,
+        canonicalIdentity,
+        identityDiagnostics: diagnostics,
+        reason
       });
     }
 
@@ -367,10 +556,25 @@ function buildShadowSoldComparison({ listing = {}, compData = {}, canonicalSoldE
       canonicalIdentity,
       records
     );
+    const emptyReasonCode = inferShadowSoldComparisonReason({
+      queryDiagnostics,
+      canonicalIdentity,
+      comparison,
+      records
+    });
+    const diagnosticFields = buildShadowComparisonDiagnosticFields({
+      canonicalSoldEvidence,
+      canonicalIdentity,
+      identityDiagnostics: diagnostics,
+      emptyReasonCode,
+      records,
+      comparison
+    });
 
     return {
       comparisonPerformed: true,
       comparisonSource: 'canonical_sold_comparison_service_shadow',
+      ...diagnosticFields,
       canonicalIdentityKey: comparison.targetCanonicalIdentityKey,
       acceptedExactMatches: comparison.acceptedExactMatches,
       contextualMatches: comparison.contextualMatches,

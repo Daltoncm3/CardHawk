@@ -1,0 +1,112 @@
+{
+  "metadata": {
+    "fixtureSet": "shadow_valuation_v1",
+    "version": "1.0.0",
+    "networkAccess": false,
+    "description": "Offline fixture matrix for the standalone Shadow Valuation Engine."
+  },
+  "asOf": "2026-07-14T00:00:00.000Z",
+  "targetIdentity": {
+    "schemaVersion": "1.0.0",
+    "identityType": "sports_card",
+    "category": "sports_card",
+    "marketSegment": "sports",
+    "canonicalIdentityKey": "ci:v1:sports:football:2020:panini:prizm:joe-burrow:307:base:non-auto:non-mem:unnumbered:graded:psa-10",
+    "normalized": {
+      "sport": "football",
+      "subject": { "name": "joe burrow", "aliases": [] },
+      "year": "2020",
+      "manufacturer": "panini",
+      "setName": "prizm",
+      "cardNumber": "307",
+      "parallel": "base",
+      "autograph": { "state": false, "type": null },
+      "memorabilia": { "state": false, "type": null },
+      "serialNumbered": false,
+      "rawOrGraded": "graded",
+      "grading": { "company": "psa", "grade": "10" }
+    },
+    "overallIdentityConfidence": 0.98,
+    "unknownFields": [],
+    "normalizationWarnings": [],
+    "eligibility": {
+      "exactCompEligible": true,
+      "valuationEligible": true,
+      "manualReviewRequired": false,
+      "contextOnly": false
+    }
+  },
+  "cases": [
+    {
+      "id": "abundant-recent-sales",
+      "category": "abundant recent sales",
+      "prices": [96, 100, 104, 108, 112, 116],
+      "dates": ["2026-06-01", "2026-06-08", "2026-06-15", "2026-06-22", "2026-06-29", "2026-07-06"],
+      "expectValuation": true
+    },
+    {
+      "id": "thin-market",
+      "category": "thin markets",
+      "prices": [98, 104],
+      "dates": ["2026-06-01", "2026-07-01"],
+      "expectValuation": false,
+      "expectedReason": "fewer_than_three_exact_sold_matches"
+    },
+    {
+      "id": "rising-market",
+      "category": "rising markets",
+      "prices": [80, 84, 90, 112, 118, 125],
+      "dates": ["2026-03-01", "2026-03-15", "2026-04-01", "2026-06-10", "2026-06-25", "2026-07-05"],
+      "expectValuation": true,
+      "expectedTrend": "rising"
+    },
+    {
+      "id": "cooling-market",
+      "category": "cooling markets",
+      "prices": [140, 132, 126, 104, 98, 92],
+      "dates": ["2026-03-01", "2026-03-15", "2026-04-01", "2026-06-10", "2026-06-25", "2026-07-05"],
+      "expectValuation": true,
+      "expectedTrend": "cooling"
+    },
+    {
+      "id": "stale-only-evidence",
+      "category": "stale-only evidence",
+      "prices": [],
+      "stalePrices": [100, 104, 110],
+      "expectValuation": false,
+      "expectedReason": "stale_only_exact_evidence"
+    },
+    {
+      "id": "conflicting-evidence",
+      "category": "conflicting evidence",
+      "prices": [60, 84, 105, 150, 210],
+      "dates": ["2026-05-01", "2026-05-15", "2026-06-01", "2026-06-15", "2026-07-01"],
+      "expectValuation": true,
+      "wideSpread": true
+    },
+    {
+      "id": "single-exact-sale",
+      "category": "single exact sale",
+      "prices": [125],
+      "dates": ["2026-07-01"],
+      "expectValuation": false,
+      "expectedReason": "fewer_than_three_exact_sold_matches"
+    },
+    {
+      "id": "no-exact-sales",
+      "category": "no exact sales",
+      "prices": [],
+      "contextualPrices": [100, 110, 120],
+      "expectValuation": false,
+      "expectedReason": "contextual_matches_only"
+    },
+    {
+      "id": "malformed-evidence",
+      "category": "malformed evidence",
+      "prices": [],
+      "malformed": true,
+      "expectValuation": false,
+      "expectedReason": "all_records_rejected"
+    }
+  ]
+}
