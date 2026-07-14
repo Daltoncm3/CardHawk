@@ -20,6 +20,7 @@ const populationEngine = require("./engines/populationEngine");
 const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
 const qualityEngine = require("./engines/qualityEngine");
+const legacyIdentityAdapter = require("./engines/legacyIdentityAdapter");
 const systemHealth = require("./engines/systemHealth");
 const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
@@ -1423,9 +1424,12 @@ function buildDisplayInterpretation(item = {}) {
 
   display.signalAnnotations = buildSignalAnnotationsForDisplay(item, display);
   display.unifiedDecisionPresentation = buildUnifiedDecisionPresentation(item, display);
+  const canonicalIdentityDiagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(item);
+  display.canonicalIdentityDiagnostics = canonicalIdentityDiagnostics;
 
   return {
     ...item,
+    ...canonicalIdentityDiagnostics,
     display
   };
 }
@@ -2675,7 +2679,8 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
     compData,
     confidenceData,
     qualityData,
-    dealGrade
+    dealGrade,
+    canonicalIdentityDiagnostics: legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing)
   });
 });
 
@@ -3264,6 +3269,7 @@ module.exports = {
   createLegacyScoreBreakdown,
   buildDisplayInterpretation,
   buildSignalAnnotationsForDisplay,
+  buildCanonicalIdentityDiagnostics: legacyIdentityAdapter.buildLegacyIdentityDiagnostics,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
