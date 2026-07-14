@@ -16,6 +16,7 @@ const marketIntelligenceEngine = require("./engines/marketIntelligenceEngine");
 const learningEngine = require("./engines/learningEngine");
 const notificationEngine = require("./engines/notificationEngine");
 const confidenceEngine = require("./engines/confidenceEngine");
+const canonicalSoldComparisonService = require("./services/canonicalSoldComparisonService");
 const populationEngine = require("./engines/populationEngine");
 const trendEngine = require("./engines/trendEngine");
 const gradingEngine = require("./engines/gradingEngine");
@@ -218,6 +219,182 @@ function getCanonicalSoldEvidenceForListing(listing = {}) {
 
 function __setCanonicalSoldEvidenceStoreForTest(nextStore) {
   canonicalSoldEvidenceStore = nextStore || null;
+}
+
+function getRecordKey(record = {}) {
+  return String(
+    record.id ||
+    record.recordId ||
+    record.marketplaceSaleId ||
+    record.marketplaceListingId ||
+    record.ebayItemId ||
+    record.itemId ||
+    record.url ||
+    record.rawTitle ||
+    ''
+  );
+}
+
+function getLegacyCompRecords(compData = {}) {
+  const candidates = [
+    compData.selectedComps,
+    compData.comps,
+    compData.acceptedComps,
+    compData.matches
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function summarizeLegacyVsCanonicalComparison(compData = {}, canonicalResult = {}, canonicalRecords = []) {
+  const legacyComps = getLegacyCompRecords(compData);
+  const legacyKeys = new Set(legacyComps.map(getRecordKey).filter(Boolean));
+  const canonicalComparisons = [
+    ...(canonicalResult.acceptedExactMatches || []),
+    ...(canonicalResult.contextualMatches || []),
+    ...(canonicalResult.rejectedMatches || []),
+    ...(canonicalResult.staleMatches || []),
+    ...(canonicalResult.insufficientIdentityMatches || [])
+  ];
+  const canonicalKeys = new Set(canonicalComparisons.map(getRecordKey).filter(Boolean));
+  const exactKeys = new Set((canonicalResult.acceptedExactMatches || []).map(getRecordKey).filter(Boolean));
+  const rejectedKeys = new Set([
+    ...(canonicalResult.rejectedMatches || []),
+    ...(canonicalResult.staleMatches || []),
+    ...(canonicalResult.insufficientIdentityMatches || [])
+  ].map(getRecordKey).filter(Boolean));
+  const agreedKeys = [...legacyKeys].filter((key) => canonicalKeys.has(key));
+
+  return {
+    source: 'legacy_vs_canonical_sold_shadow_comparison',
+    productionImpact: 'none',
+    decisionImpact: 'none',
+    legacyCompEngine: {
+      compCount: compData.compCount || 0,
+      trueSoldCompCount: compData.trueSoldCompCount || 0,
+      soldCompCount: compData.soldCompCount || 0,
+      activeCompCount: compData.activeCompCount || 0,
+      acceptedComparableCount: legacyComps.length
+    },
+    canonicalSoldComparisonService: {
+      exactMatchesFound: canonicalResult.acceptedExactMatches?.length || 0,
+      contextualMatchesFound: canonicalResult.contextualMatches?.length || 0,
+      rejectedMatches: canonicalResult.rejectedMatches?.length || 0,
+      staleMatches: canonicalResult.staleMatches?.length || 0,
+      insufficientIdentityMatches: canonicalResult.insufficientIdentityMatches?.length || 0,
+      recordsEvaluated: canonicalRecords.length
+    },
+    identityDisagreements: canonicalResult.identityMismatchStatistics || {},
+    evidenceDisagreements: canonicalResult.rejectionStatistics?.reasons || {},
+    comparisonCoverage: {
+      legacyAcceptedCount: legacyComps.length,
+      canonicalRecordCount: canonicalRecords.length,
+      canonicalComparedCount: canonicalResult.processingSummary?.processedRecords || 0,
+      agreedRecordCount: agreedKeys.length
+    },
+    recordsOnlyFoundByLegacy: [...legacyKeys].filter((key) => !canonicalKeys.has(key)),
+    recordsOnlyFoundByCanonical: [...canonicalKeys].filter((key) => !legacyKeys.has(key)),
+    recordsAgreedByBoth: agreedKeys,
+    exactRecordsOnlyFoundByCanonical: [...exactKeys].filter((key) => !legacyKeys.has(key)),
+    rejectedRecordsOnlyFoundByCanonical: [...rejectedKeys].filter((key) => !legacyKeys.has(key))
+  };
+}
+
+function buildEmptyShadowSoldComparison({ canonicalIdentityKey = '', compData = {}, canonicalRecords = [], reason = 'no_canonical_sold_records' } = {}) {
+  return {
+    comparisonPerformed: false,
+    comparisonSource: 'canonical_sold_comparison_service_shadow',
+    canonicalIdentityKey,
+    acceptedExactMatches: [],
+    contextualMatches: [],
+    rejectedMatches: [],
+    staleMatches: [],
+    insufficientIdentityMatches: [],
+    comparisonSummary: reason,
+    confidenceSummary: {
+      comparedRecordCount: 0,
+      averageIdentityConfidence: null,
+      averageEvidenceQualityScore: null,
+      exactMatchAverageEvidenceQualityScore: null
+    },
+    mismatchSummary: {
+      rejectionStatistics: { totalRejected: 0, reasons: {} },
+      identityMismatchStatistics: {}
+    },
+    processingSummary: {
+      totalRecords: canonicalRecords.length,
+      processedRecords: 0,
+      exactMatchCount: 0,
+      contextualMatchCount: 0,
+      rejectedMatchCount: 0,
+      staleMatchCount: 0,
+      insufficientIdentityCount: 0
+    },
+    legacyVsCanonicalComparison: summarizeLegacyVsCanonicalComparison(compData, {}, canonicalRecords),
+    productionImpact: 'none',
+    decisionImpact: 'none'
+  };
+}
+
+function buildShadowSoldComparison({ listing = {}, compData = {}, canonicalSoldEvidence = null } = {}) {
+  try {
+    const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+    const canonicalIdentity = diagnostics.canonicalIdentity;
+    const records = Array.isArray(canonicalSoldEvidence?.records) ? canonicalSoldEvidence.records : [];
+
+    if (!canonicalIdentity || !canonicalIdentity.canonicalIdentityKey) {
+      return buildEmptyShadowSoldComparison({
+        compData,
+        canonicalRecords: records,
+        reason: 'canonical_identity_unavailable'
+      });
+    }
+
+    if (!records.length) {
+      return buildEmptyShadowSoldComparison({
+        canonicalIdentityKey: canonicalIdentity.canonicalIdentityKey,
+        compData,
+        canonicalRecords: records,
+        reason: 'no_canonical_sold_records'
+      });
+    }
+
+    const comparison = canonicalSoldComparisonService.evaluateCanonicalSoldComparisons(
+      canonicalIdentity,
+      records
+    );
+
+    return {
+      comparisonPerformed: true,
+      comparisonSource: 'canonical_sold_comparison_service_shadow',
+      canonicalIdentityKey: comparison.targetCanonicalIdentityKey,
+      acceptedExactMatches: comparison.acceptedExactMatches,
+      contextualMatches: comparison.contextualMatches,
+      rejectedMatches: comparison.rejectedMatches,
+      staleMatches: comparison.staleMatches,
+      insufficientIdentityMatches: comparison.insufficientIdentityMatches,
+      comparisonSummary: comparison.summary,
+      confidenceSummary: comparison.confidenceSummary,
+      mismatchSummary: {
+        rejectionStatistics: comparison.rejectionStatistics,
+        identityMismatchStatistics: comparison.identityMismatchStatistics
+      },
+      processingSummary: comparison.processingSummary,
+      legacyVsCanonicalComparison: summarizeLegacyVsCanonicalComparison(compData, comparison, records),
+      productionImpact: 'none',
+      decisionImpact: 'none'
+    };
+  } catch (_) {
+    return buildEmptyShadowSoldComparison({
+      compData,
+      canonicalRecords: Array.isArray(canonicalSoldEvidence?.records) ? canonicalSoldEvidence.records : [],
+      reason: 'shadow_sold_comparison_failed_safe'
+    });
+  }
 }
 
 function loadStore() {
@@ -710,6 +887,8 @@ const roi = roiData.roi;
     qualityData
 });
 
+  const canonicalSoldEvidence = getCanonicalSoldEvidenceForListing({ ...listing, parsed });
+
   const marketIntelligenceData =
     marketIntelligenceEngine.evaluateMarketIntelligence({
         listing: { ...listing, parsed },
@@ -717,8 +896,13 @@ const roi = roiData.roi;
         soldSales: soldSalesSummary.sales,
         roiData,
         compData,
-        canonicalSoldEvidence: getCanonicalSoldEvidenceForListing({ ...listing, parsed })
+        canonicalSoldEvidence
     });
+  const shadowSoldComparison = buildShadowSoldComparison({
+    listing: { ...listing, parsed },
+    compData,
+    canonicalSoldEvidence
+  });
   runShadowModeDecisionIntelligence(marketIntelligenceData, {
     listing: { ...listing, parsed }
   });
@@ -783,6 +967,7 @@ const decisionData = decisionEngine.makeDecision({
     riskLevel: riskData.riskLevel,
 riskData,
     marketIntelligenceData,
+    shadowSoldComparison,
 marketIntelligenceScore: marketIntelligenceData.intelligenceScore,
 marketTrustLevel: marketIntelligenceData.trustLevel,
 marketRecommendation: marketIntelligenceData.recommendation,
@@ -3270,6 +3455,7 @@ module.exports = {
   buildDisplayInterpretation,
   buildSignalAnnotationsForDisplay,
   buildCanonicalIdentityDiagnostics: legacyIdentityAdapter.buildLegacyIdentityDiagnostics,
+  buildShadowSoldComparison,
   isShadowModeEnabled,
   runShadowModeDecisionIntelligence,
   __setShadowModeDecisionIntelligenceEvaluatorForTest,

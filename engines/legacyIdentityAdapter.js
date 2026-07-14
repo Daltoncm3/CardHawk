@@ -82,6 +82,7 @@ function buildCanonicalIdentityInput(listing = {}, options = {}) {
     marketplace: buildMarketplaceMetadata(listing, options.marketplace || {}),
     canonicalSoldEvidenceIdentity: clone(
       options.canonicalSoldEvidenceIdentity ||
+      listing.canonicalIdentity ||
       listing.canonicalSoldEvidenceIdentity ||
       listing.canonicalSoldEvidence?.identity ||
       null
