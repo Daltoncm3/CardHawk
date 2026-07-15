@@ -16,6 +16,7 @@ const REQUIRED_COMPONENTS = Object.freeze([
   'shadowValuation',
   'shadowSoldComparison',
   'validationCandidate',
+  'capitalScoreExplanation',
   'daltonReview',
   'actualOutcome',
   'auditMetadata'
@@ -189,6 +190,7 @@ function createReviewWorkspace(snapshot = {}, options = {}) {
     shadowValuation: clone(shadowOutputs.shadowValuation),
     shadowSoldComparison: clone(shadowOutputs.shadowSoldComparison),
     validationCandidate: clone(snapshot.validationCandidate || null),
+    capitalScoreExplanation: clone(snapshot.capitalScoreExplanation || null),
     daltonReview: getDaltonReviewPlaceholder(snapshot),
     actualOutcome: getOutcomePlaceholder(snapshot)
   };

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const investmentDecisionEngine = require('../engines/investmentDecisionEngine');
+const capitalScoreExplanationEngine = require('../engines/capitalScoreExplanationEngine');
 const reviewWorkspace = require('../validation/reviewWorkspaceContract');
 const selector = require('../validation/validationCandidateSelector');
 const strategyContract = require('../validation/strategyLaneContract');
@@ -122,6 +123,10 @@ function buildInvestmentInput(overrides = {}) {
 function buildCompleteSnapshot(overrides = {}) {
   const input = buildInvestmentInput(overrides);
   const investmentDecision = investmentDecisionEngine.evaluateInvestmentDecision(input);
+  const capitalScoreExplanation = capitalScoreExplanationEngine.explainCapitalScore({
+    ...input,
+    investmentDecision
+  });
   const validationCandidate = selector.evaluateValidationCandidate({
     recordId: input.listingSnapshot.itemId,
     investmentDecisionInput: input,
@@ -133,6 +138,7 @@ function buildCompleteSnapshot(overrides = {}) {
     capturedAt: '2026-07-14T15:00:00.000Z',
     investmentDecisionInput: input,
     investmentDecision,
+    capitalScoreExplanation,
     validationCandidate,
     productionOutputs: {
       dealGate: input.dealGate,
@@ -171,6 +177,7 @@ test('exports Review Workspace public API and component contract', () => {
     'shadowValuation',
     'shadowSoldComparison',
     'validationCandidate',
+    'capitalScoreExplanation',
     'daltonReview',
     'actualOutcome',
     'auditMetadata'
@@ -193,6 +200,7 @@ test('aggregates complete listing review artifacts without creating new intellig
   assert.deepEqual(workspace.shadowOutputs.shadowValuation, snapshot.investmentDecisionInput.shadowValuation);
   assert.deepEqual(workspace.investmentDecision, snapshot.investmentDecision);
   assert.deepEqual(workspace.validationCandidate, snapshot.validationCandidate);
+  assert.deepEqual(workspace.capitalScoreExplanation, snapshot.capitalScoreExplanation);
   assert.equal(workspace.strategyLane.selectedContextLane, snapshot.investmentDecision.strategyFit.selectedContextLane);
   assert.equal(workspace.auditMetadata.aggregationOnly, true);
   assert.equal(workspace.auditMetadata.createsNewIntelligence, false);
