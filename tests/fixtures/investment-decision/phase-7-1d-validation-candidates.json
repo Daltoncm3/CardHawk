@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "phase_7_1d_validation_candidate_fixtures",
+  "fixtures": [
+    {
+      "id": "obvious-agreement",
+      "description": "Production and shadow support broadly agree, making this a low-priority baseline review.",
+      "overrides": {
+        "exactMatchCount": 5,
+        "totalCost": 70,
+        "maximumBuyPrice": 110,
+        "expectedNetProfit": 40,
+        "roi": 0.57
+      },
+      "expectedCategory": "learning_opportunity"
+    },
+    {
+      "id": "strong-disagreement",
+      "description": "Production rejects while Shadow Valuation has sufficient exact evidence.",
+      "overrides": {
+        "dealGate": {
+          "passed": false,
+          "buyNowAllowed": false,
+          "decision": "REJECT",
+          "reasons": ["Fixture production rejection."]
+        },
+        "exactMatchCount": 5,
+        "totalCost": 60,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 45,
+        "roi": 0.75
+      },
+      "expectedCategory": "production_vs_shadow_disagreement"
+    },
+    {
+      "id": "weak-evidence",
+      "description": "Thin exact sold support should be selected for evidence-gap learning.",
+      "overrides": {
+        "dealGate": {
+          "passed": false,
+          "buyNowAllowed": false,
+          "decision": "REJECT",
+          "reasons": ["Fixture weak evidence rejection."]
+        },
+        "exactMatchCount": 1,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "fewer_than_three_exact_sold_matches"
+      },
+      "expectedCategory": "weak_evidence"
+    },
+    {
+      "id": "missing-sold-evidence",
+      "description": "No exact sold evidence but production support exists.",
+      "overrides": {
+        "exactMatchCount": 0,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "no_exact_sold_matches"
+      },
+      "expectedCategory": "production_vs_shadow_disagreement"
+    },
+    {
+      "id": "identity-conflict",
+      "description": "Canonical identity is not exact-comp eligible.",
+      "overrides": {
+        "identityConflict": true
+      },
+      "expectedCategory": "identity_conflict"
+    },
+    {
+      "id": "valuation-conflict",
+      "description": "Production value and Shadow Valuation diverge sharply.",
+      "overrides": {
+        "productionEstimatedValue": 200,
+        "shadowRecommendedMarketValue": 100
+      },
+      "expectedCategory": "valuation_conflict"
+    },
+    {
+      "id": "malformed-input",
+      "description": "Malformed inputs should remain deterministic and clearly marked as an edge case.",
+      "malformed": true,
+      "expectedCategory": "edge_case"
+    }
+  ]
+}
