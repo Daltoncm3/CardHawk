@@ -373,9 +373,10 @@ function buildReviewWorkspaceBatchExport(options = {}) {
   const summaries = summarizeSelection(selection.selected, uniqueListings);
   const batchCore = {
     schemaVersion: SCHEMA_VERSION,
-    source: SOURCE,
+    source: options.source || SOURCE,
     batchId: options.batchId || 'review-workspace-export',
     createdAt: options.createdAt || options.generatedAt || 'not_provided',
+    includeReviewed: options.includeReviewed === true,
     selectionMode: selection.mode,
     requestedCount: selection.requestedCount,
     availableListingCount: rawListings.length,

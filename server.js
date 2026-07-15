@@ -34,6 +34,7 @@ const shadowModeLogger = require("./utils/shadowModeLogger");
 const signalAnnotation = require("./utils/signalAnnotation");
 const signalSemantics = require("./utils/signalSemantics");
 const soldEvidenceStore = require("./utils/soldEvidenceStore");
+const reviewWorkspaceBatchExporter = require("./validation/exportReviewWorkspaceBatch");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const soldEvidenceService = require("./services/soldEvidenceService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
@@ -301,6 +302,15 @@ function getCanonicalSoldEvidenceForListing(listing = {}) {
 
 function __setCanonicalSoldEvidenceStoreForTest(nextStore) {
   canonicalSoldEvidenceStore = nextStore || null;
+}
+
+function __setStoreForTest(nextStore) {
+  store = appStore.normalizeStore(nextStore || appStore.createDefaultStore());
+  return store;
+}
+
+function __getStoreForTest() {
+  return store;
 }
 
 function getRecordKey(record = {}) {
@@ -833,6 +843,54 @@ function sleep(ms) {
 
 function getStoredListingById(id) {
   return appStore.getStoredListingById(store, id);
+}
+
+function parseReviewWorkspaceExportBoolean(value) {
+  return String(value || "false").toLowerCase() === "true";
+}
+
+function parseReviewWorkspaceExportCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return reviewWorkspaceBatchExporter.DEFAULT_LEARNING_PRIORITY_COUNT;
+  return Math.min(Math.floor(parsed), 500);
+}
+
+function normalizeReviewWorkspaceExportQuery(query = {}) {
+  const mode = query.mode === reviewWorkspaceBatchExporter.EXPORT_MODES.ALL_LISTINGS
+    ? reviewWorkspaceBatchExporter.EXPORT_MODES.ALL_LISTINGS
+    : reviewWorkspaceBatchExporter.EXPORT_MODES.LEARNING_PRIORITY;
+
+  return {
+    mode,
+    count: parseReviewWorkspaceExportCount(query.count),
+    includeReviewed: parseReviewWorkspaceExportBoolean(query.includeReviewed)
+  };
+}
+
+function listingHasCompletedReview(listing = {}) {
+  const review = listing.daltonReview || listing.reviewWorkspace?.daltonReview || {};
+  const reviewStatus = String(review.reviewStatus || review.status || "").toLowerCase();
+  const decision = String(review.decision || review.judgment || "").toLowerCase();
+
+  return reviewStatus === "reviewed" ||
+    ["buy", "reject", "uncertain"].includes(decision);
+}
+
+function buildRuntimeReviewWorkspaceExport(options = {}) {
+  const listings = Object.values(store.listings || {});
+  const exportListings = options.includeReviewed
+    ? listings
+    : listings.filter((listing) => !listingHasCompletedReview(listing));
+
+  return reviewWorkspaceBatchExporter.buildReviewWorkspaceBatchExport({
+    input: exportListings,
+    source: "runtime_listing_store",
+    selectionMode: options.mode || reviewWorkspaceBatchExporter.EXPORT_MODES.LEARNING_PRIORITY,
+    requestedCount: options.count || reviewWorkspaceBatchExporter.DEFAULT_LEARNING_PRIORITY_COUNT,
+    includeReviewed: options.includeReviewed === true,
+    batchId: options.batchId || "runtime-review-workspace-export",
+    createdAt: options.createdAt || new Date().toISOString()
+  });
 }
 
 function detectLane(title, fallbackLane = "all") {
@@ -3196,6 +3254,12 @@ app.get("/api/history/listing/:itemId", (req, res) => {
   res.json(listing);
 });
 
+app.get("/api/admin/review-workspaces/export", (req, res) => {
+  const query = normalizeReviewWorkspaceExportQuery(req.query || {});
+  const batch = buildRuntimeReviewWorkspaceExport(query);
+
+  res.json(batch);
+});
 
 app.get("/api/comps/listing/:itemId", (req, res) => {
   const listing = getStoredListingById(req.params.itemId);
@@ -3820,5 +3884,9 @@ module.exports = {
   __setShadowModeDecisionIntelligenceEvaluatorForTest,
   __setShadowModeDecisionLoggerForTest,
   __setCanonicalSoldEvidenceStoreForTest,
+  __setStoreForTest,
+  __getStoreForTest,
+  buildRuntimeReviewWorkspaceExport,
+  normalizeReviewWorkspaceExportQuery,
   getCanonicalSoldEvidenceForListing
 };
