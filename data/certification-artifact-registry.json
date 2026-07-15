@@ -1,0 +1,15 @@
+{
+  "source": "certification_artifact_registry",
+  "version": "1.0.0",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "updatedAt": "2026-07-15T00:00:00.000Z",
+  "entries": {},
+  "indexes": {
+    "byAdapter": {}
+  },
+  "stats": {
+    "entryCount": 0,
+    "productionApprovedCount": 0,
+    "revokedCount": 0
+  }
+}

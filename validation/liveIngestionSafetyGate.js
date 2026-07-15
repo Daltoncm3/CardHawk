@@ -17,6 +17,9 @@ const {
   validateCanonicalRecord
 } = require('./soldEvidenceStoreConformance');
 const {
+  resolveCertificationArtifact
+} = require('./certificationArtifactRegistry');
+const {
   FAILURE_CLASSIFICATIONS,
   FAILURE_STAGES,
   INGESTION_MANIFEST_SCHEMA_VERSION,
@@ -143,6 +146,58 @@ function validateCertificationArtifact(certificationArtifact = {}, adapterMetada
       productionApproved: artifact.productionApproved === true,
       generatedAt: artifact.generatedAt || null,
       adapter: artifactAdapter
+    }
+  };
+}
+
+function resolveCertificationForGate(input = {}, options = {}, adapterMetadata = {}) {
+  const directArtifact = input.certificationArtifact || options.certificationArtifact;
+
+  if (directArtifact) {
+    return {
+      ...validateCertificationArtifact(directArtifact, adapterMetadata),
+      registry: {
+        resolvedViaRegistry: false,
+        entryId: null,
+        reasons: []
+      }
+    };
+  }
+
+  if (input.certificationRegistry || options.certificationRegistry || input.certificationRegistryPath || options.certificationRegistryPath) {
+    const registryResolution = resolveCertificationArtifact({
+      registry: input.certificationRegistry || options.certificationRegistry,
+      registryPath: input.certificationRegistryPath || options.certificationRegistryPath,
+      adapterMetadata
+    }, {
+      now: options.createdAt || options.now
+    });
+    const certification = validateCertificationArtifact(registryResolution.artifact || {}, adapterMetadata);
+    const reasons = [
+      ...registryResolution.reasons,
+      ...certification.reasons
+    ];
+
+    return {
+      ...certification,
+      valid: registryResolution.resolved && certification.valid,
+      reasons,
+      registry: {
+        resolvedViaRegistry: true,
+        resolved: registryResolution.resolved,
+        entryId: registryResolution.entry?.id || null,
+        artifactFingerprint: registryResolution.entry?.artifactFingerprint || null,
+        reasons: registryResolution.reasons
+      }
+    };
+  }
+
+  return {
+    ...validateCertificationArtifact({}, adapterMetadata),
+    registry: {
+      resolvedViaRegistry: false,
+      entryId: null,
+      reasons: []
     }
   };
 }
@@ -315,7 +370,7 @@ function runLiveIngestionSafetyGate(input = {}, options = {}) {
   const dryRun = options.dryRun !== false;
   const allowStoreWrite = options.allowStoreWrite === true;
   const storeWritesEnabled = !dryRun && allowStoreWrite;
-  const certification = validateCertificationArtifact(input.certificationArtifact || options.certificationArtifact, adapterMetadata);
+  const certification = resolveCertificationForGate(input, options, adapterMetadata);
   const sourcePermission = validateSourcePermission(input.sourcePermission || options.sourcePermission);
   const acquisitionMethod = buildAcquisitionMethodMetadata(options);
   const failureSummary = summarizeFailures(acquisitionResult.errors || []);
@@ -504,6 +559,7 @@ module.exports = {
   stableStringify,
   summarizeFailures,
   validateCertificationArtifact,
+  resolveCertificationForGate,
   validateRecordForAdmission,
   validateSourcePermission
 };
