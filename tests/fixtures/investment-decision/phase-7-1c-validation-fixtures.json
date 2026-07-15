@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "phase_7_1c_investment_decision_validation_fixtures",
+  "fixtures": [
+    {
+      "id": "dalton-agrees-buy",
+      "description": "Investment Decision and Dalton both support a buy posture.",
+      "overrides": {
+        "exactMatchCount": 5,
+        "totalCost": 70,
+        "maximumBuyPrice": 110,
+        "expectedNetProfit": 40,
+        "roi": 0.57,
+        "competingOpportunities": [{ "id": "alt-1" }]
+      },
+      "daltonDecision": "BUY",
+      "expectedOutcome": "agreement"
+    },
+    {
+      "id": "false-positive-buy",
+      "description": "Investment Decision is aggressive, but Dalton rejects the opportunity.",
+      "overrides": {
+        "exactMatchCount": 5,
+        "totalCost": 60,
+        "maximumBuyPrice": 110,
+        "expectedNetProfit": 50,
+        "roi": 0.83
+      },
+      "daltonDecision": "REJECT",
+      "disagreementCategories": ["dealer_risk_read"],
+      "expectedOutcome": "false_positive"
+    },
+    {
+      "id": "missed-opportunity-monitor",
+      "description": "Weak shadow evidence causes a monitor posture, but Dalton would buy.",
+      "overrides": {
+        "exactMatchCount": 1,
+        "shadowInsufficientEvidence": true,
+        "shadowInsufficientEvidenceReason": "fewer_than_three_exact_sold_matches",
+        "expectedNetProfit": 45,
+        "roi": 0.9
+      },
+      "daltonDecision": "BUY",
+      "expectedOutcome": "missed_opportunity"
+    },
+    {
+      "id": "negotiate-agreement",
+      "description": "Investment Decision and Dalton both prefer negotiation.",
+      "overrides": {
+        "totalCost": 125,
+        "maximumBuyPrice": 100,
+        "expectedNetProfit": 25,
+        "roi": 0.2
+      },
+      "daltonDecision": "NEGOTIATE",
+      "expectedOutcome": "agreement"
+    },
+    {
+      "id": "unreviewed-pending",
+      "description": "Unreviewed listings remain outcome pending.",
+      "overrides": {
+        "exactMatchCount": 4
+      },
+      "daltonDecision": "UNREVIEWED",
+      "expectedOutcome": "outcome_pending"
+    }
+  ]
+}
