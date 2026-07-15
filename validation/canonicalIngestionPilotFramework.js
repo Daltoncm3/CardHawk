@@ -3,7 +3,6 @@
 const {
   asArray,
   asObject,
-  fingerprint,
   stableStringify,
   unique
 } = require('./canonicalValidationCore');
@@ -26,6 +25,15 @@ const {
   REPLAY_CLASSIFICATION,
   summarizeRunRecord
 } = require('./ingestionRunReplaySummary');
+const {
+  buildOfflineAuthorityFlags,
+  clone,
+  firstDefined,
+  normalizeRequirement
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const SOURCE = 'controlled_canonical_ingestion_pilot_framework';
 const PILOT_FRAMEWORK_VERSION = '1.0.0';
@@ -109,14 +117,6 @@ const RESULT_DISPOSITION = Object.freeze({
   COMPLETED: 'completed'
 });
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value || null));
-}
-
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== '');
-}
-
 function adapterMetadataFromInput(input = {}) {
   const adapter = asObject(input.adapter || input.adapterMetadata || input.projectedAdapterMetadata);
   return {
@@ -151,15 +151,6 @@ function commercialUsePermitted(sourcePermissionValidation = {}, providerEvaluat
   return sourcePermissionValidation.license?.commercialUsePermitted === true
     || providerEvaluation.permissionStatus === 'approved'
     || providerEvaluation.supportedCapabilities?.includes('commercial_use_documented');
-}
-
-function normalizeRequirement(value = {}, defaultRequired = true) {
-  const input = typeof value === 'boolean' ? { required: value } : asObject(value);
-  return {
-    required: input.required === undefined ? defaultRequired : input.required === true,
-    satisfied: input.satisfied === true || input.configured === true || input.exists === true || input.approved === true,
-    details: input
-  };
 }
 
 function backupSatisfied(requirement = {}) {
@@ -362,7 +353,7 @@ function buildRequiredApprovals(input = {}, operatorRequirement = {}) {
 }
 
 function buildCanonicalIngestionPilotFingerprint(plan = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     source: plan.source,
     version: plan.version,
     pilotId: plan.pilotId,
@@ -431,7 +422,7 @@ function createCanonicalIngestionPilotPlan(input = {}, options = {}) {
   const plan = {
     source: SOURCE,
     version: PILOT_FRAMEWORK_VERSION,
-    pilotId: input.pilotId || `pilot_${fingerprint({
+    pilotId: input.pilotId || `pilot_${buildFingerprintFromProjection({
       sourceId: adapter.sourceId,
       adapterName: adapter.adapterName,
       adapterVersion: adapter.adapterVersion,
@@ -501,11 +492,7 @@ function createCanonicalIngestionPilotPlan(input = {}, options = {}) {
     blockingReasons,
     requiredApprovals: buildRequiredApprovals(input, operatorApprovalRequirement),
     recommendedNextAction: recommendedAction(pilotState, blockingReasons),
-    productionApproval: false,
-    liveIngestionAuthority: false,
-    marketplaceRequestAuthority: false,
-    automaticStoreWriteAuthority: false,
-    canonicalSoldEvidenceWriteAuthority: false
+    ...buildOfflineAuthorityFlags()
   };
 
   plan.stableFingerprint = buildCanonicalIngestionPilotFingerprint(plan);
@@ -575,7 +562,7 @@ function deriveResultDisposition(plan = {}, failures = [], rollbackRequired = fa
 }
 
 function buildPilotResultFingerprint(result = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     source: result.source,
     version: result.version,
     pilotId: result.pilotId,
@@ -640,11 +627,7 @@ function evaluateCanonicalIngestionPilotResult(planInput = {}, resultInput = {},
     blockingFailures,
     rollbackRequired,
     finalPilotDisposition,
-    productionApproval: false,
-    liveIngestionAuthority: false,
-    marketplaceRequestAuthority: false,
-    automaticStoreWriteAuthority: false,
-    canonicalSoldEvidenceWriteAuthority: false
+    ...buildOfflineAuthorityFlags()
   };
 
   result.stableFingerprint = buildPilotResultFingerprint(result);

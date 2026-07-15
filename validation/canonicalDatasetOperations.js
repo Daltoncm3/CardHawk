@@ -10,12 +10,14 @@ const {
 const {
   asArray,
   asObject,
-  fingerprint,
   normalizeDate,
   stableStringify,
   toNumber,
   unique
 } = require('./canonicalValidationCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 const {
   buildBiasReport,
   buildCoverageReport,
@@ -314,7 +316,7 @@ function buildIdentityReport(canonicalCardKey, records = [], options = {}) {
   };
   summary.blockingReasons = blockingReasonsForIdentity(summary);
   summary.recommendedNextAcquisitionAction = recommendedActionForIdentity(summary);
-  summary.identityFingerprint = fingerprint({
+  summary.identityFingerprint = buildFingerprintFromProjection({
     canonicalCardKey,
     totalRecordCount: summary.totalRecordCount,
     exactEligibleSoldCount: summary.exactEligibleSoldCount,
@@ -454,7 +456,7 @@ function buildDatasetOperationsReport(input = {}, options = {}) {
       importValidation
     }
   };
-  report.reportFingerprint = fingerprint({
+  report.reportFingerprint = buildFingerprintFromProjection({
     source: report.source,
     version: report.version,
     asOf: report.asOf,

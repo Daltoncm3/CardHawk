@@ -10,12 +10,6 @@ const {
   createEmptySoldEvidenceStore
 } = require('../utils/soldEvidenceStore');
 const {
-  CERTIFICATION_LEVELS,
-  CERTIFICATION_STANDARD_VERSION,
-  SOURCE: CERTIFICATION_SOURCE
-} = require('../validation/marketplaceAdapterCertification');
-const {
-  registerCertificationArtifact,
   createEmptyCertificationArtifactRegistry
 } = require('../validation/certificationArtifactRegistry');
 const {
@@ -37,6 +31,13 @@ const {
   saveIngestionRunRepository,
   validateIngestionRunRecord
 } = require('../validation/ingestionRunRepository');
+const {
+  certificationRegistry: buildCertificationRegistry,
+  identity,
+  productionCertification: buildProductionCertification,
+  soldRecord: buildSoldRecord,
+  sourcePermission
+} = require('./helpers/phase8CanonicalFixtures');
 
 const adapter = {
   sourceId: 'fixture_marketplace',
@@ -46,48 +47,15 @@ const adapter = {
   interfaceVersion: '1.0.0'
 };
 
-const identity = {
-  category: 'sports_card',
-  sport: 'mma',
-  player: 'Anthony Hernandez',
-  year: '2023',
-  brand: 'Panini',
-  setName: 'Prizm UFC',
-  cardNumber: '181',
-  parallel: 'Silver Prizm',
-  rookie: true,
-  autograph: false,
-  memorabilia: false,
-  serialNumbered: false
-};
-
 function productionCertification(overrides = {}) {
-  return {
-    source: CERTIFICATION_SOURCE,
-    version: CERTIFICATION_STANDARD_VERSION,
-    generatedAt: '2026-07-11T00:00:00.000Z',
-    certificationLevel: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
-    productionApproved: true,
-    passed: true,
-    standard: {
-      version: CERTIFICATION_STANDARD_VERSION
-    },
-    adapter: {
-      ...adapter
-    },
-    requirements: [
-      {
-        name: 'production_approval_recorded',
-        pass: true,
-        severity: 'production'
-      }
-    ],
+  return buildProductionCertification({
+    adapter,
     summary: {
       source: 'marketplace_adapter_certification',
       adapterName: adapter.adapterName,
       sourceId: adapter.sourceId,
       marketplace: adapter.marketplace,
-      level: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
+      level: 'Production Approved',
       approvedForProduction: true,
       passed: true,
       identityPassRate: 1,
@@ -99,37 +67,14 @@ function productionCertification(overrides = {}) {
       limitations: []
     },
     ...overrides
-  };
-}
-
-function sourcePermission() {
-  return {
-    status: 'approved',
-    approvedBy: 'CardHawk Legal',
-    approvedAt: '2026-07-11T00:00:00.000Z',
-    license: {
-      id: 'license-001',
-      commercialUsePermitted: true,
-      evidenceUse: 'internal_canonical_sold_evidence',
-      displayAllowed: false,
-      redistributionAllowed: false
-    }
-  };
+  });
 }
 
 function soldRecord(overrides = {}) {
-  return {
+  return buildSoldRecord({
     marketplace: 'fixture_marketplace',
     marketplaceSaleId: 'sale-001',
     marketplaceListingId: 'listing-001',
-    evidenceType: 'true_sold',
-    status: 'active_evidence',
-    rawTitle: '2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC',
-    soldPrice: 8.5,
-    shipping: 1.5,
-    soldAt: '2026-07-01T12:00:00.000Z',
-    url: 'https://example.test/sold/sale-001',
-    parsedIdentity: identity,
     source: {
       adapter: adapter.adapterName,
       retrievalMethod: 'fixture_certified_feed',
@@ -137,7 +82,7 @@ function soldRecord(overrides = {}) {
       acquiredAt: '2026-07-11T00:00:00.000Z'
     },
     ...overrides
-  };
+  });
 }
 
 function acquisitionResult(records = [soldRecord()], overrides = {}) {
@@ -182,11 +127,13 @@ function gateOptions(overrides = {}) {
 }
 
 function certificationRegistry() {
-  return registerCertificationArtifact(
-    createEmptyCertificationArtifactRegistry(),
-    productionCertification(),
-    { registeredAt: '2026-07-12T00:00:00.000Z' }
-  ).registry;
+  return buildCertificationRegistry({
+    registeredAt: '2026-07-12T00:00:00.000Z',
+    certificationOverrides: {
+      adapter,
+      ...productionCertification()
+    }
+  });
 }
 
 function gateReport(records = [soldRecord()], overrides = {}) {

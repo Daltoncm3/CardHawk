@@ -8,7 +8,6 @@ const {
   asArray,
   asObject,
   createValidationResult,
-  fingerprint,
   normalizeDate,
   reasonToFailureStage,
   stableStringify,
@@ -17,6 +16,12 @@ const {
 const {
   replayIngestionRunFromArtifacts
 } = require('./canonicalArtifactIntegrity');
+const {
+  clone
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const STORE_VERSION = 1;
 const RUN_RECORD_SCHEMA_VERSION = '1.0.0';
@@ -45,10 +50,6 @@ const FINAL_DISPOSITION = Object.freeze({
   INVALID: 'invalid'
 });
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value || null));
-}
-
 function compactReference(value = {}) {
   const input = asObject(value);
   return {
@@ -56,7 +57,7 @@ function compactReference(value = {}) {
     canonicalCardKey: input.canonicalCardKey || null,
     marketplace: input.marketplace || null,
     evidenceType: input.evidenceType || null,
-    fingerprint: input.fingerprint || (input.id ? fingerprint({
+    fingerprint: input.fingerprint || (input.id ? buildFingerprintFromProjection({
       id: input.id,
       canonicalCardKey: input.canonicalCardKey || null,
       marketplace: input.marketplace || null,
@@ -223,7 +224,7 @@ function collectReasonCodes(manifest = {}, quarantine = {}) {
 }
 
 function buildIngestionRunRecordFingerprint(record = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     schemaVersion: record.schemaVersion || null,
     runId: record.runId || null,
     sourceId: record.sourceId || null,

@@ -10,12 +10,6 @@ const {
   createEmptySoldEvidenceStore
 } = require('../utils/soldEvidenceStore');
 const {
-  CERTIFICATION_LEVELS,
-  CERTIFICATION_STANDARD_VERSION,
-  SOURCE: CERTIFICATION_SOURCE
-} = require('../validation/marketplaceAdapterCertification');
-const {
-  registerCertificationArtifact,
   createEmptyCertificationArtifactRegistry
 } = require('../validation/certificationArtifactRegistry');
 const {
@@ -31,122 +25,16 @@ const {
 const {
   createManualAcquisitionAdapter
 } = require('../marketplaces/manualAcquisitionAdapter');
-
-const adapterMetadata = {
-  sourceId: 'manual_dataset',
-  marketplace: 'manual_dataset',
-  adapterName: 'manual_dataset_acquisition_adapter',
-  adapterVersion: '1.0.0',
-  interfaceVersion: '1.0.0'
-};
-
-const identity = {
-  category: 'sports_card',
-  sport: 'mma',
-  player: 'Anthony Hernandez',
-  year: '2023',
-  brand: 'Panini',
-  setName: 'Prizm UFC',
-  cardNumber: '181',
-  parallel: 'Silver Prizm',
-  rookie: true,
-  autograph: false,
-  memorabilia: false,
-  serialNumbered: false
-};
+const {
+  adapterMetadata,
+  certificationRegistry,
+  identity,
+  soldRecord,
+  sourcePermission
+} = require('./helpers/phase8CanonicalFixtures');
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cardhawk-manual-workflow-'));
-}
-
-function soldRecord(overrides = {}) {
-  return {
-    marketplace: 'manual_dataset',
-    marketplaceSaleId: 'manual-sale-001',
-    marketplaceListingId: 'manual-listing-001',
-    sourceRecordId: 'manual-row-001',
-    evidenceType: 'true_sold',
-    status: 'active_evidence',
-    rawTitle: '2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC',
-    soldPrice: 8.5,
-    shipping: 1.5,
-    soldAt: '2026-07-01T12:00:00.000Z',
-    url: 'https://example.test/sold/manual-sale-001',
-    parsedIdentity: identity,
-    source: {
-      adapter: 'manual_dataset_entry',
-      retrievalMethod: 'manual_review',
-      sourceReliability: 'verified_manual',
-      acquiredAt: '2026-07-11T00:00:00.000Z'
-    },
-    review: {
-      status: 'human_verified',
-      reviewer: 'dealer-a',
-      reviewedAt: '2026-07-11T13:00:00.000Z'
-    },
-    ...overrides
-  };
-}
-
-function sourcePermission(overrides = {}) {
-  return {
-    status: 'approved',
-    approvedBy: 'CardHawk Legal',
-    approvedAt: '2026-07-11T00:00:00.000Z',
-    license: {
-      id: 'manual-license-001',
-      commercialUsePermitted: true,
-      evidenceUse: 'internal_canonical_sold_evidence',
-      displayAllowed: false,
-      redistributionAllowed: false
-    },
-    ...overrides
-  };
-}
-
-function productionCertification(overrides = {}) {
-  return {
-    source: CERTIFICATION_SOURCE,
-    version: CERTIFICATION_STANDARD_VERSION,
-    generatedAt: '2026-07-11T00:00:00.000Z',
-    certificationLevel: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
-    productionApproved: true,
-    passed: true,
-    standard: {
-      version: CERTIFICATION_STANDARD_VERSION
-    },
-    adapter: {
-      ...adapterMetadata
-    },
-    requirements: [
-      {
-        name: 'production_approval_recorded',
-        pass: true,
-        severity: 'production'
-      }
-    ],
-    summary: {
-      level: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
-      approvedForProduction: true,
-      passed: true,
-      identityPassRate: 1,
-      provenancePassRate: 1,
-      eligibleRecords: 1,
-      rejectedRecords: 0,
-      failedRequirements: [],
-      unsupportedBehaviors: [],
-      limitations: []
-    },
-    ...overrides
-  };
-}
-
-function certificationRegistry() {
-  return registerCertificationArtifact(
-    createEmptyCertificationArtifactRegistry(),
-    productionCertification(),
-    { registeredAt: '2026-07-12T00:00:00.000Z' }
-  ).registry;
 }
 
 function workflowOptions(overrides = {}) {

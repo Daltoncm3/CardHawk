@@ -7,13 +7,19 @@ const {
 const {
   asArray,
   asObject,
-  fingerprint,
   stableStringify,
   unique
 } = require('./canonicalValidationCore');
 const {
   buildRegistryEntryId
 } = require('./certificationArtifactRegistry');
+const {
+  buildOfflineAuthorityFlags,
+  firstDefined
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const SOURCE = 'canonical_provider_evaluation';
 const PROVIDER_EVALUATION_VERSION = '1.0.0';
@@ -100,10 +106,6 @@ const BLOCKING_REASON = Object.freeze({
 
 function lower(value) {
   return String(value || '').trim().toLowerCase();
-}
-
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== '');
 }
 
 function booleanish(value) {
@@ -562,7 +564,7 @@ function buildProjectedCertificationRegistryKey(adapterMetadata = {}) {
 }
 
 function buildProviderEvaluationFingerprint(report = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     source: report.source,
     version: report.version,
     providerIdentity: report.providerIdentity,
@@ -620,11 +622,11 @@ function evaluateProviderCandidate(provider = {}, options = {}) {
     documentation: input.documentation,
     evidenceSummary: asObject(normalizedProvider.evidence),
     notes: normalizedProvider.notes || null,
-    productionApproval: false,
-    liveIngestionAuthority: false,
-    marketplaceRequestAuthority: false,
-    canonicalSoldEvidenceWriteAuthority: false
+    ...buildOfflineAuthorityFlags({
+      automaticStoreWriteAuthority: undefined
+    })
   };
+  delete report.automaticStoreWriteAuthority;
 
   report.stableFingerprint = buildProviderEvaluationFingerprint(report);
   return report;

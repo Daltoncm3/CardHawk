@@ -7,11 +7,16 @@ const {
   asArray,
   asObject,
   createValidationResult,
-  fingerprint,
   normalizeDate,
   stableStringify,
   unique
 } = require('./canonicalValidationCore');
+const {
+  clone
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const REGISTRY_VERSION = '1.0.0';
 const SOURCE = 'certification_artifact_registry';
@@ -24,10 +29,6 @@ const APPROVAL_STATUS = Object.freeze({
   PRODUCTION_APPROVED: 'production_approved',
   REVOKED: 'revoked'
 });
-
-function clone(value) {
-  return JSON.parse(JSON.stringify(value || null));
-}
 
 function loadIntegrityHelpers() {
   return require('./canonicalArtifactIntegrity');
@@ -92,7 +93,7 @@ function buildRegistryEntryId(input = {}) {
 }
 
 function buildRegistryEntryFingerprint(entry = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     id: entry.id || null,
     sourceId: entry.sourceId || null,
     adapterName: entry.adapterName || null,

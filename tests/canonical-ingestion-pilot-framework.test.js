@@ -4,12 +4,6 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-  CERTIFICATION_LEVELS,
-  CERTIFICATION_STANDARD_VERSION,
-  SOURCE: CERTIFICATION_SOURCE
-} = require('../validation/marketplaceAdapterCertification');
-const {
-  registerCertificationArtifact,
   createEmptyCertificationArtifactRegistry
 } = require('../validation/certificationArtifactRegistry');
 const {
@@ -32,57 +26,23 @@ const {
 const {
   REPLAY_CLASSIFICATION
 } = require('../validation/ingestionRunReplaySummary');
-
-const adapterMetadata = {
-  sourceId: 'provider_alpha',
-  marketplace: 'provider_alpha_market',
-  adapterName: 'provider_alpha_partner_adapter',
-  adapterVersion: '0.1.0',
-  interfaceVersion: '1.0.0'
-};
-
-function productionCertification(overrides = {}) {
-  return {
-    source: CERTIFICATION_SOURCE,
-    version: CERTIFICATION_STANDARD_VERSION,
-    generatedAt: '2026-07-15T00:00:00.000Z',
-    certificationLevel: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
-    productionApproved: true,
-    passed: true,
-    dryRun: true,
-    standard: {
-      version: CERTIFICATION_STANDARD_VERSION
-    },
-    adapter: {
-      ...adapterMetadata
-    },
-    requirements: [
-      {
-        name: 'production_approval_recorded',
-        pass: true,
-        severity: 'production'
-      }
-    ],
-    summary: {
-      level: CERTIFICATION_LEVELS.PRODUCTION_APPROVED,
-      approvedForProduction: true,
-      passed: true,
-      failedRequirements: []
-    },
-    ...overrides
-  };
-}
+const {
+  certificationRegistry: buildCertificationRegistry,
+  providerAdapterMetadata: adapterMetadata,
+  sourcePermission: buildSourcePermission
+} = require('./helpers/phase8CanonicalFixtures');
 
 function certificationRegistry() {
-  return registerCertificationArtifact(
-    createEmptyCertificationArtifactRegistry({ createdAt: '2026-07-15T00:00:00.000Z' }),
-    productionCertification(),
-    {
-      registeredAt: '2026-07-15T00:01:00.000Z',
-      updatedAt: '2026-07-15T00:01:00.000Z',
-      now: '2026-07-15T00:02:00.000Z'
+  return buildCertificationRegistry({
+    createdAt: '2026-07-15T00:00:00.000Z',
+    registeredAt: '2026-07-15T00:01:00.000Z',
+    updatedAt: '2026-07-15T00:01:00.000Z',
+    now: '2026-07-15T00:02:00.000Z',
+    certificationOverrides: {
+      generatedAt: '2026-07-15T00:00:00.000Z',
+      adapter: adapterMetadata
     }
-  ).registry;
+  });
 }
 
 function providerEvaluation(overrides = {}) {
@@ -113,19 +73,14 @@ function providerEvaluation(overrides = {}) {
 }
 
 function sourcePermission(overrides = {}) {
-  return {
-    status: 'approved',
-    approvedBy: 'CardHawk Legal',
+  return buildSourcePermission({
     approvedAt: '2026-07-15T00:00:00.000Z',
     license: {
       id: 'provider-alpha-license',
-      commercialUsePermitted: true,
-      evidenceUse: 'controlled_canonical_ingestion_pilot',
-      displayAllowed: false,
-      redistributionAllowed: false
+      evidenceUse: 'controlled_canonical_ingestion_pilot'
     },
     ...overrides
-  };
+  });
 }
 
 function readyPlanInput(overrides = {}) {

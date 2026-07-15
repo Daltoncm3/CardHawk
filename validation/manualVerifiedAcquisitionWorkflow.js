@@ -12,7 +12,6 @@ const {
 const {
   asArray,
   asObject,
-  fingerprint,
   reasonToFailureStage,
   stableStringify,
   unique
@@ -42,6 +41,12 @@ const {
   validateExactIdentity,
   validateRecordForPilot
 } = require('./soldEvidenceDatasetPilot');
+const {
+  clone
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const SOURCE = 'manual_verified_acquisition_workflow_v2';
 const WORKFLOW_VERSION = '2.0.0';
@@ -76,10 +81,6 @@ const NEXT_ACTION = Object.freeze({
   COMPLETE_DRAFT: 'complete_draft'
 });
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value || null));
-}
-
 function normalizeBatches(batchInputs = []) {
   return asArray(batchInputs).map((batch) => (typeof batch === 'string' ? loadBatchFile(batch) : {
     filePath: batch.filePath || null,
@@ -93,13 +94,13 @@ function buildBatchId(batches = [], options = {}) {
   if (options.batchId) return options.batchId;
   const ids = asArray(batches).map((batch) => batch.batchId || path.basename(batch.filePath || '')).filter(Boolean);
   if (ids.length === 1) return ids[0];
-  if (ids.length > 1) return `manual_batch_group_${fingerprint(ids).slice(0, 12)}`;
+  if (ids.length > 1) return `manual_batch_group_${buildFingerprintFromProjection(ids).slice(0, 12)}`;
   return 'manual_batch';
 }
 
 function buildWorkflowId(input = {}) {
   if (input.workflowId) return input.workflowId;
-  return `manual_ingestion_${fingerprint({
+  return `manual_ingestion_${buildFingerprintFromProjection({
     batchId: input.batchId || null,
     sourceId: input.sourceId || null,
     adapterName: input.adapterName || null,
@@ -221,7 +222,7 @@ function deriveRecommendedAction(state, blockingReasons = []) {
 }
 
 function buildWorkflowFingerprint(result = {}) {
-  return fingerprint({
+  return buildFingerprintFromProjection({
     workflowId: result.workflowId || null,
     batchId: result.batchId || null,
     sourceIdentity: result.sourceIdentity || {},

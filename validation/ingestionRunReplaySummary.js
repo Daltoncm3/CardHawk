@@ -6,7 +6,6 @@ const path = require('node:path');
 const {
   asArray,
   asObject,
-  fingerprint,
   reasonToFailureStage,
   stableStringify,
   unique
@@ -25,6 +24,12 @@ const {
   validateIngestionManifestIntegrity,
   validateQuarantineArtifactIntegrity
 } = require('./canonicalArtifactIntegrity');
+const {
+  clone
+} = require('./phase8GovernanceCore');
+const {
+  buildFingerprintFromProjection
+} = require('./fingerprintProjection');
 
 const SOURCE = 'canonical_ingestion_run_replay_summary';
 const REPLAY_SUMMARY_VERSION = '1.0.0';
@@ -48,10 +53,6 @@ const FOLLOW_UP_ACTION = Object.freeze({
   OPERATOR_REVIEW: 'operator_review_required',
   RESOLVE_QUARANTINE: 'resolve_quarantined_records'
 });
-
-function clone(value) {
-  return JSON.parse(JSON.stringify(value || null));
-}
 
 function countValues(values = []) {
   return asArray(values).reduce((counts, value) => {
@@ -410,7 +411,7 @@ function summarizeRunRecord(record = {}, options = {}) {
     finalDisposition: record.finalDisposition || FINAL_DISPOSITION.PENDING
   };
   summary.recommendedFollowUpAction = recommendedFollowUp(summary);
-  summary.summaryFingerprint = fingerprint({
+  summary.summaryFingerprint = buildFingerprintFromProjection({
     runId: summary.runId,
     replayStatus: summary.replayStatus,
     fingerprintComparison: summary.fingerprintComparison,
