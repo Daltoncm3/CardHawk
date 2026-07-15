@@ -1,0 +1,20 @@
+{
+  "source": "canonical_ingestion_run_repository",
+  "version": 1,
+  "schemaVersion": "1.0.0",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "updatedAt": "2026-07-15T00:00:00.000Z",
+  "runs": {},
+  "indexes": {
+    "bySource": {},
+    "byAdapter": {},
+    "byStatus": {}
+  },
+  "stats": {
+    "runCount": 0,
+    "completedCount": 0,
+    "partialCount": 0,
+    "failedCount": 0,
+    "incompleteCount": 0
+  }
+}
