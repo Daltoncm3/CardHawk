@@ -1,0 +1,16 @@
+{
+  "source": "canonical_source_decision_dossier_store",
+  "version": "1.0.0",
+  "schemaVersion": "1.0.0",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "updatedAt": "2026-07-15T00:00:00.000Z",
+  "dossiers": {},
+  "indexes": {
+    "byProviderCategory": {},
+    "byQualificationStatus": {},
+    "byCommercialUseStatus": {}
+  },
+  "stats": {
+    "dossierCount": 0
+  }
+}
