@@ -1,0 +1,1086 @@
+{
+  "source": "card_ladder_provisional_source_evidence_package",
+  "version": "1.0.0",
+  "createdAt": "2026-07-16T00:00:00.000Z",
+  "provider": {
+    "providerId": "card_ladder",
+    "providerName": "Card Ladder / Ladder Studios, Inc.",
+    "providerCategory": "market_data_platform"
+  },
+  "intendedUse": "internal CardHawk valuation and market analysis",
+  "recommendedNextAction": "await_provider_response",
+  "recordedEvidence": {
+    "contactEmail": "contact@cardladder.com",
+    "outreachStatus": "provider_response_pending",
+    "privacyPolicyDate": "2020-06-08",
+    "privacyPolicyConclusion": "Personal-data handling only; does not establish API availability, sold-data licensing, commercial-use permission, internal automated-use permission, transaction-level data access, accepted-offer visibility, pricing terms, or automated access rights."
+  },
+  "unknownFacts": [
+    "acceptedOfferVisibility",
+    "apiAvailability",
+    "bulkHistoricalSalesAccess",
+    "commercialUseStatus",
+    "internalUseStatus",
+    "licensingStatus",
+    "pricingModel",
+    "structuredTransactionRecords",
+    "technicalAccessMethod",
+    "transactionLevelSoldEvidenceAvailability"
+  ],
+  "blockingReasons": [
+    "accepted_offer_visibility_unconfirmed",
+    "api_availability_unknown",
+    "commercial_use_permission_unknown",
+    "internal_automated_use_permission_unknown",
+    "no_provider_qualification_or_production_authority",
+    "pricing_and_licensing_terms_unknown",
+    "privacy_policy_does_not_establish_source_permission",
+    "provider_response_pending",
+    "transaction_level_data_access_unconfirmed"
+  ],
+  "researchRecords": [
+    {
+      "source": "canonical_source_research_record",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+      "providerIdentity": {
+        "providerId": "card_ladder",
+        "providerName": "Card Ladder / Ladder Studios, Inc.",
+        "providerCategory": "market_data_platform",
+        "marketplace": null
+      },
+      "evidenceClass": "official_privacy_policy",
+      "claimAuthority": "context_only",
+      "researchDate": "2026-07-16",
+      "researcher": "cardhawk_phase_9_4",
+      "intendedUse": "internal CardHawk valuation and market analysis",
+      "references": {
+        "officialWebsite": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "officialTermsOrLicense": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "privacyPolicy": {
+          "label": "Card Ladder Privacy Policy",
+          "url": null,
+          "documentId": "card_ladder_privacy_policy_2020_06_08",
+          "capturedAt": "2026-07-16",
+          "notes": "Reviewed privacy policy dated June 8, 2020; describes personal-data handling and does not establish API availability, sold-data licensing, commercial-use permission, or automated access rights."
+        },
+        "apiDocumentation": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "pricing": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        }
+      },
+      "claims": {
+        "salesDataClaims": {
+          "value": "unknown",
+          "summary": "Privacy policy does not establish sales-data access.",
+          "confidence": "high"
+        },
+        "transactionLevelEvidenceClaims": {
+          "value": "unknown",
+          "summary": "Transaction-level data access remains unconfirmed.",
+          "confidence": "high"
+        },
+        "acceptedOfferVisibilityClaims": {
+          "value": "unknown",
+          "summary": "Accepted-offer visibility remains unconfirmed.",
+          "confidence": "high"
+        },
+        "commercialUseClaims": {
+          "value": "unknown",
+          "summary": "Privacy policy does not establish commercial-use permission.",
+          "confidence": "high"
+        },
+        "internalUseClaims": {
+          "value": "unknown",
+          "summary": "Privacy policy does not establish internal automated-use permission.",
+          "confidence": "high"
+        },
+        "apiAvailability": {
+          "value": "unknown",
+          "summary": "Privacy policy does not establish API availability.",
+          "confidence": "high"
+        },
+        "licensingStatus": {
+          "value": "unknown",
+          "summary": "Pricing and licensing terms remain unknown.",
+          "confidence": "high"
+        },
+        "attributionRequirements": null,
+        "redistributionRestrictions": null,
+        "pricingModel": "unknown"
+      },
+      "contact": {
+        "contactEmail": null,
+        "outreachDate": null,
+        "providerResponseStatus": "unknown",
+        "providerResponseSummary": null
+      },
+      "unresolvedQuestions": [
+        "Does Card Ladder disclose accepted-offer sale prices or accepted-offer visibility?",
+        "Does Card Ladder offer commercial-use licensing for internal valuation and market analysis?",
+        "Does Card Ladder permit internal automated use by CardHawk?",
+        "Does Card Ladder provide API access for CardHawk use?",
+        "Does Card Ladder provide bulk historical sales access?",
+        "Does Card Ladder provide structured transaction-level sold records?",
+        "What pricing and licensing terms apply?",
+        "What technical access method, if any, is available?"
+      ],
+      "sourceCitations": [
+        {
+          "label": "Card Ladder Privacy Policy dated June 8, 2020",
+          "url": null,
+          "documentId": "card_ladder_privacy_policy_2020_06_08",
+          "capturedAt": "2026-07-16",
+          "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+        }
+      ],
+      "researchConfidence": "medium",
+      "operatorConclusions": {
+        "privacyPolicyDate": "2020-06-08",
+        "establishesApiAvailability": false,
+        "establishesSoldDataLicensing": false,
+        "establishesCommercialUsePermission": false,
+        "establishesAutomatedAccessRights": false
+      },
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "stableFingerprint": "2fd17ae0a7cd4e4d67095bbf4527a2821d0368515010ca90b07215862b4effca"
+    },
+    {
+      "source": "canonical_source_research_record",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "recordId": "card_ladder_outreach_pending_2026_07_16",
+      "providerIdentity": {
+        "providerId": "card_ladder",
+        "providerName": "Card Ladder / Ladder Studios, Inc.",
+        "providerCategory": "market_data_platform",
+        "marketplace": null
+      },
+      "evidenceClass": "operator_note",
+      "claimAuthority": "operator_only",
+      "researchDate": "2026-07-16",
+      "researcher": "cardhawk_phase_9_4",
+      "intendedUse": "internal CardHawk valuation and market analysis",
+      "references": {
+        "officialWebsite": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "officialTermsOrLicense": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "privacyPolicy": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "apiDocumentation": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "pricing": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        }
+      },
+      "claims": {
+        "salesDataClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "transactionLevelEvidenceClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "acceptedOfferVisibilityClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "commercialUseClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "internalUseClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "apiAvailability": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "licensingStatus": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "attributionRequirements": null,
+        "redistributionRestrictions": null,
+        "pricingModel": "unknown"
+      },
+      "contact": {
+        "contactEmail": "contact@cardladder.com",
+        "outreachDate": null,
+        "providerResponseStatus": "pending",
+        "providerResponseSummary": "Provider response is currently pending."
+      },
+      "unresolvedQuestions": [
+        "Does Card Ladder disclose accepted-offer sale prices or accepted-offer visibility?",
+        "Does Card Ladder offer commercial-use licensing for internal valuation and market analysis?",
+        "Does Card Ladder permit internal automated use by CardHawk?",
+        "Does Card Ladder provide API access for CardHawk use?",
+        "Does Card Ladder provide bulk historical sales access?",
+        "Does Card Ladder provide structured transaction-level sold records?",
+        "What pricing and licensing terms apply?",
+        "What technical access method, if any, is available?"
+      ],
+      "sourceCitations": [
+        {
+          "label": "CardHawk outreach to Card Ladder",
+          "url": null,
+          "documentId": "card_ladder_outreach_pending",
+          "capturedAt": "2026-07-16",
+          "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+        }
+      ],
+      "researchConfidence": "medium",
+      "operatorConclusions": {
+        "contactedEmail": "contact@cardladder.com",
+        "providerResponsePending": true,
+        "outreachRequested": [
+          "API access",
+          "bulk historical sales access",
+          "commercial/internal-use licensing",
+          "structured transaction records",
+          "technical access"
+        ]
+      },
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "stableFingerprint": "bf6c9abc5234ecd9e21eda3fff086b1badbf0926fa2823bf026a9244f64592fc"
+    }
+  ],
+  "evidencePacket": {
+    "source": "canonical_source_evidence_packet",
+    "version": "1.0.0",
+    "schemaVersion": "1.0.0",
+    "packetId": "card_ladder_provisional_source_evidence_packet",
+    "providerIdentity": {
+      "providerId": "card_ladder",
+      "providerName": "Card Ladder / Ladder Studios, Inc.",
+      "providerCategory": "market_data_platform",
+      "marketplace": null
+    },
+    "records": [
+      {
+        "source": "canonical_source_research_record",
+        "version": "1.0.0",
+        "schemaVersion": "1.0.0",
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "providerIdentity": {
+          "providerId": "card_ladder",
+          "providerName": "Card Ladder / Ladder Studios, Inc.",
+          "providerCategory": "market_data_platform",
+          "marketplace": null
+        },
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "researchDate": "2026-07-16",
+        "researcher": "cardhawk_phase_9_4",
+        "intendedUse": "internal CardHawk valuation and market analysis",
+        "references": {
+          "officialWebsite": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "officialTermsOrLicense": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "privacyPolicy": {
+            "label": "Card Ladder Privacy Policy",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Reviewed privacy policy dated June 8, 2020; describes personal-data handling and does not establish API availability, sold-data licensing, commercial-use permission, or automated access rights."
+          },
+          "apiDocumentation": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "pricing": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          }
+        },
+        "claims": {
+          "salesDataClaims": {
+            "value": "unknown",
+            "summary": "Privacy policy does not establish sales-data access.",
+            "confidence": "high"
+          },
+          "transactionLevelEvidenceClaims": {
+            "value": "unknown",
+            "summary": "Transaction-level data access remains unconfirmed.",
+            "confidence": "high"
+          },
+          "acceptedOfferVisibilityClaims": {
+            "value": "unknown",
+            "summary": "Accepted-offer visibility remains unconfirmed.",
+            "confidence": "high"
+          },
+          "commercialUseClaims": {
+            "value": "unknown",
+            "summary": "Privacy policy does not establish commercial-use permission.",
+            "confidence": "high"
+          },
+          "internalUseClaims": {
+            "value": "unknown",
+            "summary": "Privacy policy does not establish internal automated-use permission.",
+            "confidence": "high"
+          },
+          "apiAvailability": {
+            "value": "unknown",
+            "summary": "Privacy policy does not establish API availability.",
+            "confidence": "high"
+          },
+          "licensingStatus": {
+            "value": "unknown",
+            "summary": "Pricing and licensing terms remain unknown.",
+            "confidence": "high"
+          },
+          "attributionRequirements": null,
+          "redistributionRestrictions": null,
+          "pricingModel": "unknown"
+        },
+        "contact": {
+          "contactEmail": null,
+          "outreachDate": null,
+          "providerResponseStatus": "unknown",
+          "providerResponseSummary": null
+        },
+        "unresolvedQuestions": [
+          "Does Card Ladder disclose accepted-offer sale prices or accepted-offer visibility?",
+          "Does Card Ladder offer commercial-use licensing for internal valuation and market analysis?",
+          "Does Card Ladder permit internal automated use by CardHawk?",
+          "Does Card Ladder provide API access for CardHawk use?",
+          "Does Card Ladder provide bulk historical sales access?",
+          "Does Card Ladder provide structured transaction-level sold records?",
+          "What pricing and licensing terms apply?",
+          "What technical access method, if any, is available?"
+        ],
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ],
+        "researchConfidence": "medium",
+        "operatorConclusions": {
+          "privacyPolicyDate": "2020-06-08",
+          "establishesApiAvailability": false,
+          "establishesSoldDataLicensing": false,
+          "establishesCommercialUsePermission": false,
+          "establishesAutomatedAccessRights": false
+        },
+        "createdAt": "2026-07-16T00:00:00.000Z",
+        "updatedAt": "2026-07-16T00:00:00.000Z",
+        "productionApproval": false,
+        "liveIngestionAuthority": false,
+        "marketplaceRequestAuthority": false,
+        "automaticStoreWriteAuthority": false,
+        "canonicalSoldEvidenceWriteAuthority": false,
+        "stableFingerprint": "2fd17ae0a7cd4e4d67095bbf4527a2821d0368515010ca90b07215862b4effca"
+      },
+      {
+        "source": "canonical_source_research_record",
+        "version": "1.0.0",
+        "schemaVersion": "1.0.0",
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "providerIdentity": {
+          "providerId": "card_ladder",
+          "providerName": "Card Ladder / Ladder Studios, Inc.",
+          "providerCategory": "market_data_platform",
+          "marketplace": null
+        },
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "researchDate": "2026-07-16",
+        "researcher": "cardhawk_phase_9_4",
+        "intendedUse": "internal CardHawk valuation and market analysis",
+        "references": {
+          "officialWebsite": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "officialTermsOrLicense": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "privacyPolicy": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "apiDocumentation": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "pricing": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          }
+        },
+        "claims": {
+          "salesDataClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "transactionLevelEvidenceClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "acceptedOfferVisibilityClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "commercialUseClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "internalUseClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "apiAvailability": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "licensingStatus": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "attributionRequirements": null,
+          "redistributionRestrictions": null,
+          "pricingModel": "unknown"
+        },
+        "contact": {
+          "contactEmail": "contact@cardladder.com",
+          "outreachDate": null,
+          "providerResponseStatus": "pending",
+          "providerResponseSummary": "Provider response is currently pending."
+        },
+        "unresolvedQuestions": [
+          "Does Card Ladder disclose accepted-offer sale prices or accepted-offer visibility?",
+          "Does Card Ladder offer commercial-use licensing for internal valuation and market analysis?",
+          "Does Card Ladder permit internal automated use by CardHawk?",
+          "Does Card Ladder provide API access for CardHawk use?",
+          "Does Card Ladder provide bulk historical sales access?",
+          "Does Card Ladder provide structured transaction-level sold records?",
+          "What pricing and licensing terms apply?",
+          "What technical access method, if any, is available?"
+        ],
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ],
+        "researchConfidence": "medium",
+        "operatorConclusions": {
+          "contactedEmail": "contact@cardladder.com",
+          "providerResponsePending": true,
+          "outreachRequested": [
+            "API access",
+            "bulk historical sales access",
+            "commercial/internal-use licensing",
+            "structured transaction records",
+            "technical access"
+          ]
+        },
+        "createdAt": "2026-07-16T00:00:00.000Z",
+        "updatedAt": "2026-07-16T00:00:00.000Z",
+        "productionApproval": false,
+        "liveIngestionAuthority": false,
+        "marketplaceRequestAuthority": false,
+        "automaticStoreWriteAuthority": false,
+        "canonicalSoldEvidenceWriteAuthority": false,
+        "stableFingerprint": "bf6c9abc5234ecd9e21eda3fff086b1badbf0926fa2823bf026a9244f64592fc"
+      }
+    ],
+    "rawClaims": [
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "acceptedOfferVisibilityClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "acceptedOfferVisibilityClaims",
+        "value": "unknown",
+        "summary": "Accepted-offer visibility remains unconfirmed.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "apiAvailability",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "apiAvailability",
+        "value": "unknown",
+        "summary": "Privacy policy does not establish API availability.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "commercialUseClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "commercialUseClaims",
+        "value": "unknown",
+        "summary": "Privacy policy does not establish commercial-use permission.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "internalUseClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "internalUseClaims",
+        "value": "unknown",
+        "summary": "Privacy policy does not establish internal automated-use permission.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "licensingStatus",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "licensingStatus",
+        "value": "unknown",
+        "summary": "Pricing and licensing terms remain unknown.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "pricingModel",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "pricingModel",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "salesDataClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "salesDataClaims",
+        "value": "unknown",
+        "summary": "Privacy policy does not establish sales-data access.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_outreach_pending_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "transactionLevelEvidenceClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "CardHawk outreach to Card Ladder",
+            "url": null,
+            "documentId": "card_ladder_outreach_pending",
+            "capturedAt": "2026-07-16",
+            "notes": "Card Ladder was contacted at contact@cardladder.com. Outreach requested information about API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+          }
+        ]
+      },
+      {
+        "recordId": "card_ladder_privacy_policy_2020_06_08_reviewed_2026_07_16",
+        "evidenceClass": "official_privacy_policy",
+        "claimAuthority": "context_only",
+        "factKey": "transactionLevelEvidenceClaims",
+        "value": "unknown",
+        "summary": "Transaction-level data access remains unconfirmed.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Card Ladder Privacy Policy dated June 8, 2020",
+            "url": null,
+            "documentId": "card_ladder_privacy_policy_2020_06_08",
+            "capturedAt": "2026-07-16",
+            "notes": "Personal-data handling reference only; not evidence of API, sold-data, commercial-use, internal-use, or automated access permission."
+          }
+        ]
+      }
+    ],
+    "operatorConclusions": {
+      "recommendedNextAction": "await_provider_response",
+      "noProviderQualificationGranted": true,
+      "noProductionAuthorityGranted": true
+    },
+    "contradictions": [],
+    "staleOrUndatedEvidence": [],
+    "unknownFacts": [
+      "acceptedOfferVisibility",
+      "apiAvailability",
+      "commercialUseStatus",
+      "internalUseStatus",
+      "licensingStatus",
+      "transactionLevelSoldEvidenceAvailability"
+    ],
+    "dossierSummary": {
+      "providerName": "Card Ladder / Ladder Studios, Inc.",
+      "providerCategory": "market_data_platform",
+      "intendedPurpose": "internal CardHawk valuation and market analysis",
+      "officialWebsite": null,
+      "documentationLinks": [
+        {
+          "label": "Card Ladder Privacy Policy",
+          "url": null,
+          "type": "privacyPolicy",
+          "notes": "Reviewed privacy policy dated June 8, 2020; describes personal-data handling and does not establish API availability, sold-data licensing, commercial-use permission, or automated access rights."
+        }
+      ],
+      "transactionLevelSoldEvidenceAvailability": "unknown",
+      "acceptedOfferVisibility": "unknown",
+      "apiAvailability": "unknown",
+      "licensingStatus": "unknown",
+      "commercialUseStatus": "unknown",
+      "internalUseStatus": "unknown",
+      "attributionRequirements": null,
+      "redistributionRestrictions": null,
+      "pricingModel": null,
+      "evaluationDate": "2026-07-16T00:00:00.000Z",
+      "evaluator": "cardhawk_phase_9_4",
+      "qualificationStatus": "research",
+      "blockingReasons": [
+        "unknown_acceptedOfferVisibility",
+        "unknown_apiAvailability",
+        "unknown_commercialUseStatus",
+        "unknown_internalUseStatus",
+        "unknown_licensingStatus",
+        "unknown_transactionLevelSoldEvidenceAvailability"
+      ],
+      "recommendedNextAction": "complete_source_decision_dossier",
+      "unknownFacts": [
+        "transactionLevelSoldEvidenceAvailability",
+        "acceptedOfferVisibility",
+        "apiAvailability",
+        "licensingStatus",
+        "commercialUseStatus",
+        "internalUseStatus"
+      ]
+    },
+    "createdAt": "2026-07-16T00:00:00.000Z",
+    "updatedAt": "2026-07-16T00:00:00.000Z",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "stableFingerprint": "e3eef7ac7d878baacab5936f1b1020036588dbbb552c62bdfb18e8c01dd8efe3"
+  },
+  "provisionalDecisionDossier": {
+    "source": "canonical_source_decision_dossier",
+    "version": "1.0.0",
+    "schemaVersion": "1.0.0",
+    "dossierId": "market_data_platform:card_ladder_ladder_studios_inc",
+    "providerName": "Card Ladder / Ladder Studios, Inc.",
+    "providerCategory": "market_data_platform",
+    "intendedPurpose": "internal CardHawk valuation and market analysis",
+    "transactionLevelSoldEvidenceAvailability": "unknown",
+    "acceptedOfferVisibility": "unknown",
+    "apiAvailability": "unknown",
+    "licensingStatus": "unknown",
+    "commercialUseStatus": "unknown",
+    "internalUseStatus": "unknown",
+    "attributionRequirements": null,
+    "redistributionRestrictions": "unknown",
+    "technicalReadiness": "blocked_pending_provider_response",
+    "providerMaturity": "unknown",
+    "pricingModel": "unknown",
+    "documentationLinks": [
+      {
+        "label": "Card Ladder Privacy Policy dated June 8, 2020",
+        "url": null,
+        "type": "official_privacy_policy",
+        "notes": "Reviewed privacy policy describes personal-data handling only and does not establish API availability, sold-data licensing, commercial-use permission, internal automated-use permission, transaction-level data access, accepted-offer visibility, pricing terms, or automated access rights."
+      },
+      {
+        "label": "CardHawk outreach to contact@cardladder.com",
+        "url": null,
+        "type": "operator_note",
+        "notes": "Outreach requested API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+      }
+    ],
+    "evaluationDate": "2026-07-16T00:00:00.000Z",
+    "evaluator": "cardhawk_phase_9_4",
+    "qualificationStatus": "blocked",
+    "blockingReasons": [
+      "accepted_offer_visibility_unconfirmed",
+      "api_availability_unknown",
+      "commercial_use_permission_unknown",
+      "internal_automated_use_permission_unknown",
+      "no_provider_qualification_or_production_authority",
+      "pricing_and_licensing_terms_unknown",
+      "privacy_policy_does_not_establish_source_permission",
+      "provider_response_pending",
+      "transaction_level_data_access_unconfirmed"
+    ],
+    "recommendedNextAction": "await_provider_response",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "createdAt": "2026-07-16T00:00:00.000Z",
+    "updatedAt": "2026-07-16T00:00:00.000Z",
+    "stableFingerprint": "43f0fd6f54ae1b11cfdcea457215938f7472ecc0799648ed96fd51fa7944717e"
+  },
+  "qualificationPackage": {
+    "source": "canonical_provider_qualification_workflow",
+    "version": "1.0.0",
+    "workflowId": "provider_qualification:card_ladder_provisional",
+    "workflowState": "blocked",
+    "dossierId": "market_data_platform:card_ladder_ladder_studios_inc",
+    "dossierFingerprint": "43f0fd6f54ae1b11cfdcea457215938f7472ecc0799648ed96fd51fa7944717e",
+    "providerIdentity": {
+      "providerId": "market_data_platform:card_ladder_ladder_studios_inc",
+      "providerName": "Card Ladder / Ladder Studios, Inc.",
+      "marketplace": null,
+      "sourceType": "market_data_platform",
+      "accessMode": "unknown"
+    },
+    "intendedUse": "internal CardHawk valuation and market analysis",
+    "permissionStatus": "unknown",
+    "licensingStatus": "unknown",
+    "apiStatus": "unknown",
+    "transactionLevelSoldEvidenceStatus": "unknown",
+    "acceptedOfferVisibility": "unknown",
+    "providerEvaluationResult": null,
+    "providerEvaluationFingerprint": null,
+    "qualificationStatus": "not_qualified",
+    "blockingReasons": [
+      "accepted_offer_visibility_unknown",
+      "api_status_unknown",
+      "commercial_use_status_undocumented",
+      "commercial_use_status_unknown",
+      "internal_use_status_unknown",
+      "licensing_status_undocumented",
+      "licensing_status_unknown",
+      "transaction_level_sold_evidence_undocumented",
+      "transaction_level_sold_evidence_unknown"
+    ],
+    "unresolvedQuestions": [
+      "Is transaction-level sold evidence available and documented?",
+      "Are accepted-offer prices visible or otherwise documented?",
+      "Is an approved API or delivery method available?",
+      "What exact licensing, commercial-use, and internal-use permissions apply?"
+    ],
+    "requiredDaltonDecisions": [
+      "Provide or reject licensing documentation for this source.",
+      "Approve, reject, or clarify commercial-use permission.",
+      "Confirm whether transaction-level sold evidence is actually available."
+    ],
+    "recommendedNextAction": "request_permission_documentation",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "stableFingerprint": "b30aebb5bef7f1a3dc875c5e2e4084e65cc8da19bedadd1f519a5ba3885cde79"
+  },
+  "productionBoundaries": {
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "providerCommunicationPerformedByThisArtifact": false,
+    "serverJsChanged": false,
+    "dealGateChanged": false,
+    "productionValuationChanged": false,
+    "buyNowChanged": false,
+    "notificationsChanged": false,
+    "scanTimingChanged": false
+  },
+  "stableFingerprint": "634360a2befcf460aa95c0c46f6ad5bd769f26865ba5dc61df496b1a265866cb"
+}

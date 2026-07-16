@@ -3,14 +3,84 @@
   "version": "1.0.0",
   "schemaVersion": "1.0.0",
   "createdAt": "2026-07-15T00:00:00.000Z",
-  "updatedAt": "2026-07-15T00:00:00.000Z",
-  "dossiers": {},
+  "updatedAt": "2026-07-16T00:00:00.000Z",
+  "dossiers": {
+    "market_data_platform:card_ladder_ladder_studios_inc": {
+      "source": "canonical_source_decision_dossier",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "dossierId": "market_data_platform:card_ladder_ladder_studios_inc",
+      "providerName": "Card Ladder / Ladder Studios, Inc.",
+      "providerCategory": "market_data_platform",
+      "intendedPurpose": "internal CardHawk valuation and market analysis",
+      "transactionLevelSoldEvidenceAvailability": "unknown",
+      "acceptedOfferVisibility": "unknown",
+      "apiAvailability": "unknown",
+      "licensingStatus": "unknown",
+      "commercialUseStatus": "unknown",
+      "internalUseStatus": "unknown",
+      "attributionRequirements": null,
+      "redistributionRestrictions": "unknown",
+      "technicalReadiness": "blocked_pending_provider_response",
+      "providerMaturity": "unknown",
+      "pricingModel": "unknown",
+      "documentationLinks": [
+        {
+          "label": "Card Ladder Privacy Policy dated June 8, 2020",
+          "url": null,
+          "type": "official_privacy_policy",
+          "notes": "Reviewed privacy policy describes personal-data handling only and does not establish API availability, sold-data licensing, commercial-use permission, internal automated-use permission, transaction-level data access, accepted-offer visibility, pricing terms, or automated access rights."
+        },
+        {
+          "label": "CardHawk outreach to contact@cardladder.com",
+          "url": null,
+          "type": "operator_note",
+          "notes": "Outreach requested API access, bulk historical sales access, commercial/internal-use licensing, structured transaction records, and technical access. Provider response is pending."
+        }
+      ],
+      "evaluationDate": "2026-07-16T00:00:00.000Z",
+      "evaluator": "cardhawk_phase_9_4",
+      "qualificationStatus": "blocked",
+      "blockingReasons": [
+        "accepted_offer_visibility_unconfirmed",
+        "api_availability_unknown",
+        "commercial_use_permission_unknown",
+        "internal_automated_use_permission_unknown",
+        "no_provider_qualification_or_production_authority",
+        "pricing_and_licensing_terms_unknown",
+        "privacy_policy_does_not_establish_source_permission",
+        "provider_response_pending",
+        "transaction_level_data_access_unconfirmed"
+      ],
+      "recommendedNextAction": "await_provider_response",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "stableFingerprint": "43f0fd6f54ae1b11cfdcea457215938f7472ecc0799648ed96fd51fa7944717e"
+    }
+  },
   "indexes": {
-    "byProviderCategory": {},
-    "byQualificationStatus": {},
-    "byCommercialUseStatus": {}
+    "byProviderCategory": {
+      "market_data_platform": [
+        "market_data_platform:card_ladder_ladder_studios_inc"
+      ]
+    },
+    "byQualificationStatus": {
+      "blocked": [
+        "market_data_platform:card_ladder_ladder_studios_inc"
+      ]
+    },
+    "byCommercialUseStatus": {
+      "unknown": [
+        "market_data_platform:card_ladder_ladder_studios_inc"
+      ]
+    }
   },
   "stats": {
-    "dossierCount": 0
+    "dossierCount": 1
   }
 }
