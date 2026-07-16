@@ -156,6 +156,24 @@ function summarizeEvidence(input = {}) {
   };
 }
 
+function summarizeEvidenceReadinessDiagnostics(input = {}) {
+  const diagnostic = asObject(firstDefined(input.evidenceReadinessDiagnosticResult, input.evidenceReadinessDiagnostics, {}));
+  return {
+    available: Object.keys(diagnostic).length > 0,
+    readinessStatus: pick([diagnostic], ['readinessStatus']),
+    readinessLevel: pick([diagnostic], ['readinessLevel']),
+    eligibleEvidenceSummary: clone(asObject(diagnostic.eligibleEvidenceSummary)),
+    excludedEvidenceSummary: clone(asObject(diagnostic.excludedEvidenceSummary)),
+    blockingReasons: preserveArray(diagnostic.blockingReasons),
+    warnings: preserveArray(diagnostic.warnings),
+    valuationReadiness: clone(asObject(diagnostic.valuationReadiness)),
+    confidenceCapRecommendation: clone(asObject(diagnostic.confidenceCapRecommendation)),
+    recommendedReviewAction: pick([diagnostic], ['recommendedReviewAction']),
+    stableFingerprint: pick([diagnostic], ['stableFingerprint']),
+    changesProductionBehavior: false
+  };
+}
+
 function summarizeValuation(input = {}) {
   const marketData = asObject(firstDefined(input.valuationSummary, input.marketData, input.valuation, {}));
   const range = asObject(firstDefined(input.valuationRange, marketData.valuationRange, {}));
@@ -323,6 +341,7 @@ function createProductionIntelligenceTrace(input = {}) {
   const canonicalIdentitySummary = summarizeCanonicalIdentity(input, listing);
   const identityDiagnosticSummary = summarizeIdentityDiagnostics(input);
   const evidenceSummary = summarizeEvidence(input);
+  const evidenceReadinessDiagnosticSummary = summarizeEvidenceReadinessDiagnostics(input);
   const valuationSummary = summarizeValuation(input);
   const confidenceSummary = summarizeConfidence(input);
   const gradingSummary = summarizeGrading(input);
@@ -335,6 +354,7 @@ function createProductionIntelligenceTrace(input = {}) {
     canonicalIdentitySummary,
     identityDiagnosticSummary,
     evidenceSummary,
+    evidenceReadinessDiagnosticSummary,
     valuationSummary,
     confidenceSummary,
     gradingSummary,
@@ -362,6 +382,7 @@ function createProductionIntelligenceTrace(input = {}) {
     canonicalIdentitySummary,
     identityDiagnosticSummary,
     evidenceSummary,
+    evidenceReadinessDiagnosticSummary,
     valuationSummary,
     confidenceSummary,
     gradingSummary,
