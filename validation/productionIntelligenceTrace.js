@@ -251,6 +251,31 @@ function summarizeListingQualityGradingDiagnostics(input = {}) {
   };
 }
 
+function summarizeOpportunityFalsePositiveDiagnostics(input = {}) {
+  const diagnostic = asObject(firstDefined(
+    input.opportunityFalsePositiveDiagnosticResult,
+    input.opportunityFalsePositiveDiagnostics,
+    input.falsePositiveDiagnosticResult,
+    input.falsePositiveDiagnostics,
+    {}
+  ));
+  return {
+    available: Object.keys(diagnostic).length > 0,
+    falsePositiveRiskStatus: pick([diagnostic], ['falsePositiveRiskStatus']),
+    falsePositiveRiskLevel: pick([diagnostic], ['falsePositiveRiskLevel']),
+    dealGateOutcome: clone(asObject(diagnostic.dealGateOutcome)),
+    buyNowEligibility: clone(asObject(diagnostic.buyNowEligibility)),
+    criticalBlockers: preserveArray(diagnostic.criticalBlockers),
+    materialWarnings: preserveArray(diagnostic.materialWarnings),
+    supportingFactors: preserveArray(diagnostic.supportingFactors),
+    conflictingSignals: preserveArray(diagnostic.conflictingSignals),
+    recommendedReviewAction: pick([diagnostic], ['recommendedReviewAction']),
+    productionAuthorityStatement: pick([diagnostic], ['productionAuthorityStatement']),
+    stableFingerprint: pick([diagnostic], ['stableFingerprint']),
+    changesProductionBehavior: false
+  };
+}
+
 function summarizeValuation(input = {}) {
   const marketData = asObject(firstDefined(input.valuationSummary, input.marketData, input.valuation, {}));
   const range = asObject(firstDefined(input.valuationRange, marketData.valuationRange, {}));
@@ -424,6 +449,7 @@ function createProductionIntelligenceTrace(input = {}) {
   const confidenceSummary = summarizeConfidence(input);
   const confidenceCalibrationDiagnosticSummary = summarizeConfidenceCalibrationDiagnostics(input);
   const listingQualityGradingDiagnosticSummary = summarizeListingQualityGradingDiagnostics(input);
+  const opportunityFalsePositiveDiagnosticSummary = summarizeOpportunityFalsePositiveDiagnostics(input);
   const gradingSummary = summarizeGrading(input);
   const riskSummary = summarizeRisk(input);
   const intelligenceEngineSummaries = summarizeIntelligenceEngines(input);
@@ -440,6 +466,7 @@ function createProductionIntelligenceTrace(input = {}) {
     confidenceSummary,
     confidenceCalibrationDiagnosticSummary,
     listingQualityGradingDiagnosticSummary,
+    opportunityFalsePositiveDiagnosticSummary,
     gradingSummary,
     riskSummary,
     intelligenceEngineSummaries,
@@ -471,6 +498,7 @@ function createProductionIntelligenceTrace(input = {}) {
     confidenceSummary,
     confidenceCalibrationDiagnosticSummary,
     listingQualityGradingDiagnosticSummary,
+    opportunityFalsePositiveDiagnosticSummary,
     gradingSummary,
     riskSummary,
     intelligenceEngineSummaries,
