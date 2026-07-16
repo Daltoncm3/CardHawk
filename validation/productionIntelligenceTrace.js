@@ -174,6 +174,32 @@ function summarizeEvidenceReadinessDiagnostics(input = {}) {
   };
 }
 
+function summarizeRangeFirstValuationDiagnostics(input = {}) {
+  const diagnostic = asObject(firstDefined(
+    input.rangeFirstValuationDiagnosticResult,
+    input.rangeFirstValuationDiagnostics,
+    input.valuationDiagnosticResult,
+    input.valuationDiagnostics,
+    {}
+  ));
+  return {
+    available: Object.keys(diagnostic).length > 0,
+    valuationDiagnosticStatus: pick([diagnostic], ['valuationDiagnosticStatus']),
+    uncertaintyLevel: pick([diagnostic], ['uncertaintyLevel']),
+    pointEstimateAssessment: clone(asObject(diagnostic.pointEstimateAssessment)),
+    rangeAssessment: clone(asObject(diagnostic.rangeAssessment)),
+    supportingEvidenceSummary: clone(asObject(diagnostic.supportingEvidenceSummary)),
+    excludedEvidenceSummary: clone(asObject(diagnostic.excludedEvidenceSummary)),
+    blockingReasons: preserveArray(diagnostic.blockingReasons),
+    warnings: preserveArray(diagnostic.warnings),
+    valuationWithheldRecommendation: clone(asObject(diagnostic.valuationWithheldRecommendation)),
+    confidenceCapRecommendation: clone(asObject(diagnostic.confidenceCapRecommendation)),
+    recommendedReviewAction: pick([diagnostic], ['recommendedReviewAction']),
+    stableFingerprint: pick([diagnostic], ['stableFingerprint']),
+    changesProductionBehavior: false
+  };
+}
+
 function summarizeValuation(input = {}) {
   const marketData = asObject(firstDefined(input.valuationSummary, input.marketData, input.valuation, {}));
   const range = asObject(firstDefined(input.valuationRange, marketData.valuationRange, {}));
@@ -342,6 +368,7 @@ function createProductionIntelligenceTrace(input = {}) {
   const identityDiagnosticSummary = summarizeIdentityDiagnostics(input);
   const evidenceSummary = summarizeEvidence(input);
   const evidenceReadinessDiagnosticSummary = summarizeEvidenceReadinessDiagnostics(input);
+  const rangeFirstValuationDiagnosticSummary = summarizeRangeFirstValuationDiagnostics(input);
   const valuationSummary = summarizeValuation(input);
   const confidenceSummary = summarizeConfidence(input);
   const gradingSummary = summarizeGrading(input);
@@ -355,6 +382,7 @@ function createProductionIntelligenceTrace(input = {}) {
     identityDiagnosticSummary,
     evidenceSummary,
     evidenceReadinessDiagnosticSummary,
+    rangeFirstValuationDiagnosticSummary,
     valuationSummary,
     confidenceSummary,
     gradingSummary,
@@ -383,6 +411,7 @@ function createProductionIntelligenceTrace(input = {}) {
     identityDiagnosticSummary,
     evidenceSummary,
     evidenceReadinessDiagnosticSummary,
+    rangeFirstValuationDiagnosticSummary,
     valuationSummary,
     confidenceSummary,
     gradingSummary,
