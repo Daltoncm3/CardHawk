@@ -117,6 +117,24 @@ function summarizeCanonicalIdentity(input = {}, listing = getListing(input)) {
   };
 }
 
+function summarizeIdentityDiagnostics(input = {}) {
+  const diagnostic = asObject(firstDefined(input.identityDiagnosticResult, input.identityDiagnostics, input.identityParserDiagnostics, {}));
+  return {
+    available: Object.keys(diagnostic).length > 0,
+    diagnosticStatus: pick([diagnostic], ['diagnosticStatus']),
+    ambiguityLevel: pick([diagnostic], ['ambiguityLevel']),
+    identityEligibility: clone(asObject(diagnostic.identityEligibility)),
+    blockingIssues: preserveArray(diagnostic.blockingIssues),
+    warnings: preserveArray(diagnostic.warnings),
+    fieldsConfirmedCount: asArray(diagnostic.fieldsConfirmed).length,
+    fieldsMissing: preserveArray(diagnostic.fieldsMissing),
+    fieldsConflicting: preserveArray(diagnostic.fieldsConflicting),
+    recommendedReviewAction: pick([diagnostic], ['recommendedReviewAction']),
+    stableFingerprint: pick([diagnostic], ['stableFingerprint']),
+    changesProductionBehavior: false
+  };
+}
+
 function summarizeEvidence(input = {}) {
   const evidence = asObject(firstDefined(input.evidenceSummary, input.evidence, {}));
   const compData = asObject(firstDefined(input.compData, input.comparableEvidence, {}));
@@ -303,6 +321,7 @@ function createProductionIntelligenceTrace(input = {}) {
   const scanMetadata = summarizeScanMetadata(input);
   const parserOutputSummary = summarizeParserOutput(input, listing);
   const canonicalIdentitySummary = summarizeCanonicalIdentity(input, listing);
+  const identityDiagnosticSummary = summarizeIdentityDiagnostics(input);
   const evidenceSummary = summarizeEvidence(input);
   const valuationSummary = summarizeValuation(input);
   const confidenceSummary = summarizeConfidence(input);
@@ -314,6 +333,7 @@ function createProductionIntelligenceTrace(input = {}) {
     scanMetadata,
     parserOutputSummary,
     canonicalIdentitySummary,
+    identityDiagnosticSummary,
     evidenceSummary,
     valuationSummary,
     confidenceSummary,
@@ -340,6 +360,7 @@ function createProductionIntelligenceTrace(input = {}) {
     scanMetadata,
     parserOutputSummary,
     canonicalIdentitySummary,
+    identityDiagnosticSummary,
     evidenceSummary,
     valuationSummary,
     confidenceSummary,
