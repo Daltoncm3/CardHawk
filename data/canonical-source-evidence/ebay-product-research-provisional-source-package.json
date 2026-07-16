@@ -1,0 +1,1334 @@
+{
+  "source": "ebay_product_research_provisional_source_evidence_package",
+  "version": "1.0.0",
+  "createdAt": "2026-07-16T00:00:00.000Z",
+  "provider": {
+    "providerId": "ebay_product_research",
+    "providerName": "eBay Product Research",
+    "providerCategory": "marketplace_research_tool"
+  },
+  "intendedUse": "internal CardHawk valuation and market analysis",
+  "recommendedNextAction": "obtain_official_ebay_product_research_access_and_license_confirmation",
+  "recordedEvidence": {
+    "officialDocumentationReviewed": [
+      {
+        "label": "eBay Browse API documentation",
+        "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+        "conclusion": "Documents Browse API active listing/search capabilities and application token requirement; does not establish eBay Product Research canonical sold-data access or CardHawk permission."
+      },
+      {
+        "label": "eBay Buy APIs Requirements",
+        "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+        "conclusion": "Documents partner-oriented production access, approval, and contract requirements; does not grant CardHawk Product Research sold-data licensing or commercial/internal-use permission."
+      },
+      {
+        "label": "CardHawk eBay acquisition architecture",
+        "documentId": "approved_project_state_v8_and_docs_architecture_ebay_acquisition_adapter",
+        "conclusion": "Documents that current eBay canonical acquisition is skeleton/fixture-backed only, with no approved live transaction-level sold-data source."
+      }
+    ],
+    "currentKnownCapabilities": [
+      "eBay Browse API documentation describes active listing/search capabilities.",
+      "CardHawk production eBay marketplace supports active listing discovery through the existing eBay marketplace path.",
+      "CardHawk eBay canonical acquisition adapter has skeleton and fixture-backed behavior only.",
+      "eBay canonical acquisition live mode is not implemented and no approved live sold-data endpoint is selected."
+    ],
+    "currentKnownNonCapabilities": [
+      "No approved eBay Product Research canonical sold-data source is recorded.",
+      "No CardHawk eBay Product Research commercial/internal-use permission is recorded.",
+      "No transaction-level sold-evidence support is established for live canonical ingestion.",
+      "No accepted-offer visibility support is established for live canonical ingestion.",
+      "No Canonical Sold Evidence write authority is granted."
+    ]
+  },
+  "unknownFacts": [
+    "acceptedOfferVisibility",
+    "apiAvailabilityForProductResearch",
+    "bulkHistoricalSalesAccess",
+    "commercialUseStatus",
+    "internalUseStatus",
+    "licensingStatus",
+    "pricingModel",
+    "productResearchApiAvailability",
+    "structuredTransactionRecords",
+    "technicalAccessMethod",
+    "transactionLevelSoldEvidenceAvailability"
+  ],
+  "blockingReasons": [
+    "accepted_offer_visibility_unknown",
+    "commercial_use_permission_unknown",
+    "internal_automated_use_permission_unknown",
+    "no_approved_live_sold_data_source",
+    "no_provider_qualification_or_production_authority",
+    "pricing_and_licensing_terms_unknown",
+    "product_research_api_availability_unknown",
+    "product_research_source_terms_not_approved",
+    "transaction_level_data_access_unconfirmed"
+  ],
+  "researchRecords": [
+    {
+      "source": "canonical_source_research_record",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+      "providerIdentity": {
+        "providerId": "ebay_product_research",
+        "providerName": "eBay Product Research",
+        "providerCategory": "marketplace_research_tool",
+        "marketplace": null
+      },
+      "evidenceClass": "official_api_documentation",
+      "claimAuthority": "context_only",
+      "researchDate": "2026-07-16",
+      "researcher": "cardhawk_phase_9_5",
+      "intendedUse": "internal CardHawk valuation and market analysis",
+      "references": {
+        "officialWebsite": {
+          "label": "eBay Developers Program",
+          "url": "https://developer.ebay.com/",
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "officialTermsOrLicense": {
+          "label": "eBay Buy APIs Requirements",
+          "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+          "documentId": null,
+          "capturedAt": "2026-07-16",
+          "notes": "Official eBay Buy API requirements describe partner-oriented production access, approvals, contracts, and no guarantee of approval. This does not grant CardHawk Product Research sold-data permission."
+        },
+        "privacyPolicy": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "apiDocumentation": {
+          "label": "eBay Browse API documentation",
+          "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+          "documentId": null,
+          "capturedAt": "2026-07-16",
+          "notes": "Official eBay Browse API documentation describes active item discovery/search endpoints and application access token requirements. It does not establish eBay Product Research API availability, canonical transaction-level sold evidence access, accepted-offer visibility, or CardHawk commercial/internal-use permission."
+        },
+        "pricing": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        }
+      },
+      "claims": {
+        "salesDataClaims": {
+          "value": "unknown",
+          "summary": "Reviewed Browse/Buy API documentation does not establish Product Research sold-data access for CardHawk.",
+          "confidence": "high"
+        },
+        "transactionLevelEvidenceClaims": {
+          "value": "unknown",
+          "summary": "Transaction-level sold-data access remains unconfirmed for eBay Product Research.",
+          "confidence": "high"
+        },
+        "acceptedOfferVisibilityClaims": {
+          "value": "unknown",
+          "summary": "Accepted-offer visibility remains unconfirmed for eBay Product Research.",
+          "confidence": "high"
+        },
+        "commercialUseClaims": {
+          "value": "unknown",
+          "summary": "Official Buy API production access requirements do not grant CardHawk commercial-use permission for Product Research sold data.",
+          "confidence": "high"
+        },
+        "internalUseClaims": {
+          "value": "unknown",
+          "summary": "Internal automated-use permission remains unconfirmed.",
+          "confidence": "high"
+        },
+        "apiAvailability": {
+          "value": "unknown",
+          "summary": "Browse API availability is documented, but eBay Product Research API availability for CardHawk canonical sold evidence remains unknown.",
+          "confidence": "high"
+        },
+        "licensingStatus": {
+          "value": "unknown",
+          "summary": "Production access requires approvals/contracts; no CardHawk Product Research license or approval is documented.",
+          "confidence": "high"
+        },
+        "attributionRequirements": null,
+        "redistributionRestrictions": null,
+        "pricingModel": "unknown"
+      },
+      "contact": {
+        "contactEmail": null,
+        "outreachDate": null,
+        "providerResponseStatus": "unknown",
+        "providerResponseSummary": null
+      },
+      "unresolvedQuestions": [
+        "Does eBay Product Research disclose accepted-offer sale prices or accepted-offer visibility?",
+        "Does eBay Product Research provide an API or approved technical access method for CardHawk?",
+        "Does eBay Product Research provide bulk historical sold-data access?",
+        "Does eBay Product Research provide structured transaction-level sold records?",
+        "What attribution or redistribution restrictions apply?",
+        "What commercial-use license applies to internal CardHawk valuation and market analysis?",
+        "What internal automated-use permission applies?",
+        "What pricing and licensing terms apply?"
+      ],
+      "sourceCitations": [
+        {
+          "label": "eBay Browse API documentation",
+          "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+          "documentId": null,
+          "capturedAt": "2026-07-16",
+          "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+        },
+        {
+          "label": "eBay Buy APIs Requirements",
+          "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+          "documentId": null,
+          "capturedAt": "2026-07-16",
+          "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+        }
+      ],
+      "researchConfidence": "medium",
+      "operatorConclusions": {
+        "browseApiDocumented": true,
+        "productResearchApiAvailabilityEstablished": false,
+        "commercialUsePermissionEstablished": false,
+        "canonicalSoldEvidenceAccessEstablished": false,
+        "acceptedOfferVisibilityEstablished": false
+      },
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "stableFingerprint": "916d1008e371197b40e423c47c6eed894da7cf9c852948ac1aea62802c427989"
+    },
+    {
+      "source": "canonical_source_research_record",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+      "providerIdentity": {
+        "providerId": "ebay_product_research",
+        "providerName": "eBay Product Research",
+        "providerCategory": "marketplace_research_tool",
+        "marketplace": null
+      },
+      "evidenceClass": "operator_note",
+      "claimAuthority": "operator_only",
+      "researchDate": "2026-07-16",
+      "researcher": "cardhawk_phase_9_5",
+      "intendedUse": "internal CardHawk valuation and market analysis",
+      "references": {
+        "officialWebsite": {
+          "label": "CardHawk architecture references",
+          "url": null,
+          "documentId": "approved_project_state_v8_and_repo_docs",
+          "capturedAt": null,
+          "notes": null
+        },
+        "officialTermsOrLicense": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "privacyPolicy": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "apiDocumentation": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        },
+        "pricing": {
+          "label": null,
+          "url": null,
+          "documentId": null,
+          "capturedAt": null,
+          "notes": null
+        }
+      },
+      "claims": {
+        "salesDataClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "transactionLevelEvidenceClaims": {
+          "value": "unknown",
+          "summary": "CardHawk documentation states no compliant live marketplace transaction-level sold-data source is approved and the eBay canonical acquisition adapter is skeleton/fixture-backed only.",
+          "confidence": "high"
+        },
+        "acceptedOfferVisibilityClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "commercialUseClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "internalUseClaims": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "apiAvailability": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "licensingStatus": {
+          "value": "unknown",
+          "summary": null,
+          "confidence": "unknown"
+        },
+        "attributionRequirements": null,
+        "redistributionRestrictions": null,
+        "pricingModel": "unknown"
+      },
+      "contact": {
+        "contactEmail": null,
+        "outreachDate": null,
+        "providerResponseStatus": "unknown",
+        "providerResponseSummary": null
+      },
+      "unresolvedQuestions": [
+        "Does eBay Product Research disclose accepted-offer sale prices or accepted-offer visibility?",
+        "Does eBay Product Research provide an API or approved technical access method for CardHawk?",
+        "Does eBay Product Research provide bulk historical sold-data access?",
+        "Does eBay Product Research provide structured transaction-level sold records?",
+        "What attribution or redistribution restrictions apply?",
+        "What commercial-use license applies to internal CardHawk valuation and market analysis?",
+        "What internal automated-use permission applies?",
+        "What pricing and licensing terms apply?"
+      ],
+      "sourceCitations": [
+        {
+          "label": "Approved Project State v8.0 Architecture Manual section 22",
+          "url": null,
+          "documentId": "approved_project_state_v8_section_22",
+          "capturedAt": "2026-07-16",
+          "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+        },
+        {
+          "label": "Approved Project State v8.0 Architecture Manual section 87",
+          "url": null,
+          "documentId": "approved_project_state_v8_section_87",
+          "capturedAt": "2026-07-16",
+          "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+        },
+        {
+          "label": "docs/architecture/ebay-acquisition-adapter.md",
+          "url": null,
+          "documentId": "docs_architecture_ebay_acquisition_adapter",
+          "capturedAt": "2026-07-16",
+          "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+        }
+      ],
+      "researchConfidence": "high",
+      "operatorConclusions": {
+        "activeEbayDiscoveryExists": true,
+        "activeEbayDiscoveryEqualsCanonicalSoldData": false,
+        "ebayCanonicalAcquisitionAdapterStatus": "skeleton_fixture_backed_draft",
+        "productResearchPermissionEstablished": false,
+        "productionAuthorityGranted": false
+      },
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "stableFingerprint": "fa52d76045580254b430c420369d89507c8919d4387a0f2022476b4210391dad"
+    }
+  ],
+  "evidencePacket": {
+    "source": "canonical_source_evidence_packet",
+    "version": "1.0.0",
+    "schemaVersion": "1.0.0",
+    "packetId": "ebay_product_research_provisional_source_evidence_packet",
+    "providerIdentity": {
+      "providerId": "ebay_product_research",
+      "providerName": "eBay Product Research",
+      "providerCategory": "marketplace_research_tool",
+      "marketplace": null
+    },
+    "records": [
+      {
+        "source": "canonical_source_research_record",
+        "version": "1.0.0",
+        "schemaVersion": "1.0.0",
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "providerIdentity": {
+          "providerId": "ebay_product_research",
+          "providerName": "eBay Product Research",
+          "providerCategory": "marketplace_research_tool",
+          "marketplace": null
+        },
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "researchDate": "2026-07-16",
+        "researcher": "cardhawk_phase_9_5",
+        "intendedUse": "internal CardHawk valuation and market analysis",
+        "references": {
+          "officialWebsite": {
+            "label": "eBay Developers Program",
+            "url": "https://developer.ebay.com/",
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "officialTermsOrLicense": {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Official eBay Buy API requirements describe partner-oriented production access, approvals, contracts, and no guarantee of approval. This does not grant CardHawk Product Research sold-data permission."
+          },
+          "privacyPolicy": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "apiDocumentation": {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Official eBay Browse API documentation describes active item discovery/search endpoints and application access token requirements. It does not establish eBay Product Research API availability, canonical transaction-level sold evidence access, accepted-offer visibility, or CardHawk commercial/internal-use permission."
+          },
+          "pricing": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          }
+        },
+        "claims": {
+          "salesDataClaims": {
+            "value": "unknown",
+            "summary": "Reviewed Browse/Buy API documentation does not establish Product Research sold-data access for CardHawk.",
+            "confidence": "high"
+          },
+          "transactionLevelEvidenceClaims": {
+            "value": "unknown",
+            "summary": "Transaction-level sold-data access remains unconfirmed for eBay Product Research.",
+            "confidence": "high"
+          },
+          "acceptedOfferVisibilityClaims": {
+            "value": "unknown",
+            "summary": "Accepted-offer visibility remains unconfirmed for eBay Product Research.",
+            "confidence": "high"
+          },
+          "commercialUseClaims": {
+            "value": "unknown",
+            "summary": "Official Buy API production access requirements do not grant CardHawk commercial-use permission for Product Research sold data.",
+            "confidence": "high"
+          },
+          "internalUseClaims": {
+            "value": "unknown",
+            "summary": "Internal automated-use permission remains unconfirmed.",
+            "confidence": "high"
+          },
+          "apiAvailability": {
+            "value": "unknown",
+            "summary": "Browse API availability is documented, but eBay Product Research API availability for CardHawk canonical sold evidence remains unknown.",
+            "confidence": "high"
+          },
+          "licensingStatus": {
+            "value": "unknown",
+            "summary": "Production access requires approvals/contracts; no CardHawk Product Research license or approval is documented.",
+            "confidence": "high"
+          },
+          "attributionRequirements": null,
+          "redistributionRestrictions": null,
+          "pricingModel": "unknown"
+        },
+        "contact": {
+          "contactEmail": null,
+          "outreachDate": null,
+          "providerResponseStatus": "unknown",
+          "providerResponseSummary": null
+        },
+        "unresolvedQuestions": [
+          "Does eBay Product Research disclose accepted-offer sale prices or accepted-offer visibility?",
+          "Does eBay Product Research provide an API or approved technical access method for CardHawk?",
+          "Does eBay Product Research provide bulk historical sold-data access?",
+          "Does eBay Product Research provide structured transaction-level sold records?",
+          "What attribution or redistribution restrictions apply?",
+          "What commercial-use license applies to internal CardHawk valuation and market analysis?",
+          "What internal automated-use permission applies?",
+          "What pricing and licensing terms apply?"
+        ],
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ],
+        "researchConfidence": "medium",
+        "operatorConclusions": {
+          "browseApiDocumented": true,
+          "productResearchApiAvailabilityEstablished": false,
+          "commercialUsePermissionEstablished": false,
+          "canonicalSoldEvidenceAccessEstablished": false,
+          "acceptedOfferVisibilityEstablished": false
+        },
+        "createdAt": "2026-07-16T00:00:00.000Z",
+        "updatedAt": "2026-07-16T00:00:00.000Z",
+        "productionApproval": false,
+        "liveIngestionAuthority": false,
+        "marketplaceRequestAuthority": false,
+        "automaticStoreWriteAuthority": false,
+        "canonicalSoldEvidenceWriteAuthority": false,
+        "stableFingerprint": "916d1008e371197b40e423c47c6eed894da7cf9c852948ac1aea62802c427989"
+      },
+      {
+        "source": "canonical_source_research_record",
+        "version": "1.0.0",
+        "schemaVersion": "1.0.0",
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "providerIdentity": {
+          "providerId": "ebay_product_research",
+          "providerName": "eBay Product Research",
+          "providerCategory": "marketplace_research_tool",
+          "marketplace": null
+        },
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "researchDate": "2026-07-16",
+        "researcher": "cardhawk_phase_9_5",
+        "intendedUse": "internal CardHawk valuation and market analysis",
+        "references": {
+          "officialWebsite": {
+            "label": "CardHawk architecture references",
+            "url": null,
+            "documentId": "approved_project_state_v8_and_repo_docs",
+            "capturedAt": null,
+            "notes": null
+          },
+          "officialTermsOrLicense": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "privacyPolicy": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "apiDocumentation": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          },
+          "pricing": {
+            "label": null,
+            "url": null,
+            "documentId": null,
+            "capturedAt": null,
+            "notes": null
+          }
+        },
+        "claims": {
+          "salesDataClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "transactionLevelEvidenceClaims": {
+            "value": "unknown",
+            "summary": "CardHawk documentation states no compliant live marketplace transaction-level sold-data source is approved and the eBay canonical acquisition adapter is skeleton/fixture-backed only.",
+            "confidence": "high"
+          },
+          "acceptedOfferVisibilityClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "commercialUseClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "internalUseClaims": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "apiAvailability": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "licensingStatus": {
+            "value": "unknown",
+            "summary": null,
+            "confidence": "unknown"
+          },
+          "attributionRequirements": null,
+          "redistributionRestrictions": null,
+          "pricingModel": "unknown"
+        },
+        "contact": {
+          "contactEmail": null,
+          "outreachDate": null,
+          "providerResponseStatus": "unknown",
+          "providerResponseSummary": null
+        },
+        "unresolvedQuestions": [
+          "Does eBay Product Research disclose accepted-offer sale prices or accepted-offer visibility?",
+          "Does eBay Product Research provide an API or approved technical access method for CardHawk?",
+          "Does eBay Product Research provide bulk historical sold-data access?",
+          "Does eBay Product Research provide structured transaction-level sold records?",
+          "What attribution or redistribution restrictions apply?",
+          "What commercial-use license applies to internal CardHawk valuation and market analysis?",
+          "What internal automated-use permission applies?",
+          "What pricing and licensing terms apply?"
+        ],
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ],
+        "researchConfidence": "high",
+        "operatorConclusions": {
+          "activeEbayDiscoveryExists": true,
+          "activeEbayDiscoveryEqualsCanonicalSoldData": false,
+          "ebayCanonicalAcquisitionAdapterStatus": "skeleton_fixture_backed_draft",
+          "productResearchPermissionEstablished": false,
+          "productionAuthorityGranted": false
+        },
+        "createdAt": "2026-07-16T00:00:00.000Z",
+        "updatedAt": "2026-07-16T00:00:00.000Z",
+        "productionApproval": false,
+        "liveIngestionAuthority": false,
+        "marketplaceRequestAuthority": false,
+        "automaticStoreWriteAuthority": false,
+        "canonicalSoldEvidenceWriteAuthority": false,
+        "stableFingerprint": "fa52d76045580254b430c420369d89507c8919d4387a0f2022476b4210391dad"
+      }
+    ],
+    "rawClaims": [
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "acceptedOfferVisibilityClaims",
+        "value": "unknown",
+        "summary": "Accepted-offer visibility remains unconfirmed for eBay Product Research.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "acceptedOfferVisibilityClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "apiAvailability",
+        "value": "unknown",
+        "summary": "Browse API availability is documented, but eBay Product Research API availability for CardHawk canonical sold evidence remains unknown.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "apiAvailability",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "commercialUseClaims",
+        "value": "unknown",
+        "summary": "Official Buy API production access requirements do not grant CardHawk commercial-use permission for Product Research sold data.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "commercialUseClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "internalUseClaims",
+        "value": "unknown",
+        "summary": "Internal automated-use permission remains unconfirmed.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "internalUseClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "licensingStatus",
+        "value": "unknown",
+        "summary": "Production access requires approvals/contracts; no CardHawk Product Research license or approval is documented.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "licensingStatus",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "pricingModel",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "pricingModel",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "salesDataClaims",
+        "value": "unknown",
+        "summary": "Reviewed Browse/Buy API documentation does not establish Product Research sold-data access for CardHawk.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "salesDataClaims",
+        "value": "unknown",
+        "summary": null,
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_buy_api_docs_review_2026_07_16",
+        "evidenceClass": "official_api_documentation",
+        "claimAuthority": "context_only",
+        "factKey": "transactionLevelEvidenceClaims",
+        "value": "unknown",
+        "summary": "Transaction-level sold-data access remains unconfirmed for eBay Product Research.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "eBay Browse API documentation",
+            "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents Browse API active listing/search capabilities and application token requirement; not Product Research sold-data approval."
+          },
+          {
+            "label": "eBay Buy APIs Requirements",
+            "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+            "documentId": null,
+            "capturedAt": "2026-07-16",
+            "notes": "Documents partner-oriented production access, approval, and contract requirements; not CardHawk Product Research permission."
+          }
+        ]
+      },
+      {
+        "recordId": "ebay_product_research_cardhawk_architecture_review_2026_07_16",
+        "evidenceClass": "operator_note",
+        "claimAuthority": "operator_only",
+        "factKey": "transactionLevelEvidenceClaims",
+        "value": "unknown",
+        "summary": "CardHawk documentation states no compliant live marketplace transaction-level sold-data source is approved and the eBay canonical acquisition adapter is skeleton/fixture-backed only.",
+        "researchDate": "2026-07-16",
+        "sourceCitations": [
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 22",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_22",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states no compliant live marketplace transaction-level sold-data source is currently approved to populate canonical sold evidence for production valuation."
+          },
+          {
+            "label": "Approved Project State v8.0 Architecture Manual section 87",
+            "url": null,
+            "documentId": "approved_project_state_v8_section_87",
+            "capturedAt": "2026-07-16",
+            "notes": "Manual states eBay canonical acquisition adapter is skeleton/offline fixture-backed, default disabled, no approved sold source exists, and live commercial-use metadata is not permitted without source-permission evidence."
+          },
+          {
+            "label": "docs/architecture/ebay-acquisition-adapter.md",
+            "url": null,
+            "documentId": "docs_architecture_ebay_acquisition_adapter",
+            "capturedAt": "2026-07-16",
+            "notes": "Repository documentation states the eBay acquisition adapter makes no live API calls, emits no true_sold evidence, remains Draft, and requires approved sold-evidence source and commercial usage path before live use."
+          }
+        ]
+      }
+    ],
+    "operatorConclusions": {
+      "recommendedNextAction": "obtain_official_ebay_product_research_access_and_license_confirmation",
+      "noProviderQualificationGranted": true,
+      "noProductionAuthorityGranted": true,
+      "browseApiIsNotProductResearchSoldEvidenceApproval": true
+    },
+    "contradictions": [],
+    "staleOrUndatedEvidence": [],
+    "unknownFacts": [
+      "acceptedOfferVisibility",
+      "apiAvailability",
+      "commercialUseStatus",
+      "internalUseStatus",
+      "licensingStatus",
+      "transactionLevelSoldEvidenceAvailability"
+    ],
+    "dossierSummary": {
+      "providerName": "eBay Product Research",
+      "providerCategory": "marketplace_research_tool",
+      "intendedPurpose": "internal CardHawk valuation and market analysis",
+      "officialWebsite": "https://developer.ebay.com/",
+      "documentationLinks": [
+        {
+          "label": "eBay Developers Program",
+          "url": "https://developer.ebay.com/",
+          "type": "officialWebsite",
+          "notes": null
+        },
+        {
+          "label": "eBay Buy APIs Requirements",
+          "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+          "type": "officialTermsOrLicense",
+          "notes": "Official eBay Buy API requirements describe partner-oriented production access, approvals, contracts, and no guarantee of approval. This does not grant CardHawk Product Research sold-data permission."
+        },
+        {
+          "label": "eBay Browse API documentation",
+          "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+          "type": "apiDocumentation",
+          "notes": "Official eBay Browse API documentation describes active item discovery/search endpoints and application access token requirements. It does not establish eBay Product Research API availability, canonical transaction-level sold evidence access, accepted-offer visibility, or CardHawk commercial/internal-use permission."
+        }
+      ],
+      "transactionLevelSoldEvidenceAvailability": "unknown",
+      "acceptedOfferVisibility": "unknown",
+      "apiAvailability": "unknown",
+      "licensingStatus": "unknown",
+      "commercialUseStatus": "unknown",
+      "internalUseStatus": "unknown",
+      "attributionRequirements": null,
+      "redistributionRestrictions": null,
+      "pricingModel": null,
+      "evaluationDate": "2026-07-16T00:00:00.000Z",
+      "evaluator": "cardhawk_phase_9_5",
+      "qualificationStatus": "research",
+      "blockingReasons": [
+        "unknown_acceptedOfferVisibility",
+        "unknown_apiAvailability",
+        "unknown_commercialUseStatus",
+        "unknown_internalUseStatus",
+        "unknown_licensingStatus",
+        "unknown_transactionLevelSoldEvidenceAvailability"
+      ],
+      "recommendedNextAction": "complete_source_decision_dossier",
+      "unknownFacts": [
+        "transactionLevelSoldEvidenceAvailability",
+        "acceptedOfferVisibility",
+        "apiAvailability",
+        "licensingStatus",
+        "commercialUseStatus",
+        "internalUseStatus"
+      ]
+    },
+    "createdAt": "2026-07-16T00:00:00.000Z",
+    "updatedAt": "2026-07-16T00:00:00.000Z",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "stableFingerprint": "e58c00f0795f4ead82323d0b8dc1e790a4e9abc9376781023abc1ffbf8961f05"
+  },
+  "provisionalDecisionDossier": {
+    "source": "canonical_source_decision_dossier",
+    "version": "1.0.0",
+    "schemaVersion": "1.0.0",
+    "dossierId": "marketplace_research_tool:ebay_product_research",
+    "providerName": "eBay Product Research",
+    "providerCategory": "marketplace_research_tool",
+    "intendedPurpose": "internal CardHawk valuation and market analysis",
+    "transactionLevelSoldEvidenceAvailability": "unknown",
+    "acceptedOfferVisibility": "unknown",
+    "apiAvailability": "unknown",
+    "licensingStatus": "unknown",
+    "commercialUseStatus": "unknown",
+    "internalUseStatus": "unknown",
+    "attributionRequirements": null,
+    "redistributionRestrictions": "unknown",
+    "technicalReadiness": "blocked_pending_official_product_research_access_and_license_confirmation",
+    "providerMaturity": "unknown",
+    "pricingModel": "unknown",
+    "documentationLinks": [
+      {
+        "label": "eBay Browse API documentation",
+        "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+        "type": "official_api_documentation",
+        "notes": "Documents Browse API active listing/search capabilities. Does not establish eBay Product Research sold-data API availability or CardHawk permission."
+      },
+      {
+        "label": "eBay Buy APIs Requirements",
+        "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+        "type": "official_terms",
+        "notes": "Documents production access requirements, approvals, contracts, and no guarantee of approval. Does not grant CardHawk Product Research sold-data permission."
+      },
+      {
+        "label": "CardHawk eBay acquisition adapter architecture",
+        "url": null,
+        "type": "operator_note",
+        "notes": "CardHawk eBay canonical acquisition remains skeleton/fixture-backed and not approved for live transaction-level sold-data ingestion."
+      }
+    ],
+    "evaluationDate": "2026-07-16T00:00:00.000Z",
+    "evaluator": "cardhawk_phase_9_5",
+    "qualificationStatus": "blocked",
+    "blockingReasons": [
+      "accepted_offer_visibility_unknown",
+      "commercial_use_permission_unknown",
+      "internal_automated_use_permission_unknown",
+      "no_approved_live_sold_data_source",
+      "no_provider_qualification_or_production_authority",
+      "pricing_and_licensing_terms_unknown",
+      "product_research_api_availability_unknown",
+      "product_research_source_terms_not_approved",
+      "transaction_level_data_access_unconfirmed"
+    ],
+    "recommendedNextAction": "obtain_official_ebay_product_research_access_and_license_confirmation",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "createdAt": "2026-07-16T00:00:00.000Z",
+    "updatedAt": "2026-07-16T00:00:00.000Z",
+    "stableFingerprint": "39c0a7bc5062448d48a2c60857e4e46e63c481124d00f4b1298b42275ed4c637"
+  },
+  "qualificationPackage": {
+    "source": "canonical_provider_qualification_workflow",
+    "version": "1.0.0",
+    "workflowId": "provider_qualification:ebay_product_research_provisional",
+    "workflowState": "blocked",
+    "dossierId": "marketplace_research_tool:ebay_product_research",
+    "dossierFingerprint": "39c0a7bc5062448d48a2c60857e4e46e63c481124d00f4b1298b42275ed4c637",
+    "providerIdentity": {
+      "providerId": "marketplace_research_tool:ebay_product_research",
+      "providerName": "eBay Product Research",
+      "marketplace": null,
+      "sourceType": "marketplace_research_tool",
+      "accessMode": "unknown"
+    },
+    "intendedUse": "internal CardHawk valuation and market analysis",
+    "permissionStatus": "unknown",
+    "licensingStatus": "unknown",
+    "apiStatus": "unknown",
+    "transactionLevelSoldEvidenceStatus": "unknown",
+    "acceptedOfferVisibility": "unknown",
+    "providerEvaluationResult": null,
+    "providerEvaluationFingerprint": null,
+    "qualificationStatus": "not_qualified",
+    "blockingReasons": [
+      "accepted_offer_visibility_unknown",
+      "api_status_unknown",
+      "commercial_use_status_undocumented",
+      "commercial_use_status_unknown",
+      "internal_use_status_unknown",
+      "licensing_status_undocumented",
+      "licensing_status_unknown",
+      "transaction_level_sold_evidence_undocumented",
+      "transaction_level_sold_evidence_unknown"
+    ],
+    "unresolvedQuestions": [
+      "Is transaction-level sold evidence available and documented?",
+      "Are accepted-offer prices visible or otherwise documented?",
+      "Is an approved API or delivery method available?",
+      "What exact licensing, commercial-use, and internal-use permissions apply?"
+    ],
+    "requiredDaltonDecisions": [
+      "Provide or reject licensing documentation for this source.",
+      "Approve, reject, or clarify commercial-use permission.",
+      "Confirm whether transaction-level sold evidence is actually available."
+    ],
+    "recommendedNextAction": "request_permission_documentation",
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "stableFingerprint": "e8ba58b0fdb1ce716c9b7819e37e0f4348f8c4d2cd7f3091884c9204651cf202"
+  },
+  "productionBoundaries": {
+    "productionApproval": false,
+    "liveIngestionAuthority": false,
+    "marketplaceRequestAuthority": false,
+    "automaticStoreWriteAuthority": false,
+    "canonicalSoldEvidenceWriteAuthority": false,
+    "providerCommunicationPerformedByThisArtifact": false,
+    "serverJsChanged": false,
+    "dealGateChanged": false,
+    "productionValuationChanged": false,
+    "buyNowChanged": false,
+    "notificationsChanged": false,
+    "scanTimingChanged": false
+  },
+  "stableFingerprint": "1e80d5f95bf62ba586cbf22930be45fce918061074d3b65adc07039777f002b7"
+}

@@ -61,26 +61,94 @@
       "createdAt": "2026-07-16T00:00:00.000Z",
       "updatedAt": "2026-07-16T00:00:00.000Z",
       "stableFingerprint": "43f0fd6f54ae1b11cfdcea457215938f7472ecc0799648ed96fd51fa7944717e"
+    },
+    "marketplace_research_tool:ebay_product_research": {
+      "source": "canonical_source_decision_dossier",
+      "version": "1.0.0",
+      "schemaVersion": "1.0.0",
+      "dossierId": "marketplace_research_tool:ebay_product_research",
+      "providerName": "eBay Product Research",
+      "providerCategory": "marketplace_research_tool",
+      "intendedPurpose": "internal CardHawk valuation and market analysis",
+      "transactionLevelSoldEvidenceAvailability": "unknown",
+      "acceptedOfferVisibility": "unknown",
+      "apiAvailability": "unknown",
+      "licensingStatus": "unknown",
+      "commercialUseStatus": "unknown",
+      "internalUseStatus": "unknown",
+      "attributionRequirements": null,
+      "redistributionRestrictions": "unknown",
+      "technicalReadiness": "blocked_pending_official_product_research_access_and_license_confirmation",
+      "providerMaturity": "unknown",
+      "pricingModel": "unknown",
+      "documentationLinks": [
+        {
+          "label": "eBay Browse API documentation",
+          "url": "https://developer.ebay.com/develop/api/buy/browse_api#buy-browse_api-item_summary-search",
+          "type": "official_api_documentation",
+          "notes": "Documents Browse API active listing/search capabilities. Does not establish eBay Product Research sold-data API availability or CardHawk permission."
+        },
+        {
+          "label": "eBay Buy APIs Requirements",
+          "url": "https://developer.ebay.com/api-docs/buy/static/buy-requirements.html",
+          "type": "official_terms",
+          "notes": "Documents production access requirements, approvals, contracts, and no guarantee of approval. Does not grant CardHawk Product Research sold-data permission."
+        },
+        {
+          "label": "CardHawk eBay acquisition adapter architecture",
+          "url": null,
+          "type": "operator_note",
+          "notes": "CardHawk eBay canonical acquisition remains skeleton/fixture-backed and not approved for live transaction-level sold-data ingestion."
+        }
+      ],
+      "evaluationDate": "2026-07-16T00:00:00.000Z",
+      "evaluator": "cardhawk_phase_9_5",
+      "qualificationStatus": "blocked",
+      "blockingReasons": [
+        "accepted_offer_visibility_unknown",
+        "commercial_use_permission_unknown",
+        "internal_automated_use_permission_unknown",
+        "no_approved_live_sold_data_source",
+        "no_provider_qualification_or_production_authority",
+        "pricing_and_licensing_terms_unknown",
+        "product_research_api_availability_unknown",
+        "product_research_source_terms_not_approved",
+        "transaction_level_data_access_unconfirmed"
+      ],
+      "recommendedNextAction": "obtain_official_ebay_product_research_access_and_license_confirmation",
+      "productionApproval": false,
+      "liveIngestionAuthority": false,
+      "marketplaceRequestAuthority": false,
+      "automaticStoreWriteAuthority": false,
+      "canonicalSoldEvidenceWriteAuthority": false,
+      "createdAt": "2026-07-16T00:00:00.000Z",
+      "updatedAt": "2026-07-16T00:00:00.000Z",
+      "stableFingerprint": "39c0a7bc5062448d48a2c60857e4e46e63c481124d00f4b1298b42275ed4c637"
     }
   },
   "indexes": {
     "byProviderCategory": {
       "market_data_platform": [
         "market_data_platform:card_ladder_ladder_studios_inc"
+      ],
+      "marketplace_research_tool": [
+        "marketplace_research_tool:ebay_product_research"
       ]
     },
     "byQualificationStatus": {
       "blocked": [
-        "market_data_platform:card_ladder_ladder_studios_inc"
+        "market_data_platform:card_ladder_ladder_studios_inc",
+        "marketplace_research_tool:ebay_product_research"
       ]
     },
     "byCommercialUseStatus": {
       "unknown": [
-        "market_data_platform:card_ladder_ladder_studios_inc"
+        "market_data_platform:card_ladder_ladder_studios_inc",
+        "marketplace_research_tool:ebay_product_research"
       ]
     }
   },
   "stats": {
-    "dossierCount": 1
+    "dossierCount": 2
   }
 }
