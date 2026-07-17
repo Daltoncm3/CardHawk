@@ -1,17 +1,41 @@
 'use strict';
 
+const {
+  pruneMapByOldest,
+  toPositiveInteger,
+  trimArrayToMax
+} = require('../utils/boundedRetention');
+
 const learningState = {
   recordsByEbayItemId: new Map(),
   predictionEvents: [],
   scanEvents: []
 };
 
-const MAX_HISTORY_LENGTH = 100;
-const MAX_RECENT_EVENTS = 1000;
+const DEFAULT_MAX_HISTORY_LENGTH = 100;
+const DEFAULT_MAX_RECENT_EVENTS = 1000;
+const DEFAULT_MAX_TRACKED_LEARNING_RECORDS = 5000;
 const DEFAULT_STALE_AFTER_MS = 1000 * 60 * 60 * 24 * 7;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function getRetentionPolicy() {
+  return {
+    maxTrackedLearningRecords: toPositiveInteger(
+      process.env.CARDHAWK_MAX_TRACKED_LEARNING_RECORDS,
+      DEFAULT_MAX_TRACKED_LEARNING_RECORDS
+    ),
+    maxHistoryLength: toPositiveInteger(
+      process.env.CARDHAWK_MAX_LEARNING_HISTORY_LENGTH,
+      DEFAULT_MAX_HISTORY_LENGTH
+    ),
+    maxRecentEvents: toPositiveInteger(
+      process.env.CARDHAWK_MAX_LEARNING_RECENT_EVENTS,
+      DEFAULT_MAX_RECENT_EVENTS
+    )
+  };
 }
 
 function toNumber(value, fallback = 0) {
@@ -221,14 +245,15 @@ function buildPredictionSnapshot(input = {}, snapshot = {}, observedAt = nowIso(
 
 function pushHistory(record, key, value, observedAt) {
   if (value === undefined || value === null || value === '') return;
+  const { maxHistoryLength } = getRetentionPolicy();
 
   record[key].push({
     value,
     observedAt
   });
 
-  if (record[key].length > MAX_HISTORY_LENGTH) {
-    record[key] = record[key].slice(record[key].length - MAX_HISTORY_LENGTH);
+  if (record[key].length > maxHistoryLength) {
+    record[key] = record[key].slice(record[key].length - maxHistoryLength);
   }
 }
 
@@ -305,17 +330,41 @@ function updateRecordMetadata(record, snapshot, observedAt) {
 }
 
 function trimRecentEvents() {
-  if (learningState.predictionEvents.length > MAX_RECENT_EVENTS) {
-    learningState.predictionEvents = learningState.predictionEvents.slice(
-      learningState.predictionEvents.length - MAX_RECENT_EVENTS
-    );
+  const { maxRecentEvents } = getRetentionPolicy();
+  learningState.predictionEvents = trimArrayToMax(learningState.predictionEvents, maxRecentEvents);
+  learningState.scanEvents = trimArrayToMax(learningState.scanEvents, maxRecentEvents);
+}
+
+function enforceRetentionPolicy() {
+  const policy = getRetentionPolicy();
+
+  for (const record of learningState.recordsByEbayItemId.values()) {
+    record.predictionSnapshots = trimArrayToMax(record.predictionSnapshots, policy.maxHistoryLength);
+    record.outcomes = trimArrayToMax(record.outcomes, policy.maxHistoryLength);
+    record.priceDrops = trimArrayToMax(record.priceDrops, policy.maxHistoryLength);
+
+    for (const key of [
+      'priceHistory',
+      'scoreHistory',
+      'estimatedValueHistory',
+      'estimatedProfitHistory',
+      'roiHistory',
+      'marketConfidenceHistory',
+      'marketIntelligenceScoreHistory',
+      'riskLevelHistory',
+      'decisionHistory',
+      'dealGradeHistory'
+    ]) {
+      record[key] = trimArrayToMax(record[key], policy.maxHistoryLength);
+    }
   }
 
-  if (learningState.scanEvents.length > MAX_RECENT_EVENTS) {
-    learningState.scanEvents = learningState.scanEvents.slice(
-      learningState.scanEvents.length - MAX_RECENT_EVENTS
-    );
-  }
+  pruneMapByOldest(learningState.recordsByEbayItemId, policy.maxTrackedLearningRecords, {
+    timeKeys: ['lastSeenAt', 'firstSeenAt'],
+    idKeys: ['ebayItemId']
+  });
+  trimRecentEvents();
+  return policy;
 }
 
 function recordPrediction(input = {}) {
@@ -337,9 +386,7 @@ function recordPrediction(input = {}) {
   updateRecordMetadata(record, snapshot, observedAt);
 
   record.predictionSnapshots.push(predictionSnapshot);
-  if (record.predictionSnapshots.length > MAX_HISTORY_LENGTH) {
-    record.predictionSnapshots = record.predictionSnapshots.slice(record.predictionSnapshots.length - MAX_HISTORY_LENGTH);
-  }
+  record.predictionSnapshots = trimArrayToMax(record.predictionSnapshots, getRetentionPolicy().maxHistoryLength);
 
   pushHistory(record, 'priceHistory', snapshot.price, observedAt);
   pushHistory(record, 'scoreHistory', snapshot.score, observedAt);
@@ -379,6 +426,7 @@ function recordPrediction(input = {}) {
   });
 
   trimRecentEvents();
+  enforceRetentionPolicy();
 
   return {
     ok: true,
@@ -518,12 +566,11 @@ function recordListingOutcome(ebayItemId, outcome = {}) {
     accuracyLabels
   });
 
-  if (record.outcomes.length > MAX_HISTORY_LENGTH) {
-    record.outcomes = record.outcomes.slice(record.outcomes.length - MAX_HISTORY_LENGTH);
-  }
+  record.outcomes = trimArrayToMax(record.outcomes, getRetentionPolicy().maxHistoryLength);
 
   record.accuracyLabels = accuracyLabels;
   record.lastOutcomeAt = normalizedOutcome.outcomeAt;
+  enforceRetentionPolicy();
 
   return {
     ok: true,
@@ -592,7 +639,7 @@ function recordScanOutcome(observedListings = [], options = {}) {
   };
 
   learningState.scanEvents.push(scanEvent);
-  trimRecentEvents();
+  enforceRetentionPolicy();
 
   return {
     ok: true,
@@ -801,5 +848,6 @@ module.exports = {
   summarizeLearning,
   summarizeAccuracy,
   getLearningRecord,
-  getRecentPredictions
+  getRecentPredictions,
+  getRetentionPolicy
 };

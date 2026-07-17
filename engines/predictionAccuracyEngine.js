@@ -2,10 +2,18 @@
 
 const path = require('path');
 const stateStore = require('../utils/stateStore');
+const {
+  toPositiveInteger,
+  trimArrayToMax
+} = require('../utils/boundedRetention');
 
 const SOURCE = 'prediction_accuracy_engine';
 const STATE_VERSION = 1;
-const STATE_FILE = path.join(__dirname, '..', 'data', 'predictionAccuracy.json');
+const STATE_FILE = process.env.CARDHAWK_PREDICTION_ACCURACY_STATE_FILE ||
+  path.join(__dirname, '..', 'data', 'predictionAccuracy.json');
+const DEFAULT_MAX_TRACKED_PREDICTIONS = 5000;
+const DEFAULT_MAX_OUTCOME_HISTORY = 10000;
+const DEFAULT_MAX_OUTCOMES_PER_PREDICTION = 100;
 
 const recordsByPredictionId = new Map();
 const recordsByListingId = new Map();
@@ -18,10 +26,28 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function getRetentionPolicy() {
+  return {
+    maxTrackedPredictions: toPositiveInteger(
+      process.env.CARDHAWK_MAX_TRACKED_PREDICTIONS,
+      DEFAULT_MAX_TRACKED_PREDICTIONS
+    ),
+    maxOutcomeHistory: toPositiveInteger(
+      process.env.CARDHAWK_MAX_PREDICTION_OUTCOME_HISTORY,
+      DEFAULT_MAX_OUTCOME_HISTORY
+    ),
+    maxOutcomesPerPrediction: toPositiveInteger(
+      process.env.CARDHAWK_MAX_OUTCOMES_PER_PREDICTION,
+      DEFAULT_MAX_OUTCOMES_PER_PREDICTION
+    )
+  };
+}
+
 function createEmptyState() {
   return {
     version: STATE_VERSION,
     savedAt: null,
+    retentionPolicy: getRetentionPolicy(),
     predictionHistory: [],
     outcomeHistory: []
   };
@@ -370,6 +396,38 @@ function indexPrediction(prediction) {
   recordsByListingId.get(prediction.listingId).push(prediction.predictionId);
 }
 
+function rebuildIndexes() {
+  recordsByPredictionId.clear();
+  recordsByListingId.clear();
+
+  for (const prediction of predictionHistory) {
+    indexPrediction(prediction);
+  }
+}
+
+function enforceRetentionPolicy() {
+  const policy = getRetentionPolicy();
+
+  for (const prediction of predictionHistory) {
+    prediction.outcomes = trimArrayToMax(prediction.outcomes, policy.maxOutcomesPerPrediction);
+    prediction.latestOutcome = prediction.outcomes.length
+      ? prediction.outcomes[prediction.outcomes.length - 1]
+      : prediction.latestOutcome || null;
+    attachDerived(prediction);
+  }
+
+  const retainedPredictions = trimArrayToMax(predictionHistory, policy.maxTrackedPredictions);
+  predictionHistory.length = 0;
+  predictionHistory.push(...retainedPredictions);
+
+  const retainedOutcomes = trimArrayToMax(outcomeHistory, policy.maxOutcomeHistory);
+  outcomeHistory.length = 0;
+  outcomeHistory.push(...retainedOutcomes);
+
+  rebuildIndexes();
+  return policy;
+}
+
 function restoreState(state = {}) {
   recordsByPredictionId.clear();
   recordsByListingId.clear();
@@ -383,7 +441,6 @@ function restoreState(state = {}) {
     prediction.latestOutcome = prediction.latestOutcome || null;
     attachDerived(prediction);
     predictionHistory.push(prediction);
-    indexPrediction(prediction);
   }
 
   for (const outcome of asArray(state.outcomeHistory)) {
@@ -391,12 +448,15 @@ function restoreState(state = {}) {
       outcomeHistory.push(outcome);
     }
   }
+
+  enforceRetentionPolicy();
 }
 
 function getPersistableState() {
   return {
     version: STATE_VERSION,
     savedAt: nowIso(),
+    retentionPolicy: getRetentionPolicy(),
     predictionHistory,
     outcomeHistory
   };
@@ -428,6 +488,7 @@ function recordPrediction(input = {}) {
 
   indexPrediction(prediction);
   predictionHistory.push(prediction);
+  enforceRetentionPolicy();
   persistState();
 
   return {
@@ -481,6 +542,7 @@ function recordOutcome(identifier, outcome = {}) {
     listingId: record.listingId,
     ...normalizedOutcome
   });
+  enforceRetentionPolicy();
   persistState();
 
   return {
@@ -637,6 +699,7 @@ module.exports = {
   getRecentPredictions,
   summarizePredictionAccuracy,
   resetPredictionAccuracy,
+  getRetentionPolicy,
 
   summarizeGroup,
   summarizeGroups,

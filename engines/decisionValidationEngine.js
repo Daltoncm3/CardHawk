@@ -2,10 +2,21 @@
 
 const path = require('path');
 const stateStore = require('../utils/stateStore');
+const {
+  pruneMapByOldest,
+  toPositiveInteger,
+  trimArrayToMax
+} = require('../utils/boundedRetention');
 
 const SOURCE = 'decision_validation_engine';
 const STATE_VERSION = 1;
-const STATE_FILE = path.join(__dirname, '..', 'data', 'decisionValidation.json');
+const STATE_FILE = process.env.CARDHAWK_DECISION_VALIDATION_STATE_FILE ||
+  path.join(__dirname, '..', 'data', 'decisionValidation.json');
+const DEFAULT_MAX_TRACKED_DECISIONS = 5000;
+const DEFAULT_MAX_DECISION_HISTORY = 10000;
+const DEFAULT_MAX_OUTCOME_HISTORY = 10000;
+const DEFAULT_MAX_SNAPSHOTS_PER_DECISION = 100;
+const DEFAULT_MAX_OUTCOMES_PER_DECISION = 100;
 
 const recordsById = new Map();
 const decisionHistory = [];
@@ -37,10 +48,36 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function getRetentionPolicy() {
+  return {
+    maxTrackedDecisions: toPositiveInteger(
+      process.env.CARDHAWK_MAX_TRACKED_DECISIONS,
+      DEFAULT_MAX_TRACKED_DECISIONS
+    ),
+    maxDecisionHistory: toPositiveInteger(
+      process.env.CARDHAWK_MAX_DECISION_HISTORY,
+      DEFAULT_MAX_DECISION_HISTORY
+    ),
+    maxOutcomeHistory: toPositiveInteger(
+      process.env.CARDHAWK_MAX_DECISION_OUTCOME_HISTORY,
+      DEFAULT_MAX_OUTCOME_HISTORY
+    ),
+    maxSnapshotsPerDecision: toPositiveInteger(
+      process.env.CARDHAWK_MAX_SNAPSHOTS_PER_DECISION,
+      DEFAULT_MAX_SNAPSHOTS_PER_DECISION
+    ),
+    maxOutcomesPerDecision: toPositiveInteger(
+      process.env.CARDHAWK_MAX_OUTCOMES_PER_DECISION,
+      DEFAULT_MAX_OUTCOMES_PER_DECISION
+    )
+  };
+}
+
 function createEmptyState() {
   return {
     version: STATE_VERSION,
     savedAt: null,
+    retentionPolicy: getRetentionPolicy(),
     records: [],
     decisionHistory: [],
     outcomeHistory: []
@@ -381,6 +418,35 @@ function attachDerivedMetrics(record) {
   return record;
 }
 
+function enforceRetentionPolicy() {
+  const policy = getRetentionPolicy();
+
+  for (const record of recordsById.values()) {
+    record.decisionSnapshots = trimArrayToMax(record.decisionSnapshots, policy.maxSnapshotsPerDecision);
+    record.outcomeHistory = trimArrayToMax(record.outcomeHistory, policy.maxOutcomesPerDecision);
+    if (record.outcomeHistory.length) {
+      record.outcome = record.outcomeHistory[record.outcomeHistory.length - 1];
+      record.lastOutcomeAt = record.outcome.outcomeAt;
+    }
+    attachDerivedMetrics(record);
+  }
+
+  pruneMapByOldest(recordsById, policy.maxTrackedDecisions, {
+    timeKeys: ['lastRecordedAt', 'firstRecordedAt', 'timestamp'],
+    idKeys: ['listingId']
+  });
+
+  const retainedDecisions = trimArrayToMax(decisionHistory, policy.maxDecisionHistory);
+  decisionHistory.length = 0;
+  decisionHistory.push(...retainedDecisions);
+
+  const retainedOutcomes = trimArrayToMax(outcomeHistory, policy.maxOutcomeHistory);
+  outcomeHistory.length = 0;
+  outcomeHistory.push(...retainedOutcomes);
+
+  return policy;
+}
+
 function restoreState(state = {}) {
   recordsById.clear();
   decisionHistory.length = 0;
@@ -405,12 +471,15 @@ function restoreState(state = {}) {
       outcomeHistory.push(outcome);
     }
   }
+
+  enforceRetentionPolicy();
 }
 
 function getPersistableState() {
   return {
     version: STATE_VERSION,
     savedAt: nowIso(),
+    retentionPolicy: getRetentionPolicy(),
     records: Array.from(recordsById.values()),
     decisionHistory,
     outcomeHistory
@@ -460,6 +529,7 @@ function recordDecision(input = {}) {
 
   recordsById.set(snapshot.listingId, attachDerivedMetrics(record));
   decisionHistory.push(snapshot);
+  enforceRetentionPolicy();
   persistState();
 
   return {
@@ -515,6 +585,7 @@ function recordOutcome(listingId, outcome = {}) {
   });
 
   recordsById.set(id, attachDerivedMetrics(record));
+  enforceRetentionPolicy();
   persistState();
 
   return {
@@ -669,7 +740,8 @@ module.exports = {
   summarizeDecisionValidation,
   getDecisionRecord,
   getRecentDecisions,
-  resetDecisionValidation
+  resetDecisionValidation,
+  getRetentionPolicy
 };
 
 loadPersistedState();
