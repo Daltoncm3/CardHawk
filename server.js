@@ -29,6 +29,7 @@ const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const listingCompaction = require("./utils/listingCompaction");
 const appStore = require("./utils/appStore");
+const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
 const shadowModeLogger = require("./utils/shadowModeLogger");
@@ -141,6 +142,10 @@ let store = appStore.createDefaultStore();
 let canonicalSoldEvidenceStore = null;
 let shadowModeDecisionIntelligenceEvaluator = null;
 let shadowModeDecisionLogger = shadowModeLogger.logShadowModeDecision;
+const persistenceCoordinator = createPersistenceCoordinator({
+  persist: () => appStore.saveStore(DATA_FILE, store),
+  idPrefix: 'scout-scan-persistence'
+});
 
 function isShadowModeEnabled(env = process.env) {
   return String(env.CARDHAWK_SHADOW_MODE_ENABLED || "false").toLowerCase() === "true";
@@ -768,8 +773,13 @@ function loadStore() {
   }
 }
 
-function saveStore() {
-  appStore.saveStore(DATA_FILE, store);
+function saveStore(options = {}) {
+  if (options.immediate) {
+    persistenceCoordinator.markStateDirty(options.reason || 'immediate_store_save');
+    return persistenceCoordinator.emergencyFlush(options.reason || 'immediate_store_save');
+  }
+
+  return appStore.saveStore(DATA_FILE, store);
 }
 
 function requireLogin(req, res, next) {
@@ -2713,12 +2723,12 @@ function saveScoutedListing(listing, query, lane) {
           newAlert.status = "notified";
           newAlert.notifiedAt = new Date().toISOString();
           newAlert.notificationResult = result;
-          saveStore();
+          saveStore({ immediate: true, reason: 'notification_result_saved' });
         }
       })
       .catch(error => {
         newAlert.notificationError = error.message;
-        saveStore();
+        saveStore({ immediate: true, reason: 'notification_error_saved' });
         console.error("Notification alert failed:", error.message);
       });
   } else if (!gate.passed) {
@@ -2760,6 +2770,7 @@ const scoutScanner = createScoutScanner({
   learningEngine,
   listingIdentity,
   parseCardTitle,
+  persistenceCoordinator,
   predictionAccuracyEngine,
   saveScoutedListing,
   saveStore,

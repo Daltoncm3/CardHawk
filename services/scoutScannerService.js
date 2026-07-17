@@ -10,6 +10,7 @@ function createScoutScanner(dependencies = {}) {
     learningEngine,
     listingIdentity,
     parseCardTitle,
+    persistenceCoordinator,
     predictionAccuracyEngine,
     saveScoutedListing,
     saveStore,
@@ -38,11 +39,20 @@ function createScoutScanner(dependencies = {}) {
       systemHealth.markScanSkipped(skippedScan, skippedScan.error);
       store.scans.unshift(skippedScan);
       store.scans = store.scans.slice(0, 100);
-      saveStore();
+      if (persistenceCoordinator) {
+        persistenceCoordinator.markStateDirty?.('scan_skipped');
+        persistenceCoordinator.emergencyFlush?.('scan_skipped');
+      } else {
+        saveStore();
+      }
       return skippedScan;
     }
 
     scanInProgress = true;
+    persistenceCoordinator?.beginPersistenceBatch?.({
+      source,
+      reason: 'scout_scan_started'
+    });
 
     const scan = {
       id: Date.now().toString(),
@@ -82,6 +92,7 @@ function createScoutScanner(dependencies = {}) {
 
             for (const listing of results) {
               const savedListing = saveScoutedListing(listing, query, laneKey);
+              persistenceCoordinator?.markStateDirty?.('scouted_listing_saved');
               observedListings.push(savedListing);
             }
 
@@ -240,7 +251,12 @@ function createScoutScanner(dependencies = {}) {
         console.warn('Learning Engine recordScanOutcome failed:', learningError.message);
       }
       systemHealth.finishScan(scan);
-      saveStore();
+      if (persistenceCoordinator) {
+        persistenceCoordinator.markStateDirty?.('scan_finished');
+        persistenceCoordinator.flushPersistenceBatch?.('scout_scan_finished');
+      } else {
+        saveStore();
+      }
       scanInProgress = false;
     }
 
