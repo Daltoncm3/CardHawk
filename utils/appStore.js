@@ -1,6 +1,9 @@
 'use strict';
 
 const listingIdentity = require('./listingIdentity');
+const {
+  compactStoreListings
+} = require('./listingCompaction');
 const { loadJsonState, saveJsonState } = require('./stateStore');
 
 function createDefaultStore() {
@@ -19,7 +22,7 @@ function createDefaultStore() {
 
 function normalizeStore(loaded = {}) {
   return {
-    listings: loaded.listings || {},
+    listings: compactStoreListings(loaded.listings || {}),
     alerts: loaded.alerts || [],
     scans: loaded.scans || [],
     rejections: loaded.rejections || [],
@@ -36,7 +39,7 @@ function loadStore(filePath, fallbackStore = createDefaultStore()) {
 }
 
 function saveStore(filePath, store = createDefaultStore()) {
-  return saveJsonState(filePath, store);
+  return saveJsonState(filePath, normalizeStore(store));
 }
 
 function getStoredListingById(store, id) {

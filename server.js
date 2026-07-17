@@ -27,6 +27,7 @@ const systemHealth = require("./engines/systemHealth");
 const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
+const listingCompaction = require("./utils/listingCompaction");
 const appStore = require("./utils/appStore");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
@@ -2663,7 +2664,7 @@ function saveScoutedListing(listing, query, lane) {
   console.warn("Learning Engine recordPrediction failed:", learningError.message);
 }
 
-  store.listings[listing.ebayItemId] = saved;
+  store.listings[listing.ebayItemId] = listingCompaction.compactRetainedListing(saved);
 
   if (!saved.alertCreated && gate.passed) {
     const newAlert = {
