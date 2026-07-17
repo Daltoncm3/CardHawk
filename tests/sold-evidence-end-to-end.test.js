@@ -205,6 +205,27 @@ function scoreWithStore(store) {
   }
 }
 
+function withFixedDate(isoDate, callback) {
+  const RealDate = Date;
+  const fixedTime = new RealDate(isoDate).getTime();
+
+  global.Date = class FixedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixedTime]));
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  };
+
+  try {
+    return callback();
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
 test('Anthony Hernandez sold evidence pilot imports, queries, and surfaces canonical evidence end-to-end', () => {
   const { importResult, store } = buildPilotStore();
   const directQuery = soldEvidenceService.querySoldEvidence(
@@ -213,7 +234,7 @@ test('Anthony Hernandez sold evidence pilot imports, queries, and surfaces canon
     { trueSoldOnly: true },
     { asOf: fixture.asOf }
   );
-  const runtimeScoring = scoreWithStore(store);
+  const runtimeScoring = withFixedDate(fixture.asOf, () => scoreWithStore(store));
   const canonical = runtimeScoring.marketIntelligenceData.canonicalSoldEvidence;
 
   assert.equal(importResult.summary.received, 4);
