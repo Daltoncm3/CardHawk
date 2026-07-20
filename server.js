@@ -29,6 +29,7 @@ const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const listingCompaction = require("./utils/listingCompaction");
 const activeListingRetention = require("./utils/activeListingRetention");
+const scanUniverseSnapshot = require("./utils/scanUniverseSnapshot");
 const appStore = require("./utils/appStore");
 const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
 const configReadiness = require("./utils/configReadiness");
@@ -1209,10 +1210,14 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
   };
 }
 
-function scoreListing(listing, compUniverse = []) {
+function scoreListing(listing, compUniverse = [], options = {}) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
+  const scoringUniverse = scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || compUniverse);
+  const soldSalesUniverse = options.scanUniverseSnapshot || options.soldSalesUniverse
+    ? scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || options.soldSalesUniverse)
+    : Object.values(store.listings);
 
-  const compData = compEngine.evaluateListing(listing, compUniverse, {
+  const compData = compEngine.evaluateListing(listing, scoringUniverse, {
     fallbackEstimator: estimateMarketValue
   });
 
@@ -1221,7 +1226,7 @@ function scoreListing(listing, compUniverse = []) {
 
  const soldSalesSummary = soldSalesEngine.summarizeSoldSales(
     { ...listing, parsed },
-    Object.values(store.listings)
+    soldSalesUniverse
 );
 
 const marketData = marketValueEngine.calculateMarketValue({
@@ -1255,7 +1260,7 @@ try {
   salesVelocity = "";
 }
 
-  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, compUniverse);
+  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, scoringUniverse);
 
  const estimatedValue = marketData.source === "insufficient_evidence" ? 0 : (marketData.marketValue || compData.marketValue);
 
@@ -2570,8 +2575,11 @@ function dealGate(listing = {}) {
   };
 }
 
-function saveScoutedListing(listing, query, lane) {
-  const scoring = scoreListing(listing, Object.values(store.listings));
+function saveScoutedListing(listing, query, lane, context = {}) {
+  const universe = context.scanUniverseSnapshot || Object.values(store.listings);
+  const scoring = scoreListing(listing, universe, {
+    scanUniverseSnapshot: context.scanUniverseSnapshot
+  });
   const detectedLane = detectLane(listing.title, lane);
   const now = new Date().toISOString();
   const existing = store.listings[listing.ebayItemId];
@@ -2791,11 +2799,16 @@ function runScoutScan(source = "automatic") {
 }
 
 function rescoreExistingData() {
-  const universe = Object.values(store.listings);
+  const universeSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot(store.listings, {
+    snapshotId: 'startup-rescore'
+  });
+  const universe = scanUniverseSnapshot.getScanUniverseListings(universeSnapshot);
   for (const item of universe) {
     item.parsed = parseCardTitle(item.title);
     item.lane = item.lane || detectLane(item.title);
-    const scoring = scoreListing(item, universe);
+    const scoring = scoreListing(item, universeSnapshot, {
+      scanUniverseSnapshot: universeSnapshot
+    });
     item.score = scoring.score;
     item.estimatedValue = scoring.estimatedValue;
     item.estimatedProfit = scoring.estimatedProfit;
@@ -3199,9 +3212,14 @@ app.get("/search", async (req, res) => {
     const query = req.query.q || "";
     const selectedLane = req.query.lane || "baseball";
     const results = query ? await activeMarketplace.search(query, 12, { parseCardTitle }) : [];
+    const universeSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot(store.listings, {
+      snapshotId: 'manual-search'
+    });
 
     const scored = results.map(item => {
-      const scoring = scoreListing(item, Object.values(store.listings));
+      const scoring = scoreListing(item, universeSnapshot, {
+        scanUniverseSnapshot: universeSnapshot
+      });
       const lane = detectLane(item.title, selectedLane);
       const full = { ...item, ...scoring, lane };
       full.dealGate = dealGate(full);
@@ -3284,12 +3302,16 @@ app.get("/api/admin/review-workspaces/export", (req, res) => {
 app.get("/api/comps/listing/:itemId", (req, res) => {
   const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
+  const universeSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot(store.listings, {
+    snapshotId: `comps-${req.params.itemId}`
+  });
+  const universe = scanUniverseSnapshot.getScanUniverseListings(universeSnapshot);
 
-  const compData = compEngine.evaluateListing(listing, Object.values(store.listings), {
+  const compData = compEngine.evaluateListing(listing, universe, {
     fallbackEstimator: estimateMarketValue
   });
 
-  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, Object.values(store.listings));
+  const confidenceData = confidenceEngine.evaluateConfidence(listing, compData, universe);
   const qualityData = qualityEngine.evaluateQuality({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source });
   const dealGrade = gradingEngine.gradeDeal({ ...listing, compData, marketConfidence: confidenceData.confidence, confidenceReasons: confidenceData.reasons, compCount: compData.compCount, compSource: compData.source, qualityData, investmentQuality: qualityData.investmentQuality });
 
@@ -3315,8 +3337,13 @@ app.get("/api/comps/listing/:itemId", (req, res) => {
 app.get("/api/grades/listing/:itemId", (req, res) => {
   const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
+  const universeSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot(store.listings, {
+    snapshotId: `grades-${req.params.itemId}`
+  });
 
-  const scoring = scoreListing(listing, Object.values(store.listings));
+  const scoring = scoreListing(listing, universeSnapshot, {
+    scanUniverseSnapshot: universeSnapshot
+  });
   const displayListing = { ...listing, ...scoring, dealGate: listing.dealGate || dealGate({ ...listing, ...scoring }) };
   res.json({
     listing: {
@@ -3336,8 +3363,13 @@ app.get("/api/grades/listing/:itemId", (req, res) => {
 app.get("/api/quality/listing/:itemId", (req, res) => {
   const listing = getStoredListingById(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
+  const universeSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot(store.listings, {
+    snapshotId: `quality-${req.params.itemId}`
+  });
 
-  const scoring = scoreListing(listing, Object.values(store.listings));
+  const scoring = scoreListing(listing, universeSnapshot, {
+    scanUniverseSnapshot: universeSnapshot
+  });
   const displayListing = { ...listing, ...scoring, dealGate: listing.dealGate || dealGate({ ...listing, ...scoring }) };
   res.json({
     listing: {

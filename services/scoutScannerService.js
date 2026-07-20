@@ -1,8 +1,11 @@
 'use strict';
 
+const scanUniverseSnapshot = require('../utils/scanUniverseSnapshot');
+
 function createScoutScanner(dependencies = {}) {
   const {
     activeMarketplace,
+    createScanUniverseSnapshot = scanUniverseSnapshot.createScanUniverseSnapshot,
     decisionValidationEngine,
     getStore,
     historyEngine,
@@ -74,6 +77,10 @@ function createScoutScanner(dependencies = {}) {
 
     const alertsBefore = store.alerts.length;
     const observedListings = [];
+    const scanUniverse = createScanUniverseSnapshot(store.listings || {}, {
+      snapshotId: scan.id,
+      createdAt: scan.startedAt
+    });
     const scanStartedMs = Date.now();
 
     try {
@@ -91,7 +98,9 @@ function createScoutScanner(dependencies = {}) {
             scan.listingsFound += results.length;
 
             for (const listing of results) {
-              const savedListing = saveScoutedListing(listing, query, laneKey);
+              const savedListing = saveScoutedListing(listing, query, laneKey, {
+                scanUniverseSnapshot: scanUniverse
+              });
               persistenceCoordinator?.markStateDirty?.('scouted_listing_saved');
               observedListings.push(savedListing);
             }
