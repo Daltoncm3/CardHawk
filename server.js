@@ -28,6 +28,7 @@ const engineMetricsEngine = require("./engines/engineMetricsEngine");
 const marketplaceRegistry = require("./marketplaces/marketplaceRegistry");
 const listingIdentity = require("./utils/listingIdentity");
 const listingCompaction = require("./utils/listingCompaction");
+const activeListingRetention = require("./utils/activeListingRetention");
 const appStore = require("./utils/appStore");
 const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
 const configReadiness = require("./utils/configReadiness");
@@ -780,6 +781,12 @@ function saveStore(options = {}) {
   }
 
   return appStore.saveStore(DATA_FILE, store);
+}
+
+function enforceResidentListingRetention() {
+  const retention = activeListingRetention.enforceActiveListingRetention(store.listings || {});
+  store.listings = retention.residentListings;
+  return retention;
 }
 
 function requireLogin(req, res, next) {
@@ -2675,6 +2682,7 @@ function saveScoutedListing(listing, query, lane) {
 }
 
   store.listings[listing.ebayItemId] = listingCompaction.compactRetainedListing(saved);
+  enforceResidentListingRetention();
 
   if (!saved.alertCreated && gate.passed) {
     const newAlert = {

@@ -4,6 +4,9 @@ const listingIdentity = require('./listingIdentity');
 const {
   compactStoreListings
 } = require('./listingCompaction');
+const {
+  enforceActiveListingRetention
+} = require('./activeListingRetention');
 const { loadJsonState, saveJsonState } = require('./stateStore');
 
 function createDefaultStore() {
@@ -20,9 +23,17 @@ function createDefaultStore() {
   };
 }
 
-function normalizeStore(loaded = {}) {
+function normalizeStore(loaded = {}, options = {}) {
+  const compactListings = compactStoreListings(loaded.listings || {});
+  const retention = options.applyActiveListingRetention === false
+    ? { residentListings: compactListings }
+    : enforceActiveListingRetention(compactListings, options.activeListingRetentionPolicy, {
+        env: options.env,
+        now: options.now
+      });
+
   return {
-    listings: compactStoreListings(loaded.listings || {}),
+    listings: retention.residentListings,
     alerts: loaded.alerts || [],
     scans: loaded.scans || [],
     rejections: loaded.rejections || [],
@@ -34,12 +45,12 @@ function normalizeStore(loaded = {}) {
   };
 }
 
-function loadStore(filePath, fallbackStore = createDefaultStore()) {
-  return normalizeStore(loadJsonState(filePath, fallbackStore));
+function loadStore(filePath, fallbackStore = createDefaultStore(), options = {}) {
+  return normalizeStore(loadJsonState(filePath, fallbackStore), options);
 }
 
-function saveStore(filePath, store = createDefaultStore()) {
-  return saveJsonState(filePath, normalizeStore(store));
+function saveStore(filePath, store = createDefaultStore(), options = {}) {
+  return saveJsonState(filePath, normalizeStore(store, options));
 }
 
 function getStoredListingById(store, id) {
