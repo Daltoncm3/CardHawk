@@ -9,6 +9,7 @@ const test = require('node:test');
 
 const appStore = require('../utils/appStore');
 const notificationEngine = require('../engines/notificationEngine');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   buildListingCompactionSummary,
   compactMarketplaceListing,
@@ -263,6 +264,41 @@ test('compaction is deterministic, idempotent, and materially smaller for raw le
   assert.equal(summary.transientFieldsRemoved.includes('response'), true);
   assert.equal(footprint.compactSerializedBytes < footprint.originalSerializedBytes, true);
   assert.equal(footprint.reductionRatio > 0.45, true);
+});
+
+test('already compact retained listings use the idempotent fast-path without JSON cloning', () => {
+  const compact = compactRetainedListing(legacyListing());
+
+  serializationInstrumentation.resetSerializationInstrumentation();
+  serializationInstrumentation.beginSerializationScan({ scanId: 'compact-fast-path' });
+  const repeated = compactRetainedListing(compact);
+  const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+  assert.equal(repeated, compact);
+  assert.equal(JSON.stringify(repeated), JSON.stringify(compact));
+  assert.equal(summary.totalSerializations, 0);
+  assert.equal(summary.groups.ListingCompaction, undefined);
+});
+
+test('transient fields bypass the fast-path and still produce canonical persisted output', () => {
+  const compact = compactRetainedListing(legacyListing());
+  const withTransientField = {
+    ...compact,
+    request: {
+      query: 'should be removed',
+      headers: { authorization: 'Bearer do-not-store' }
+    }
+  };
+
+  serializationInstrumentation.resetSerializationInstrumentation();
+  serializationInstrumentation.beginSerializationScan({ scanId: 'compact-transient-cleanup' });
+  const cleaned = compactRetainedListing(withTransientField);
+  const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+  assert.notEqual(cleaned, withTransientField);
+  assert.equal(cleaned.request, undefined);
+  assert.equal(JSON.stringify(cleaned), JSON.stringify(compact));
+  assert.equal(summary.groups.ListingCompaction.writes > 0, true);
 });
 
 test('compactMarketplaceListing supports legacy marketplace objects with raw-only fields', () => {

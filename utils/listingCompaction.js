@@ -77,6 +77,73 @@ function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(Object(value), key);
 }
 
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function hasTransientRetainedFields(listing = {}) {
+  return TRANSIENT_RETAINED_KEYS.some((field) => hasOwn(listing, field));
+}
+
+function hasCanonicalCoreFields(listing = {}) {
+  return [
+    'listingId',
+    'marketplace',
+    'marketplaceListingId',
+    'marketplaceLabel',
+    'ebayItemId',
+    'title',
+    'currency',
+    'condition',
+    'url',
+    'image',
+    'sellerUsername'
+  ].every((field) => typeof listing[field] === 'string') &&
+    isNonEmptyString(listing.listingId) &&
+    isNonEmptyString(listing.marketplace) &&
+    isNonEmptyString(listing.marketplaceListingId) &&
+    isNonEmptyString(listing.marketplaceLabel) &&
+    isNonEmptyString(listing.ebayItemId) &&
+    isNonEmptyString(listing.title) &&
+    Number.isFinite(listing.price) &&
+    Number.isFinite(listing.shipping) &&
+    Number.isFinite(listing.totalCost) &&
+    Number.isFinite(listing.sellerFeedbackPercentage) &&
+    Number.isFinite(listing.sellerFeedbackScore) &&
+    Array.isArray(listing.buyingOptions) &&
+    (listing.itemEndDate === null || typeof listing.itemEndDate === 'string') &&
+    isObject(listing.parsed);
+}
+
+function hasCanonicalMarketplaceProvenance(listing = {}) {
+  const provenance = listing.marketplaceProvenance;
+  return isObject(provenance) &&
+    provenance.source === LISTING_COMPACTION_SOURCE &&
+    provenance.marketplace === listing.marketplace &&
+    provenance.marketplaceLabel === listing.marketplaceLabel &&
+    provenance.marketplaceListingId === listing.marketplaceListingId &&
+    provenance.url === listing.url &&
+    provenance.rawPayloadRemoved === true &&
+    hasOwn(provenance, 'rawPayloadSummary');
+}
+
+function hasCanonicalCompactionMarker(listing = {}) {
+  const marker = listing.listingCompaction;
+  return isObject(marker) &&
+    marker.source === LISTING_COMPACTION_SOURCE &&
+    marker.schemaVersion === LISTING_COMPACTION_SCHEMA_VERSION &&
+    marker.compacted === true &&
+    marker.rawPayloadRetained === false;
+}
+
+function isAlreadyCompactRetainedListing(listing = {}) {
+  return isObject(listing) &&
+    !hasTransientRetainedFields(listing) &&
+    hasCanonicalCoreFields(listing) &&
+    hasCanonicalMarketplaceProvenance(listing) &&
+    hasCanonicalCompactionMarker(listing);
+}
+
 function firstPresent(sources = [], keys = [], fallback = undefined) {
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;
@@ -189,6 +256,7 @@ function compactMarketplaceListing(listing = {}) {
 
 function compactRetainedListing(listing = {}) {
   if (!listing || typeof listing !== 'object') return listing;
+  if (isAlreadyCompactRetainedListing(listing)) return listing;
 
   const compact = {
     ...removeTransientRetainedFields(listing),
