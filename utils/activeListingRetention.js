@@ -1,6 +1,7 @@
 'use strict';
 
 const listingCompaction = require('./listingCompaction');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 const ACTIVE_LISTING_RETENTION_SOURCE = 'active_listing_retention';
 const ACTIVE_LISTING_RETENTION_SCHEMA_VERSION = '1.0.0';
@@ -22,7 +23,12 @@ function isObject(value) {
 
 function clone(value) {
   if (!isObject(value) && !Array.isArray(value)) return value;
-  return JSON.parse(JSON.stringify(value));
+  return serializationInstrumentation.instrumentJsonClone(value, {
+    sourceFile: 'utils/activeListingRetention.js',
+    functionName: 'clone',
+    serializationType: 'json_clone_stringify',
+    group: 'ActiveListingRetention'
+  });
 }
 
 function toPositiveInteger(value, fallback) {

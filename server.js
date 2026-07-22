@@ -32,6 +32,7 @@ const activeListingRetention = require("./utils/activeListingRetention");
 const scanUniverseSnapshot = require("./utils/scanUniverseSnapshot");
 const appStore = require("./utils/appStore");
 const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
+const serializationInstrumentation = require("./utils/serializationInstrumentation");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
 const shadowModeLogger = require("./utils/shadowModeLogger");
@@ -3196,11 +3197,16 @@ app.get("/validation", (req, res) => {
 
     res.send(layout("CardHawk Validation", `
       <h2>Validation</h2>
-      <pre>${escapeHtml(JSON.stringify({
+      <pre>${escapeHtml(serializationInstrumentation.instrumentJsonStringify({
         calibrationReport,
         validationReport,
         predictionAccuracyReport
-      }, null, 2))}</pre>
+      }, null, 2, {
+        sourceFile: "server.js",
+        functionName: "validationDashboard",
+        serializationType: "json_dashboard_payload",
+        group: "ServerRoutes"
+      }))}</pre>
     `));
   } catch (error) {
     res.status(500).send(layout("Validation Error", `<pre>${escapeHtml(error.message)}</pre>`));
@@ -3684,7 +3690,12 @@ app.get("/health", (req, res) => {
           <td>${escapeHtml(engine.name)}</td>
           <td class="${healthClass(engine.status)}">${escapeHtml(engine.status)}</td>
           <td>${escapeHtml(shortDate(engine.updatedAt))}</td>
-          <td><pre style="white-space:pre-wrap;margin:0;color:#cbd5e1;">${escapeHtml(JSON.stringify(engine.details || {}, null, 2))}</pre></td>
+          <td><pre style="white-space:pre-wrap;margin:0;color:#cbd5e1;">${escapeHtml(serializationInstrumentation.instrumentJsonStringify(engine.details || {}, null, 2, {
+            sourceFile: "server.js",
+            functionName: "healthDashboard",
+            serializationType: "json_dashboard_payload",
+            group: "ServerRoutes"
+          }))}</pre></td>
         </tr>
       `).join("")}
     </table>

@@ -1,6 +1,7 @@
 'use strict';
 
 const listingIdentity = require('./listingIdentity');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 const LISTING_COMPACTION_SOURCE = 'listing_compaction';
 const LISTING_COMPACTION_SCHEMA_VERSION = '1.0.0';
@@ -50,7 +51,12 @@ const REQUIRED_COMPACT_LISTING_FIELDS = Object.freeze([
 
 function clone(value) {
   if (!value || typeof value !== 'object') return value;
-  return JSON.parse(JSON.stringify(value));
+  return serializationInstrumentation.instrumentJsonClone(value, {
+    sourceFile: 'utils/listingCompaction.js',
+    functionName: 'clone',
+    serializationType: 'json_clone_stringify',
+    group: 'ListingCompaction'
+  });
 }
 
 function toNumber(value, fallback = 0) {
@@ -226,7 +232,13 @@ function validateCompactListing(listing = {}) {
 }
 
 function serializedBytes(value = {}) {
-  return Buffer.byteLength(JSON.stringify(value || {}), 'utf8');
+  const serialized = serializationInstrumentation.instrumentJsonStringify(value || {}, undefined, undefined, {
+    sourceFile: 'utils/listingCompaction.js',
+    functionName: 'serializedBytes',
+    serializationType: 'json_size_estimate',
+    group: 'ListingCompaction'
+  });
+  return Buffer.byteLength(serialized, 'utf8');
 }
 
 function estimateListingFootprint(listing = {}) {

@@ -2,6 +2,7 @@
 
 const path = require('path');
 const stateStore = require('../utils/stateStore');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   pruneMapByOldest,
   toPositiveInteger,
@@ -488,7 +489,9 @@ function getPersistableState() {
 
 function persistState() {
   try {
-    stateStore.saveJsonState(STATE_FILE, getPersistableState());
+    serializationInstrumentation.withSerializationGroup('DecisionValidation', () =>
+      stateStore.saveJsonState(STATE_FILE, getPersistableState())
+    );
   } catch (error) {
     console.warn('Decision Validation Engine failed to persist state:', error.message);
   }

@@ -1,5 +1,6 @@
 'use strict';
 
+const defaultSerializationInstrumentation = require('../utils/serializationInstrumentation');
 const scanUniverseSnapshot = require('../utils/scanUniverseSnapshot');
 
 function createScoutScanner(dependencies = {}) {
@@ -17,6 +18,7 @@ function createScoutScanner(dependencies = {}) {
     predictionAccuracyEngine,
     saveScoutedListing,
     saveStore,
+    serializationInstrumentation = defaultSerializationInstrumentation,
     sleep,
     systemHealth
   } = dependencies;
@@ -39,25 +41,38 @@ function createScoutScanner(dependencies = {}) {
         error: 'Another scout scan is already running.'
       };
 
-      systemHealth.markScanSkipped(skippedScan, skippedScan.error);
-      store.scans.unshift(skippedScan);
-      store.scans = store.scans.slice(0, 100);
-      if (persistenceCoordinator) {
-        persistenceCoordinator.markStateDirty?.('scan_skipped');
-        persistenceCoordinator.emergencyFlush?.('scan_skipped');
-      } else {
-        saveStore();
+      serializationInstrumentation.beginSerializationScan?.({
+        scanId: skippedScan.id,
+        source,
+        status: 'skipped'
+      });
+
+      try {
+        systemHealth.markScanSkipped(skippedScan, skippedScan.error);
+        store.scans.unshift(skippedScan);
+        store.scans = store.scans.slice(0, 100);
+        if (persistenceCoordinator) {
+          persistenceCoordinator.markStateDirty?.('scan_skipped');
+          persistenceCoordinator.emergencyFlush?.('scan_skipped');
+        } else {
+          saveStore();
+        }
+      } finally {
+        serializationInstrumentation.endSerializationScan?.({
+          status: skippedScan.status
+        });
       }
       return skippedScan;
     }
 
     scanInProgress = true;
+    let scan = null;
     persistenceCoordinator?.beginPersistenceBatch?.({
       source,
       reason: 'scout_scan_started'
     });
 
-    const scan = {
+    scan = {
       id: Date.now().toString(),
       source,
       startedAt: new Date().toISOString(),
@@ -71,6 +86,12 @@ function createScoutScanner(dependencies = {}) {
       queryDelayMs: activeMarketplace.config.searchDelayMs,
       laneDelayMs: activeMarketplace.config.laneDelayMs
     };
+
+    serializationInstrumentation.beginSerializationScan?.({
+      scanId: scan.id,
+      source,
+      status: scan.status
+    });
 
     systemHealth.startScan(scan);
     systemHealth.setEngine('scout', 'running', { source, scanId: scan.id });
@@ -267,6 +288,10 @@ function createScoutScanner(dependencies = {}) {
         saveStore();
       }
       scanInProgress = false;
+      serializationInstrumentation.endSerializationScan?.({
+        scanId: scan.id,
+        status: scan.status
+      });
     }
 
     return scan;

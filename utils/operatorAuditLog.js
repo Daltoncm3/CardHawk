@@ -2,6 +2,7 @@
 
 const path = require('path');
 const stateStore = require('./stateStore');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 const AUDIT_LOG_FILE = path.join(__dirname, '..', 'data', 'operatorAuditLog.json');
 const MAX_AUDIT_EVENTS = 1000;
@@ -48,14 +49,18 @@ function normalizeAuditLog(log = {}) {
 }
 
 function loadAuditLog(filePath = AUDIT_LOG_FILE) {
-  return normalizeAuditLog(stateStore.loadJsonState(filePath, createEmptyAuditLog()));
+  return serializationInstrumentation.withSerializationGroup('OperatorAuditLog', () =>
+    normalizeAuditLog(stateStore.loadJsonState(filePath, createEmptyAuditLog()))
+  );
 }
 
 function saveAuditLog(log, filePath = AUDIT_LOG_FILE) {
   const normalized = normalizeAuditLog(log);
   normalized.updatedAt = nowIso();
   normalized.events = normalized.events.slice(0, MAX_AUDIT_EVENTS);
-  stateStore.saveJsonState(filePath, normalized);
+  serializationInstrumentation.withSerializationGroup('OperatorAuditLog', () =>
+    stateStore.saveJsonState(filePath, normalized)
+  );
   return normalized;
 }
 

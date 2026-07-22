@@ -2,6 +2,7 @@
 
 const path = require('path');
 const stateStore = require('../utils/stateStore');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   toPositiveInteger,
   trimArrayToMax
@@ -464,7 +465,9 @@ function getPersistableState() {
 
 function persistState() {
   try {
-    stateStore.saveJsonState(STATE_FILE, getPersistableState());
+    serializationInstrumentation.withSerializationGroup('PredictionAccuracy', () =>
+      stateStore.saveJsonState(STATE_FILE, getPersistableState())
+    );
   } catch (error) {
     console.warn('Prediction Accuracy Engine failed to persist state:', error.message);
   }

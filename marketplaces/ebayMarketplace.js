@@ -1,5 +1,7 @@
 'use strict';
 
+const serializationInstrumentation = require("../utils/serializationInstrumentation");
+
 const config = {
   searchDelayMs: Number(process.env.EBAY_SEARCH_DELAY_MS || 2500),
   laneDelayMs: Number(process.env.EBAY_LANE_DELAY_MS || 6000),
@@ -61,7 +63,12 @@ async function getToken() {
   });
 
   const data = await response.json();
-  if (!response.ok) throw new Error(JSON.stringify(data));
+  if (!response.ok) throw new Error(serializationInstrumentation.instrumentJsonStringify(data, undefined, undefined, {
+    sourceFile: "marketplaces/ebayMarketplace.js",
+    functionName: "getToken",
+    serializationType: "json_error_payload",
+    group: "EbayMarketplace"
+  }));
 
   ebayTokenCache = {
     token: data.access_token,
@@ -118,7 +125,12 @@ async function search(query, limit = 20, options = {}) {
   });
 
   const data = await response.json();
-  if (!response.ok) throw new Error(JSON.stringify(data));
+  if (!response.ok) throw new Error(serializationInstrumentation.instrumentJsonStringify(data, undefined, undefined, {
+    sourceFile: "marketplaces/ebayMarketplace.js",
+    functionName: "search",
+    serializationType: "json_error_payload",
+    group: "EbayMarketplace"
+  }));
 
   return (data.itemSummaries || []).map(item => normalizeItem(item, options));
 }

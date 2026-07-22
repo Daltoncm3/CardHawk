@@ -5,6 +5,7 @@ const {
   toPositiveInteger,
   trimArrayToMax
 } = require('../utils/boundedRetention');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 
 const learningState = {
   recordsByEbayItemId: new Map(),
@@ -79,7 +80,12 @@ function clonePlain(value) {
   if (!value || typeof value !== 'object') return value;
 
   try {
-    return JSON.parse(JSON.stringify(value));
+    return serializationInstrumentation.instrumentJsonClone(value, {
+      sourceFile: 'engines/learningEngine.js',
+      functionName: 'clonePlain',
+      serializationType: 'json_clone_stringify',
+      group: 'Learning'
+    });
   } catch (error) {
     return {};
   }

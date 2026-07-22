@@ -8,6 +8,7 @@ const {
   enforceActiveListingRetention
 } = require('./activeListingRetention');
 const { loadJsonState, saveJsonState } = require('./stateStore');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 function createDefaultStore() {
   return {
@@ -46,11 +47,15 @@ function normalizeStore(loaded = {}, options = {}) {
 }
 
 function loadStore(filePath, fallbackStore = createDefaultStore(), options = {}) {
-  return normalizeStore(loadJsonState(filePath, fallbackStore), options);
+  return serializationInstrumentation.withSerializationGroup('AppStore', () =>
+    normalizeStore(loadJsonState(filePath, fallbackStore), options)
+  );
 }
 
 function saveStore(filePath, store = createDefaultStore(), options = {}) {
-  return saveJsonState(filePath, normalizeStore(store, options));
+  return serializationInstrumentation.withSerializationGroup('AppStore', () =>
+    saveJsonState(filePath, normalizeStore(store, options))
+  );
 }
 
 function getStoredListingById(store, id) {

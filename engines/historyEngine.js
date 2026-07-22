@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const stateStore = require("../utils/stateStore");
 const listingIdentity = require("../utils/listingIdentity");
+const serializationInstrumentation = require("../utils/serializationInstrumentation");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DEFAULT_HISTORY_FILE = path.join(DATA_DIR, "listingHistory.json");
@@ -102,7 +103,12 @@ function buildFingerprint(value) {
 function writeJsonAtomic(filePath, value) {
   ensureDirectory(path.dirname(filePath));
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  fs.writeFileSync(tempPath, JSON.stringify(value));
+  fs.writeFileSync(tempPath, serializationInstrumentation.instrumentJsonStringify(value, undefined, undefined, {
+    sourceFile: "engines/historyEngine.js",
+    functionName: "writeJsonAtomic",
+    serializationType: "json_file_persistence",
+    group: "History"
+  }));
   fs.renameSync(tempPath, filePath);
 }
 

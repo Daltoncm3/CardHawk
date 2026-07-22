@@ -1,6 +1,7 @@
 'use strict';
 
 const stateStore = require('./stateStore');
+const serializationInstrumentation = require('./serializationInstrumentation');
 const {
   CANONICAL_RECORD_SCHEMA_VERSION
 } = require('../validation/canonicalValidationCore');
@@ -338,7 +339,12 @@ function refreshStats(store = createEmptySoldEvidenceStore()) {
 }
 
 function cloneStore(store) {
-  return JSON.parse(JSON.stringify(store || createEmptySoldEvidenceStore()));
+  return serializationInstrumentation.instrumentJsonClone(store || createEmptySoldEvidenceStore(), {
+    sourceFile: 'utils/soldEvidenceStore.js',
+    functionName: 'cloneStore',
+    serializationType: 'json_clone_stringify',
+    group: 'SoldEvidenceStore'
+  });
 }
 
 function indexRecord(store, record) {
@@ -431,11 +437,15 @@ function findSoldEvidenceByIdentity(store = {}, identityOrKey = {}) {
 }
 
 function loadSoldEvidenceStore(filePath) {
-  return normalizeStore(stateStore.loadJsonState(filePath, createEmptySoldEvidenceStore()));
+  return serializationInstrumentation.withSerializationGroup('SoldEvidenceStore', () =>
+    normalizeStore(stateStore.loadJsonState(filePath, createEmptySoldEvidenceStore()))
+  );
 }
 
 function saveSoldEvidenceStore(filePath, store = createEmptySoldEvidenceStore()) {
-  return stateStore.saveJsonState(filePath, normalizeStore(store));
+  return serializationInstrumentation.withSerializationGroup('SoldEvidenceStore', () =>
+    stateStore.saveJsonState(filePath, normalizeStore(store))
+  );
 }
 
 module.exports = {

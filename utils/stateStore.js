@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 function ensureDirectory(filePath) {
   const directory = path.dirname(filePath);
@@ -12,7 +13,12 @@ function ensureDirectory(filePath) {
 
 function cloneFallback(fallbackState) {
   if (!fallbackState || typeof fallbackState !== 'object') return fallbackState;
-  return JSON.parse(JSON.stringify(fallbackState));
+  return serializationInstrumentation.instrumentJsonClone(fallbackState, {
+    sourceFile: 'utils/stateStore.js',
+    functionName: 'cloneFallback',
+    serializationType: 'json_clone_stringify',
+    group: 'StateStore'
+  });
 }
 
 function backupCorruptFile(filePath) {
@@ -57,7 +63,12 @@ function saveJsonState(filePath, state = {}) {
   ensureDirectory(filePath);
 
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const serialized = JSON.stringify(state, null, 2);
+  const serialized = serializationInstrumentation.instrumentJsonStringify(state, null, 2, {
+    sourceFile: 'utils/stateStore.js',
+    functionName: 'saveJsonState',
+    serializationType: 'json_file_persistence',
+    group: 'StateStore'
+  });
 
   fs.writeFileSync(tempPath, serialized);
   fs.renameSync(tempPath, filePath);

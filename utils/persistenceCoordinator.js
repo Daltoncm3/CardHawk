@@ -1,5 +1,7 @@
 'use strict';
 
+const serializationInstrumentation = require('./serializationInstrumentation');
+
 function createDefaultStats() {
   return {
     batchesStarted: 0,
@@ -20,7 +22,12 @@ function normalizeReason(reason) {
 }
 
 function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+  return serializationInstrumentation.instrumentJsonClone(value, {
+    sourceFile: 'utils/persistenceCoordinator.js',
+    functionName: 'clone',
+    serializationType: 'json_clone_stringify',
+    group: 'PersistenceCoordinator'
+  });
 }
 
 function createPersistenceCoordinator(options = {}) {

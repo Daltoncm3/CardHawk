@@ -1,6 +1,7 @@
 'use strict';
 
 const canonicalIdentityEngine = require('./canonicalIdentityEngine');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 
 const UNKNOWN = 'unknown';
 const ADAPTER_VERSION = 'legacy-identity-adapter-v1';
@@ -14,7 +15,12 @@ function asArray(value) {
 }
 
 function clone(value) {
-  return JSON.parse(JSON.stringify(value ?? null));
+  return serializationInstrumentation.instrumentJsonClone(value ?? null, {
+    sourceFile: 'engines/legacyIdentityAdapter.js',
+    functionName: 'clone',
+    serializationType: 'json_clone_stringify',
+    group: 'LegacyIdentityAdapter'
+  });
 }
 
 function normalizeComparableValue(value) {

@@ -4,6 +4,7 @@
 
 const path = require("path");
 const stateStore = require("../utils/stateStore");
+const serializationInstrumentation = require("../utils/serializationInstrumentation");
 
 const NOTIFICATION_STATE_FILE = path.join(__dirname, "..", "data", "notificationState.json");
 const MAX_SENT_ALERT_KEYS = 1000;
@@ -35,7 +36,9 @@ function normalizeNotificationState(state = {}) {
 }
 
 function loadNotificationState(filePath = stateFilePath) {
-  const loaded = stateStore.loadJsonState(filePath, createDefaultNotificationState());
+  const loaded = serializationInstrumentation.withSerializationGroup("Notification", () =>
+    stateStore.loadJsonState(filePath, createDefaultNotificationState())
+  );
   const normalized = normalizeNotificationState(loaded);
   sentAlertKeys = normalized.sentAlertKeys;
   return normalized;
@@ -48,7 +51,9 @@ function saveNotificationState(filePath = stateFilePath) {
     sentAlertKeys: sentAlertKeys.slice(-MAX_SENT_ALERT_KEYS)
   };
 
-  stateStore.saveJsonState(filePath, state);
+  serializationInstrumentation.withSerializationGroup("Notification", () =>
+    stateStore.saveJsonState(filePath, state)
+  );
   return state;
 }
 
@@ -182,7 +187,12 @@ async function postToResend(payload) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload),
+      body: serializationInstrumentation.instrumentJsonStringify(payload, undefined, undefined, {
+        sourceFile: "engines/notificationEngine.js",
+        functionName: "postToResend",
+        serializationType: "json_http_payload",
+        group: "Notification"
+      }),
       signal: controller.signal
     });
 

@@ -3,6 +3,7 @@
 const path = require('path');
 const listingIdentity = require('./listingIdentity');
 const stateStore = require('./stateStore');
+const serializationInstrumentation = require('./serializationInstrumentation');
 
 const DEFAULT_SHADOW_MODE_FILE = path.join(__dirname, '..', 'data', 'shadow-mode.json');
 const MAX_SHADOW_RECORDS = 1000;
@@ -120,7 +121,9 @@ function buildShadowModeRecord(input = {}) {
 
 function writeShadowModeRecord(input = {}, options = {}) {
   const filePath = options.filePath || DEFAULT_SHADOW_MODE_FILE;
-  const state = normalizeState(stateStore.loadJsonState(filePath, createDefaultState()));
+  const state = serializationInstrumentation.withSerializationGroup('ShadowModeLogger', () =>
+    normalizeState(stateStore.loadJsonState(filePath, createDefaultState()))
+  );
   const record = buildShadowModeRecord(input);
   const records = [...state.records, record].slice(-MAX_SHADOW_RECORDS);
   const nextState = {
@@ -129,7 +132,9 @@ function writeShadowModeRecord(input = {}, options = {}) {
     records
   };
 
-  stateStore.saveJsonState(filePath, nextState);
+  serializationInstrumentation.withSerializationGroup('ShadowModeLogger', () =>
+    stateStore.saveJsonState(filePath, nextState)
+  );
 
   return {
     ok: true,
