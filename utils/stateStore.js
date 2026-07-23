@@ -17,7 +17,7 @@ function cloneFallback(fallbackState) {
     sourceFile: 'utils/stateStore.js',
     functionName: 'cloneFallback',
     serializationType: 'json_clone_stringify',
-    group: 'StateStore'
+    group: serializationInstrumentation.getCurrentSerializationGroup?.() || 'StateStore'
   });
 }
 
@@ -67,7 +67,7 @@ function saveJsonState(filePath, state = {}) {
     sourceFile: 'utils/stateStore.js',
     functionName: 'saveJsonState',
     serializationType: 'json_file_persistence',
-    group: 'StateStore'
+    group: serializationInstrumentation.getCurrentSerializationGroup?.() || 'StateStore'
   });
 
   fs.writeFileSync(tempPath, serialized);

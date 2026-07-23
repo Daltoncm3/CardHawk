@@ -230,6 +230,10 @@ function resetSerializationInstrumentation() {
   groupStack = [];
 }
 
+function getCurrentSerializationGroup() {
+  return groupStack[groupStack.length - 1] || null;
+}
+
 function withSerializationGroup(group, callback) {
   groupStack.push(group || DEFAULT_GROUP);
   try {
@@ -245,6 +249,7 @@ module.exports = {
   formatSerializationSummary,
   getActiveSerializationSummary,
   getCompletedSerializationSummaries,
+  getCurrentSerializationGroup,
   instrumentJsonClone,
   instrumentJsonStringify,
   resetSerializationInstrumentation,

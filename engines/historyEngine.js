@@ -203,7 +203,9 @@ function normalizeHistory(parsed = {}) {
 
 function loadActiveHistoryFile() {
   ensureHistoryFile();
-  return normalizeHistory(stateStore.loadJsonState(historyFilePath, createEmptyHistory()));
+  return serializationInstrumentation.withSerializationGroup("History", () =>
+    normalizeHistory(stateStore.loadJsonState(historyFilePath, createEmptyHistory()))
+  );
 }
 
 function compactListing(listing) {
@@ -724,7 +726,9 @@ function readArchiveSegment(metadata = {}) {
   if (!metadata.fileName) return null;
   const filePath = path.join(archiveDirectoryPath, metadata.fileName);
   if (!fs.existsSync(filePath)) return null;
-  return stateStore.loadJsonState(filePath, null);
+  return serializationInstrumentation.withSerializationGroup("History", () =>
+    stateStore.loadJsonState(filePath, null)
+  );
 }
 
 function readArchiveSegmentsUntil(predicate, limit = 1) {

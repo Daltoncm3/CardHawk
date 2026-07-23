@@ -3,6 +3,7 @@
 const path = require('node:path');
 
 const stateStore = require('../utils/stateStore');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   asArray,
   asObject,
@@ -346,11 +347,15 @@ function listDecisionDossiers(store = {}, filters = {}) {
 }
 
 function loadDecisionDossierStore(filePath = DEFAULT_DOSSIER_STORE_PATH) {
-  return normalizeDecisionDossierStore(stateStore.loadJsonState(filePath, createEmptyDecisionDossierStore()));
+  return serializationInstrumentation.withSerializationGroup('SourceDecisionDossier', () =>
+    normalizeDecisionDossierStore(stateStore.loadJsonState(filePath, createEmptyDecisionDossierStore()))
+  );
 }
 
 function saveDecisionDossierStore(filePath = DEFAULT_DOSSIER_STORE_PATH, store = createEmptyDecisionDossierStore()) {
-  return stateStore.saveJsonState(filePath, normalizeDecisionDossierStore(store));
+  return serializationInstrumentation.withSerializationGroup('SourceDecisionDossier', () =>
+    stateStore.saveJsonState(filePath, normalizeDecisionDossierStore(store))
+  );
 }
 
 module.exports = {

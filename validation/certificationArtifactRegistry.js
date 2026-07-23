@@ -3,6 +3,7 @@
 const path = require('node:path');
 
 const stateStore = require('../utils/stateStore');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   asArray,
   asObject,
@@ -140,11 +141,15 @@ function normalizeRegistry(registry = {}) {
 }
 
 function loadCertificationArtifactRegistry(filePath = DEFAULT_REGISTRY_PATH) {
-  return normalizeRegistry(stateStore.loadJsonState(filePath, createEmptyCertificationArtifactRegistry()));
+  return serializationInstrumentation.withSerializationGroup('CertificationRegistry', () =>
+    normalizeRegistry(stateStore.loadJsonState(filePath, createEmptyCertificationArtifactRegistry()))
+  );
 }
 
 function saveCertificationArtifactRegistry(filePath = DEFAULT_REGISTRY_PATH, registry = createEmptyCertificationArtifactRegistry()) {
-  return stateStore.saveJsonState(filePath, normalizeRegistry(registry));
+  return serializationInstrumentation.withSerializationGroup('CertificationRegistry', () =>
+    stateStore.saveJsonState(filePath, normalizeRegistry(registry))
+  );
 }
 
 function loadArtifactFromEntry(entry = {}) {

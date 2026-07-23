@@ -121,7 +121,7 @@ function buildShadowModeRecord(input = {}) {
 
 function writeShadowModeRecord(input = {}, options = {}) {
   const filePath = options.filePath || DEFAULT_SHADOW_MODE_FILE;
-  const state = serializationInstrumentation.withSerializationGroup('ShadowModeLogger', () =>
+  const state = serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
     normalizeState(stateStore.loadJsonState(filePath, createDefaultState()))
   );
   const record = buildShadowModeRecord(input);
@@ -132,7 +132,7 @@ function writeShadowModeRecord(input = {}, options = {}) {
     records
   };
 
-  serializationInstrumentation.withSerializationGroup('ShadowModeLogger', () =>
+  serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
     stateStore.saveJsonState(filePath, nextState)
   );
 

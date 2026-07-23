@@ -49,7 +49,7 @@ function normalizeAuditLog(log = {}) {
 }
 
 function loadAuditLog(filePath = AUDIT_LOG_FILE) {
-  return serializationInstrumentation.withSerializationGroup('OperatorAuditLog', () =>
+  return serializationInstrumentation.withSerializationGroup('OperatorAudit', () =>
     normalizeAuditLog(stateStore.loadJsonState(filePath, createEmptyAuditLog()))
   );
 }
@@ -58,7 +58,7 @@ function saveAuditLog(log, filePath = AUDIT_LOG_FILE) {
   const normalized = normalizeAuditLog(log);
   normalized.updatedAt = nowIso();
   normalized.events = normalized.events.slice(0, MAX_AUDIT_EVENTS);
-  serializationInstrumentation.withSerializationGroup('OperatorAuditLog', () =>
+  serializationInstrumentation.withSerializationGroup('OperatorAudit', () =>
     stateStore.saveJsonState(filePath, normalized)
   );
   return normalized;

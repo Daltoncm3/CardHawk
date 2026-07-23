@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const stateStore = require('../utils/stateStore');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
   asArray,
   asObject,
@@ -142,11 +143,15 @@ function normalizeIngestionRunRepository(repository = {}) {
 }
 
 function loadIngestionRunRepository(filePath = DEFAULT_REPOSITORY_PATH) {
-  return normalizeIngestionRunRepository(stateStore.loadJsonState(filePath, createEmptyIngestionRunRepository()));
+  return serializationInstrumentation.withSerializationGroup('IngestionRunRepository', () =>
+    normalizeIngestionRunRepository(stateStore.loadJsonState(filePath, createEmptyIngestionRunRepository()))
+  );
 }
 
 function saveIngestionRunRepository(filePath = DEFAULT_REPOSITORY_PATH, repository = createEmptyIngestionRunRepository()) {
-  return stateStore.saveJsonState(filePath, normalizeIngestionRunRepository(repository));
+  return serializationInstrumentation.withSerializationGroup('IngestionRunRepository', () =>
+    stateStore.saveJsonState(filePath, normalizeIngestionRunRepository(repository))
+  );
 }
 
 function deriveRunStatus(report = {}, manifest = {}, quarantine = {}) {
