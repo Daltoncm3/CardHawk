@@ -231,6 +231,31 @@ test('scan lifecycle opens and flushes DecisionValidation persistence batch once
   assert.equal(events[1].metadata.scanId, scan.id);
 });
 
+test('scan lifecycle opens and flushes PredictionAccuracy persistence batch once', async () => {
+  const events = [];
+  const predictionAccuracyEngine = {
+    beginPersistenceBatch(metadata) {
+      events.push({ type: 'begin', metadata });
+    },
+    recordOutcome() {
+      events.push({ type: 'outcome' });
+    },
+    flushPersistenceBatch(metadata) {
+      events.push({ type: 'flush', metadata });
+      return { persisted: false };
+    }
+  };
+  const { scanner } = createScanner({ predictionAccuracyEngine });
+
+  const scan = await scanner.runScoutScan('automatic');
+
+  assert.equal(scan.status, 'completed');
+  assert.deepEqual(events.map((event) => event.type), ['begin', 'flush']);
+  assert.equal(events[0].metadata.source, 'automatic');
+  assert.equal(events[1].metadata.reason, 'scout_scan_finished');
+  assert.equal(events[1].metadata.scanId, scan.id);
+});
+
 test('scanner preserves existing saveStore fallback when no coordinator is supplied', async () => {
   const { scanner, saveCalls } = createScanner({ persistenceCoordinator: null });
 

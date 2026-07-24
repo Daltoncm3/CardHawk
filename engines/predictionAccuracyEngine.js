@@ -20,6 +20,8 @@ const recordsByPredictionId = new Map();
 const recordsByListingId = new Map();
 const predictionHistory = [];
 const outcomeHistory = [];
+let persistenceBatchDepth = 0;
+let persistenceBatchDirty = false;
 
 const RECOMMENDATIONS = ['BUY_NOW', 'STRONG_WATCH', 'WATCH', 'MONITOR', 'PASS'];
 
@@ -473,6 +475,112 @@ function persistState() {
   }
 }
 
+function requestPersistence() {
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchDirty = true;
+    return {
+      ok: true,
+      source: SOURCE,
+      status: 'persistence_deferred',
+      batchActive: true,
+      dirty: true
+    };
+  }
+
+  persistState();
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_written',
+    batchActive: false,
+    dirty: false
+  };
+}
+
+function beginPersistenceBatch() {
+  persistenceBatchDepth += 1;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_started',
+    batchActive: true,
+    depth: persistenceBatchDepth,
+    dirty: persistenceBatchDirty
+  };
+}
+
+function flushPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchDepth -= 1;
+  }
+
+  if (persistenceBatchDepth > 0) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: 'persistence_batch_nested',
+      batchActive: true,
+      depth: persistenceBatchDepth,
+      dirty: persistenceBatchDirty,
+      persisted: false
+    };
+  }
+
+  if (!persistenceBatchDirty) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: wasActive ? 'persistence_batch_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false
+    };
+  }
+
+  persistState();
+  persistenceBatchDirty = false;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: true
+  };
+}
+
+function cancelPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  persistenceBatchDepth = 0;
+
+  if (!persistenceBatchDirty) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: wasActive ? 'persistence_batch_cancelled_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false
+    };
+  }
+
+  persistState();
+  persistenceBatchDirty = false;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_cancelled_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: true
+  };
+}
+
 function loadPersistedState() {
   const state = stateStore.loadJsonState(STATE_FILE, createEmptyState());
   restoreState(state);
@@ -492,7 +600,7 @@ function recordPrediction(input = {}) {
   indexPrediction(prediction);
   predictionHistory.push(prediction);
   enforceRetentionPolicy();
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -546,7 +654,7 @@ function recordOutcome(identifier, outcome = {}) {
     ...normalizedOutcome
   });
   enforceRetentionPolicy();
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -686,7 +794,7 @@ function resetPredictionAccuracy() {
   recordsByListingId.clear();
   predictionHistory.length = 0;
   outcomeHistory.length = 0;
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -702,6 +810,9 @@ module.exports = {
   getRecentPredictions,
   summarizePredictionAccuracy,
   resetPredictionAccuracy,
+  beginPersistenceBatch,
+  flushPersistenceBatch,
+  cancelPersistenceBatch,
   getRetentionPolicy,
 
   summarizeGroup,

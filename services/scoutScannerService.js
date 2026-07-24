@@ -112,6 +112,14 @@ function createScoutScanner(dependencies = {}) {
     } catch (decisionValidationPersistenceError) {
       console.warn('Decision Validation Engine persistence batch failed:', decisionValidationPersistenceError.message);
     }
+    try {
+      predictionAccuracyEngine?.beginPersistenceBatch?.({
+        scanId: scan.id,
+        source
+      });
+    } catch (predictionAccuracyPersistenceError) {
+      console.warn('Prediction Accuracy Engine persistence batch failed:', predictionAccuracyPersistenceError.message);
+    }
 
     try {
       for (const [laneKey, lane] of Object.entries(lanes)) {
@@ -297,6 +305,15 @@ function createScoutScanner(dependencies = {}) {
         });
       } catch (decisionValidationPersistenceError) {
         console.warn('Decision Validation Engine persistence flush failed:', decisionValidationPersistenceError.message);
+      }
+      try {
+        predictionAccuracyEngine?.flushPersistenceBatch?.({
+          scanId: scan.id,
+          source,
+          reason: 'scout_scan_finished'
+        });
+      } catch (predictionAccuracyPersistenceError) {
+        console.warn('Prediction Accuracy Engine persistence flush failed:', predictionAccuracyPersistenceError.message);
       }
       systemHealth.finishScan(scan);
       if (persistenceCoordinator) {

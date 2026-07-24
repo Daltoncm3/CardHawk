@@ -189,6 +189,162 @@ test('prediction accuracy retention caps records, outcomes, and reloads bounded 
   });
 });
 
+test('prediction accuracy persists immediately outside batch mode', () => {
+  const statePath = tempFile('predictionAccuracy-immediate.json');
+
+  withEnv({
+    CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/predictionAccuracyEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'prediction-accuracy-immediate' });
+    assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+    assert.equal(engine.recordPrediction(predictionInput(2)).ok, true);
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(summary.groups.PredictionAccuracy.writes, 2);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).predictionHistory.length, 2);
+  });
+});
+
+test('prediction accuracy batches repeated recordPrediction writes into one flush', () => {
+  const statePath = tempFile('predictionAccuracy-batched-predictions.json');
+
+  withEnv({
+    CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/predictionAccuracyEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'prediction-accuracy-batched-predictions' });
+    assert.equal(engine.beginPersistenceBatch().status, 'persistence_batch_started');
+    assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+    assert.equal(engine.recordPrediction(predictionInput(2)).ok, true);
+    assert.equal(engine.recordPrediction(predictionInput(3)).ok, true);
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.status, 'persistence_batch_flushed');
+    assert.equal(flush.persisted, true);
+    assert.equal(summary.groups.PredictionAccuracy.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).predictionHistory.length, 3);
+  });
+});
+
+test('prediction accuracy batches repeated recordOutcome writes into one flush', () => {
+  const statePath = tempFile('predictionAccuracy-batched-outcomes.json');
+
+  withEnv({
+    CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/predictionAccuracyEngine');
+    assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'prediction-accuracy-batched-outcomes' });
+    engine.beginPersistenceBatch();
+    for (let index = 1; index <= 3; index += 1) {
+      assert.equal(engine.recordOutcome('prediction-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 110 + index,
+        outcomeAt: `2026-07-1${index}T00:00:00.000Z`
+      }).ok, true);
+    }
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.persisted, true);
+    assert.equal(summary.groups.PredictionAccuracy.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).predictionHistory[0].latestOutcome.realizedSalePrice, 113);
+  });
+});
+
+test('prediction accuracy clean batch flush performs no persistence', () => {
+  const statePath = tempFile('predictionAccuracy-clean-batch.json');
+
+  withEnv({
+    CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/predictionAccuracyEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'prediction-accuracy-clean-batch' });
+    engine.beginPersistenceBatch();
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.persisted, false);
+    assert.equal(flush.status, 'persistence_batch_clean');
+    assert.equal(summary.totalSerializations, 0);
+    assert.equal(fs.existsSync(statePath), false);
+  });
+});
+
+test('prediction accuracy cancel flushes dirty batch for emergency durability', () => {
+  const statePath = tempFile('predictionAccuracy-cancel-batch.json');
+
+  withEnv({
+    CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/predictionAccuracyEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'prediction-accuracy-cancel-batch' });
+    engine.beginPersistenceBatch();
+    assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+    const cancelled = engine.cancelPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(cancelled.status, 'persistence_batch_cancelled_flushed');
+    assert.equal(cancelled.persisted, true);
+    assert.equal(summary.groups.PredictionAccuracy.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).predictionHistory.length, 1);
+  });
+});
+
+test('prediction accuracy batched final JSON matches immediate persistence format', () => {
+  const immediatePath = tempFile('predictionAccuracy-immediate-format.json');
+  const batchedPath = tempFile('predictionAccuracy-batched-format.json');
+  const env = {
+    CARDHAWK_MAX_TRACKED_PREDICTIONS: 10,
+    CARDHAWK_MAX_PREDICTION_OUTCOME_HISTORY: 10,
+    CARDHAWK_MAX_OUTCOMES_PER_PREDICTION: 10
+  };
+
+  withFixedDate('2026-07-20T00:00:00.000Z', () => {
+    withEnv({
+      ...env,
+      CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: immediatePath
+    }, () => {
+      const engine = freshRequire('../engines/predictionAccuracyEngine');
+      assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+      assert.equal(engine.recordOutcome('prediction-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 130,
+        outcomeAt: '2026-07-20T00:00:00.000Z'
+      }).ok, true);
+    });
+
+    withEnv({
+      ...env,
+      CARDHAWK_PREDICTION_ACCURACY_STATE_FILE: batchedPath
+    }, () => {
+      const engine = freshRequire('../engines/predictionAccuracyEngine');
+      engine.beginPersistenceBatch();
+      assert.equal(engine.recordPrediction(predictionInput(1)).ok, true);
+      assert.equal(engine.recordOutcome('prediction-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 130,
+        outcomeAt: '2026-07-20T00:00:00.000Z'
+      }).ok, true);
+      assert.equal(engine.flushPersistenceBatch().persisted, true);
+    });
+  });
+
+  assert.equal(fs.readFileSync(batchedPath, 'utf8'), fs.readFileSync(immediatePath, 'utf8'));
+});
+
 test('decision validation retention caps records, histories, snapshots, and reloads bounded state', () => {
   const statePath = tempFile('decisionValidation.json');
 
