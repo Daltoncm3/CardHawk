@@ -267,3 +267,23 @@ test('formatted summary is compact and grouped', () => {
   assert.match(formatted, /Total serialization bytes:/);
   assert.match(formatted, /Total writes: 1/);
 });
+
+test('serialization summaries preserve runtime diagnostic counters', () => {
+  serializationInstrumentation.resetSerializationInstrumentation();
+  serializationInstrumentation.beginSerializationScan({ scanId: 'diagnostics-test' });
+  serializationInstrumentation.incrementSerializationDiagnostic('DecisionValidationPersistence', 'beginPersistenceBatchCalls');
+  serializationInstrumentation.incrementSerializationDiagnostic('DecisionValidationPersistence', 'deferredPersistenceRequests', 3);
+  serializationInstrumentation.setSerializationDiagnostic('DecisionValidationPersistence', {
+    currentBatchDepth: 0,
+    currentDirtyState: false
+  });
+  const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+  const formatted = serializationInstrumentation.formatSerializationSummary(summary);
+
+  assert.equal(summary.diagnostics.DecisionValidationPersistence.beginPersistenceBatchCalls, 1);
+  assert.equal(summary.diagnostics.DecisionValidationPersistence.deferredPersistenceRequests, 3);
+  assert.equal(summary.diagnostics.DecisionValidationPersistence.currentBatchDepth, 0);
+  assert.equal(summary.diagnostics.DecisionValidationPersistence.currentDirtyState, false);
+  assert.match(formatted, /DecisionValidationPersistence Diagnostics/);
+  assert.match(formatted, /deferredPersistenceRequests: 3/);
+});

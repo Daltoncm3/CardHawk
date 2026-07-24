@@ -24,6 +24,14 @@ const decisionHistory = [];
 const outcomeHistory = [];
 let persistenceBatchDepth = 0;
 let persistenceBatchDirty = false;
+const persistenceDiagnostics = {
+  beginPersistenceBatchCalls: 0,
+  flushPersistenceBatchCalls: 0,
+  cancelPersistenceBatchCalls: 0,
+  immediatePersistenceCount: 0,
+  deferredPersistenceRequests: 0,
+  flushTriggeredPersistenceCount: 0
+};
 
 const BUY_RECOMMENDATIONS = new Set(['BUY_NOW']);
 const WATCH_RECOMMENDATIONS = new Set(['STRONG_WATCH', 'WATCH', 'MONITOR']);
@@ -499,9 +507,47 @@ function persistState() {
   }
 }
 
+function getPersistenceDiagnostics() {
+  return {
+    source: SOURCE,
+    totalBeginPersistenceBatchCalls: persistenceDiagnostics.beginPersistenceBatchCalls,
+    totalFlushPersistenceBatchCalls: persistenceDiagnostics.flushPersistenceBatchCalls,
+    totalCancelPersistenceBatchCalls: persistenceDiagnostics.cancelPersistenceBatchCalls,
+    totalImmediatePersistenceCount: persistenceDiagnostics.immediatePersistenceCount,
+    totalDeferredPersistenceRequests: persistenceDiagnostics.deferredPersistenceRequests,
+    totalFlushTriggeredPersistenceCount: persistenceDiagnostics.flushTriggeredPersistenceCount,
+    currentBatchDepth: persistenceBatchDepth,
+    currentDirtyState: persistenceBatchDirty
+  };
+}
+
+function publishPersistenceDiagnostics() {
+  serializationInstrumentation.setSerializationDiagnostic?.(
+    'DecisionValidationPersistence',
+    getPersistenceDiagnostics()
+  );
+}
+
+function incrementScanDiagnostic(key) {
+  serializationInstrumentation.incrementSerializationDiagnostic?.(
+    'DecisionValidationPersistence',
+    key
+  );
+  serializationInstrumentation.setSerializationDiagnostic?.(
+    'DecisionValidationPersistence',
+    {
+      source: SOURCE,
+      currentBatchDepth: persistenceBatchDepth,
+      currentDirtyState: persistenceBatchDirty
+    }
+  );
+}
+
 function requestPersistence() {
   if (persistenceBatchDepth > 0) {
     persistenceBatchDirty = true;
+    persistenceDiagnostics.deferredPersistenceRequests += 1;
+    incrementScanDiagnostic('deferredPersistenceRequests');
     return {
       ok: true,
       source: SOURCE,
@@ -511,7 +557,10 @@ function requestPersistence() {
     };
   }
 
+  persistenceDiagnostics.immediatePersistenceCount += 1;
+  incrementScanDiagnostic('immediatePersistenceCount');
   persistState();
+  publishPersistenceDiagnostics();
   return {
     ok: true,
     source: SOURCE,
@@ -523,6 +572,8 @@ function requestPersistence() {
 
 function beginPersistenceBatch() {
   persistenceBatchDepth += 1;
+  persistenceDiagnostics.beginPersistenceBatchCalls += 1;
+  incrementScanDiagnostic('beginPersistenceBatchCalls');
   return {
     ok: true,
     source: SOURCE,
@@ -534,6 +585,8 @@ function beginPersistenceBatch() {
 }
 
 function flushPersistenceBatch() {
+  persistenceDiagnostics.flushPersistenceBatchCalls += 1;
+  incrementScanDiagnostic('flushPersistenceBatchCalls');
   const wasActive = persistenceBatchDepth > 0;
   if (persistenceBatchDepth > 0) {
     persistenceBatchDepth -= 1;
@@ -552,6 +605,7 @@ function flushPersistenceBatch() {
   }
 
   if (!persistenceBatchDirty) {
+    publishPersistenceDiagnostics();
     return {
       ok: true,
       source: SOURCE,
@@ -565,6 +619,9 @@ function flushPersistenceBatch() {
 
   persistState();
   persistenceBatchDirty = false;
+  persistenceDiagnostics.flushTriggeredPersistenceCount += 1;
+  incrementScanDiagnostic('flushTriggeredPersistenceCount');
+  publishPersistenceDiagnostics();
   return {
     ok: true,
     source: SOURCE,
@@ -577,10 +634,13 @@ function flushPersistenceBatch() {
 }
 
 function cancelPersistenceBatch() {
+  persistenceDiagnostics.cancelPersistenceBatchCalls += 1;
+  incrementScanDiagnostic('cancelPersistenceBatchCalls');
   const wasActive = persistenceBatchDepth > 0;
   persistenceBatchDepth = 0;
 
   if (!persistenceBatchDirty) {
+    publishPersistenceDiagnostics();
     return {
       ok: true,
       source: SOURCE,
@@ -594,6 +654,9 @@ function cancelPersistenceBatch() {
 
   persistState();
   persistenceBatchDirty = false;
+  persistenceDiagnostics.flushTriggeredPersistenceCount += 1;
+  incrementScanDiagnostic('flushTriggeredPersistenceCount');
+  publishPersistenceDiagnostics();
   return {
     ok: true,
     source: SOURCE,
@@ -855,6 +918,7 @@ module.exports = {
   beginPersistenceBatch,
   flushPersistenceBatch,
   cancelPersistenceBatch,
+  getPersistenceDiagnostics,
   getRetentionPolicy
 };
 

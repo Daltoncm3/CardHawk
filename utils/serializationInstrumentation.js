@@ -63,6 +63,7 @@ function createEmptySummary(input = {}) {
     largestSerialization: null,
     largestHeapDelta: null,
     groups: {},
+    diagnostics: {},
     recentOperations: []
   };
 }
@@ -153,6 +154,26 @@ function instrumentJsonClone(value, metadata = {}) {
   return JSON.parse(serialized);
 }
 
+function setSerializationDiagnostic(namespace, values = {}) {
+  if (!activeScan || !namespace) return null;
+  activeScan.diagnostics[namespace] = {
+    ...(activeScan.diagnostics[namespace] || {}),
+    ...values
+  };
+  return { ...activeScan.diagnostics[namespace] };
+}
+
+function incrementSerializationDiagnostic(namespace, key, amount = 1) {
+  if (!activeScan || !namespace || !key) return null;
+  const current = activeScan.diagnostics[namespace] || {};
+  const nextValue = Number(current[key] || 0) + Number(amount || 0);
+  activeScan.diagnostics[namespace] = {
+    ...current,
+    [key]: nextValue
+  };
+  return { ...activeScan.diagnostics[namespace] };
+}
+
 function beginSerializationScan(input = {}) {
   activeScan = createEmptySummary(input);
   return getActiveSerializationSummary();
@@ -164,6 +185,9 @@ function getActiveSerializationSummary() {
     ...activeScan,
     groups: Object.fromEntries(
       Object.entries(activeScan.groups).map(([key, value]) => [key, { ...value }])
+    ),
+    diagnostics: Object.fromEntries(
+      Object.entries(activeScan.diagnostics || {}).map(([key, value]) => [key, { ...value }])
     ),
     largestSerialization: activeScan.largestSerialization ? { ...activeScan.largestSerialization } : null,
     largestHeapDelta: activeScan.largestHeapDelta ? { ...activeScan.largestHeapDelta } : null,
@@ -191,6 +215,15 @@ function formatSerializationSummary(summary = {}) {
   lines.push(`Largest serialization: ${summary.largestSerialization ? `${summary.largestSerialization.group} ${formatBytes(summary.largestSerialization.byteCount)}` : 'none'}`);
   lines.push(`Peak heap delta: ${summary.largestHeapDelta ? `${summary.largestHeapDelta.group} ${formatBytes(summary.largestHeapDelta.heapDelta)}` : 'none'}`);
 
+  const diagnostics = summary.diagnostics || {};
+  for (const namespace of Object.keys(diagnostics).sort()) {
+    lines.push('');
+    lines.push(`${namespace} Diagnostics`);
+    for (const key of Object.keys(diagnostics[namespace]).sort()) {
+      lines.push(`${key}: ${diagnostics[namespace][key]}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -217,6 +250,9 @@ function getCompletedSerializationSummaries() {
     ...summary,
     groups: Object.fromEntries(
       Object.entries(summary.groups || {}).map(([key, value]) => [key, { ...value }])
+    ),
+    diagnostics: Object.fromEntries(
+      Object.entries(summary.diagnostics || {}).map(([key, value]) => [key, { ...value }])
     ),
     largestSerialization: summary.largestSerialization ? { ...summary.largestSerialization } : null,
     largestHeapDelta: summary.largestHeapDelta ? { ...summary.largestHeapDelta } : null,
@@ -250,8 +286,10 @@ module.exports = {
   getActiveSerializationSummary,
   getCompletedSerializationSummaries,
   getCurrentSerializationGroup,
+  incrementSerializationDiagnostic,
   instrumentJsonClone,
   instrumentJsonStringify,
   resetSerializationInstrumentation,
+  setSerializationDiagnostic,
   withSerializationGroup
 };
