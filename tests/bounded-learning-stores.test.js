@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
+
 const NODE_ENV_KEYS = [
   'CARDHAWK_PREDICTION_ACCURACY_STATE_FILE',
   'CARDHAWK_DECISION_VALIDATION_STATE_FILE',
@@ -52,6 +54,30 @@ function withEnv(overrides, callback) {
 function freshRequire(modulePath) {
   delete require.cache[require.resolve(modulePath)];
   return require(modulePath);
+}
+
+function withFixedDate(iso, callback) {
+  const RealDate = global.Date;
+  const fixedTime = new RealDate(iso).getTime();
+
+  function FixedDate(...args) {
+    if (args.length === 0) {
+      return new RealDate(fixedTime);
+    }
+    return new RealDate(...args);
+  }
+
+  FixedDate.now = () => fixedTime;
+  FixedDate.parse = RealDate.parse;
+  FixedDate.UTC = RealDate.UTC;
+  FixedDate.prototype = RealDate.prototype;
+  global.Date = FixedDate;
+
+  try {
+    return callback();
+  } finally {
+    global.Date = RealDate;
+  }
 }
 
 function tempFile(name) {
@@ -213,6 +239,164 @@ test('decision validation retention caps records, histories, snapshots, and relo
       ['decision-listing-3', 'decision-listing-3', 'decision-listing-3']
     );
   });
+});
+
+test('decision validation persists immediately outside batch mode', () => {
+  const statePath = tempFile('decisionValidation-immediate.json');
+
+  withEnv({
+    CARDHAWK_DECISION_VALIDATION_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/decisionValidationEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'decision-validation-immediate' });
+    assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+    assert.equal(engine.recordDecision(decisionInput(2)).ok, true);
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(summary.groups.DecisionValidation.writes, 2);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).records.length, 2);
+  });
+});
+
+test('decision validation batches repeated recordDecision writes into one flush', () => {
+  const statePath = tempFile('decisionValidation-batched-decisions.json');
+
+  withEnv({
+    CARDHAWK_DECISION_VALIDATION_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/decisionValidationEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'decision-validation-batched-decisions' });
+    assert.equal(engine.beginPersistenceBatch().status, 'persistence_batch_started');
+    assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+    assert.equal(engine.recordDecision(decisionInput(2)).ok, true);
+    assert.equal(engine.recordDecision(decisionInput(3)).ok, true);
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.status, 'persistence_batch_flushed');
+    assert.equal(flush.persisted, true);
+    assert.equal(summary.groups.DecisionValidation.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).records.length, 3);
+  });
+});
+
+test('decision validation batches repeated recordOutcome writes into one flush', () => {
+  const statePath = tempFile('decisionValidation-batched-outcomes.json');
+
+  withEnv({
+    CARDHAWK_DECISION_VALIDATION_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/decisionValidationEngine');
+    assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'decision-validation-batched-outcomes' });
+    engine.beginPersistenceBatch();
+    for (let index = 1; index <= 3; index += 1) {
+      assert.equal(engine.recordOutcome('decision-listing-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 120 + index,
+        outcomeAt: `2026-07-1${index}T00:00:00.000Z`
+      }).ok, true);
+    }
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.persisted, true);
+    assert.equal(summary.groups.DecisionValidation.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).records[0].outcome.realizedSalePrice, 123);
+  });
+});
+
+test('decision validation clean batch flush performs no persistence', () => {
+  const statePath = tempFile('decisionValidation-clean-batch.json');
+
+  withEnv({
+    CARDHAWK_DECISION_VALIDATION_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/decisionValidationEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'decision-validation-clean-batch' });
+    engine.beginPersistenceBatch();
+    const flush = engine.flushPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(flush.persisted, false);
+    assert.equal(flush.status, 'persistence_batch_clean');
+    assert.equal(summary.totalSerializations, 0);
+    assert.equal(fs.existsSync(statePath), false);
+  });
+});
+
+test('decision validation cancel flushes dirty batch for emergency durability', () => {
+  const statePath = tempFile('decisionValidation-cancel-batch.json');
+
+  withEnv({
+    CARDHAWK_DECISION_VALIDATION_STATE_FILE: statePath
+  }, () => {
+    const engine = freshRequire('../engines/decisionValidationEngine');
+
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'decision-validation-cancel-batch' });
+    engine.beginPersistenceBatch();
+    assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+    const cancelled = engine.cancelPersistenceBatch();
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+    assert.equal(cancelled.status, 'persistence_batch_cancelled_flushed');
+    assert.equal(cancelled.persisted, true);
+    assert.equal(summary.groups.DecisionValidation.writes, 1);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).records.length, 1);
+  });
+});
+
+test('decision validation batched final JSON matches immediate persistence format', () => {
+  const immediatePath = tempFile('decisionValidation-immediate-format.json');
+  const batchedPath = tempFile('decisionValidation-batched-format.json');
+  const env = {
+    CARDHAWK_MAX_TRACKED_DECISIONS: 10,
+    CARDHAWK_MAX_DECISION_HISTORY: 10,
+    CARDHAWK_MAX_DECISION_OUTCOME_HISTORY: 10,
+    CARDHAWK_MAX_SNAPSHOTS_PER_DECISION: 10,
+    CARDHAWK_MAX_OUTCOMES_PER_DECISION: 10
+  };
+
+  withFixedDate('2026-07-20T00:00:00.000Z', () => {
+    withEnv({
+      ...env,
+      CARDHAWK_DECISION_VALIDATION_STATE_FILE: immediatePath
+    }, () => {
+      const engine = freshRequire('../engines/decisionValidationEngine');
+      assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+      assert.equal(engine.recordOutcome('decision-listing-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 130,
+        outcomeAt: '2026-07-20T00:00:00.000Z'
+      }).ok, true);
+    });
+
+    withEnv({
+      ...env,
+      CARDHAWK_DECISION_VALIDATION_STATE_FILE: batchedPath
+    }, () => {
+      const engine = freshRequire('../engines/decisionValidationEngine');
+      engine.beginPersistenceBatch();
+      assert.equal(engine.recordDecision(decisionInput(1)).ok, true);
+      assert.equal(engine.recordOutcome('decision-listing-1', {
+        outcomeType: 'sold',
+        realizedSalePrice: 130,
+        outcomeAt: '2026-07-20T00:00:00.000Z'
+      }).ok, true);
+      assert.equal(engine.flushPersistenceBatch().persisted, true);
+    });
+  });
+
+  assert.equal(fs.readFileSync(batchedPath, 'utf8'), fs.readFileSync(immediatePath, 'utf8'));
 });
 
 test('learning engine retention caps tracked records, per-record history, and recent events deterministically', () => {

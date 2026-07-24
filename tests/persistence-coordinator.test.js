@@ -206,6 +206,31 @@ test('scan lifecycle batches repeated listing mutations behind one persistence f
   assert.deepEqual(calls[0].dirtyReasons, ['scan_finished', 'scouted_listing_saved']);
 });
 
+test('scan lifecycle opens and flushes DecisionValidation persistence batch once', async () => {
+  const events = [];
+  const decisionValidationEngine = {
+    beginPersistenceBatch(metadata) {
+      events.push({ type: 'begin', metadata });
+    },
+    recordOutcome() {
+      events.push({ type: 'outcome' });
+    },
+    flushPersistenceBatch(metadata) {
+      events.push({ type: 'flush', metadata });
+      return { persisted: false };
+    }
+  };
+  const { scanner } = createScanner({ decisionValidationEngine });
+
+  const scan = await scanner.runScoutScan('automatic');
+
+  assert.equal(scan.status, 'completed');
+  assert.deepEqual(events.map((event) => event.type), ['begin', 'flush']);
+  assert.equal(events[0].metadata.source, 'automatic');
+  assert.equal(events[1].metadata.reason, 'scout_scan_finished');
+  assert.equal(events[1].metadata.scanId, scan.id);
+});
+
 test('scanner preserves existing saveStore fallback when no coordinator is supplied', async () => {
   const { scanner, saveCalls } = createScanner({ persistenceCoordinator: null });
 

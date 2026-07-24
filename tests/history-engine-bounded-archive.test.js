@@ -221,6 +221,7 @@ test('recordScan writes bounded active history and never one unbounded history p
     }], {
       scanId: 'scan-bounded',
       observedAt: '2026-07-21T00:00:00.000Z',
+      now: new Date('2026-01-31T00:00:00.000Z'),
       env: {
         CARDHAWK_MAX_ACTIVE_HISTORY_RECORDS: '10',
         CARDHAWK_MIN_PROTECTED_HISTORY_RECORDS: '1',

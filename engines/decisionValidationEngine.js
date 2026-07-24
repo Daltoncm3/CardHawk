@@ -22,6 +22,8 @@ const DEFAULT_MAX_OUTCOMES_PER_DECISION = 100;
 const recordsById = new Map();
 const decisionHistory = [];
 const outcomeHistory = [];
+let persistenceBatchDepth = 0;
+let persistenceBatchDirty = false;
 
 const BUY_RECOMMENDATIONS = new Set(['BUY_NOW']);
 const WATCH_RECOMMENDATIONS = new Set(['STRONG_WATCH', 'WATCH', 'MONITOR']);
@@ -497,6 +499,112 @@ function persistState() {
   }
 }
 
+function requestPersistence() {
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchDirty = true;
+    return {
+      ok: true,
+      source: SOURCE,
+      status: 'persistence_deferred',
+      batchActive: true,
+      dirty: true
+    };
+  }
+
+  persistState();
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_written',
+    batchActive: false,
+    dirty: false
+  };
+}
+
+function beginPersistenceBatch() {
+  persistenceBatchDepth += 1;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_started',
+    batchActive: true,
+    depth: persistenceBatchDepth,
+    dirty: persistenceBatchDirty
+  };
+}
+
+function flushPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchDepth -= 1;
+  }
+
+  if (persistenceBatchDepth > 0) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: 'persistence_batch_nested',
+      batchActive: true,
+      depth: persistenceBatchDepth,
+      dirty: persistenceBatchDirty,
+      persisted: false
+    };
+  }
+
+  if (!persistenceBatchDirty) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: wasActive ? 'persistence_batch_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false
+    };
+  }
+
+  persistState();
+  persistenceBatchDirty = false;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: true
+  };
+}
+
+function cancelPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  persistenceBatchDepth = 0;
+
+  if (!persistenceBatchDirty) {
+    return {
+      ok: true,
+      source: SOURCE,
+      status: wasActive ? 'persistence_batch_cancelled_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false
+    };
+  }
+
+  persistState();
+  persistenceBatchDirty = false;
+  return {
+    ok: true,
+    source: SOURCE,
+    status: 'persistence_batch_cancelled_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: true
+  };
+}
+
 function loadPersistedState() {
   const state = stateStore.loadJsonState(STATE_FILE, createEmptyState());
   restoreState(state);
@@ -533,7 +641,7 @@ function recordDecision(input = {}) {
   recordsById.set(snapshot.listingId, attachDerivedMetrics(record));
   decisionHistory.push(snapshot);
   enforceRetentionPolicy();
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -589,7 +697,7 @@ function recordOutcome(listingId, outcome = {}) {
 
   recordsById.set(id, attachDerivedMetrics(record));
   enforceRetentionPolicy();
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -725,7 +833,7 @@ function resetDecisionValidation() {
   recordsById.clear();
   decisionHistory.length = 0;
   outcomeHistory.length = 0;
-  persistState();
+  requestPersistence();
 
   return {
     ok: true,
@@ -744,6 +852,9 @@ module.exports = {
   getDecisionRecord,
   getRecentDecisions,
   resetDecisionValidation,
+  beginPersistenceBatch,
+  flushPersistenceBatch,
+  cancelPersistenceBatch,
   getRetentionPolicy
 };
 
