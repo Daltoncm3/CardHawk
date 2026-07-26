@@ -141,6 +141,10 @@ function learningInput(index, overrides = {}) {
   };
 }
 
+function getGroupWrites(summary, group) {
+  return summary.groups[group]?.writes || 0;
+}
+
 test('prediction accuracy retention caps records, outcomes, and reloads bounded state', () => {
   const statePath = tempFile('predictionAccuracy.json');
 
@@ -596,6 +600,71 @@ test('learning engine retention caps tracked records, per-record history, and re
     const summary = engine.summarizeLearning();
     assert.equal(summary.totalTrackedPredictions, 2);
     assert.equal(summary.recentPredictionCount, 3);
+  });
+});
+
+test('learning engine skips JSON clone instrumentation for empty plain snapshot sections', () => {
+  withEnv({}, () => {
+    const engine = freshRequire('../engines/learningEngine');
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'learning-empty-snapshot-sections' });
+
+    const result = engine.recordPrediction(learningInput(1));
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+    const retained = engine.getLearningRecord('learning-listing-1');
+
+    assert.equal(result.ok, true);
+    assert.equal(getGroupWrites(summary, 'Learning'), 0);
+    assert.deepEqual(result.predictionSnapshot.decisionData, {});
+    assert.deepEqual(result.predictionSnapshot.compData, {});
+    assert.deepEqual(result.predictionSnapshot.marketData, {});
+    assert.deepEqual(result.predictionSnapshot.roiData, {});
+    assert.deepEqual(result.predictionSnapshot.riskData, {});
+    assert.deepEqual(result.predictionSnapshot.marketIntelligenceData, {});
+    assert.deepEqual(result.predictionSnapshot.populationData, {});
+    assert.deepEqual(result.predictionSnapshot.trendData, {});
+    assert.deepEqual(result.predictionSnapshot.qualityData, {});
+    assert.notEqual(result.predictionSnapshot.decisionData, result.predictionSnapshot.compData);
+    assert.deepEqual(retained.predictionSnapshots[0], result.predictionSnapshot);
+  });
+});
+
+test('learning engine keeps JSON clone behavior for non-empty snapshot sections', () => {
+  const richInput = learningInput(1, {
+    decisionData: { decision: 'BUY_NOW', nested: { score: 91 } },
+    compData: { soldCompCount: 3 },
+    marketData: { expectedValue: 125 },
+    roiData: { roi: 0.42 },
+    riskData: { riskLevel: 'low' },
+    marketIntelligenceData: { marketConfidence: 88 },
+    populationData: { pop: 17 },
+    trendData: { direction: 'up' },
+    qualityData: { bucket: 'strong' }
+  });
+
+  withEnv({}, () => {
+    const engine = freshRequire('../engines/learningEngine');
+    serializationInstrumentation.resetSerializationInstrumentation();
+    serializationInstrumentation.beginSerializationScan({ scanId: 'learning-non-empty-snapshot-sections' });
+
+    const result = engine.recordPrediction(richInput);
+    const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+    const retained = engine.getLearningRecord('learning-listing-1');
+
+    assert.equal(result.ok, true);
+    assert.equal(getGroupWrites(summary, 'Learning'), 9);
+    assert.deepEqual(result.predictionSnapshot.decisionData, richInput.decisionData);
+    assert.deepEqual(result.predictionSnapshot.compData, richInput.compData);
+    assert.deepEqual(result.predictionSnapshot.marketData, richInput.marketData);
+    assert.deepEqual(result.predictionSnapshot.roiData, richInput.roiData);
+    assert.deepEqual(result.predictionSnapshot.riskData, richInput.riskData);
+    assert.deepEqual(result.predictionSnapshot.marketIntelligenceData, richInput.marketIntelligenceData);
+    assert.deepEqual(result.predictionSnapshot.populationData, richInput.populationData);
+    assert.deepEqual(result.predictionSnapshot.trendData, richInput.trendData);
+    assert.deepEqual(result.predictionSnapshot.qualityData, richInput.qualityData);
+    assert.notEqual(result.predictionSnapshot.decisionData, richInput.decisionData);
+    assert.notEqual(result.predictionSnapshot.decisionData.nested, richInput.decisionData.nested);
+    assert.deepEqual(retained.predictionSnapshots[0], result.predictionSnapshot);
   });
 });
 

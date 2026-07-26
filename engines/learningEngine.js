@@ -78,6 +78,13 @@ function pickFirstNumber(sources, keys, fallback = 0) {
 
 function clonePlain(value) {
   if (!value || typeof value !== 'object') return value;
+  if (
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype &&
+    Object.keys(value).length === 0
+  ) {
+    return {};
+  }
 
   try {
     return serializationInstrumentation.instrumentJsonClone(value, {
