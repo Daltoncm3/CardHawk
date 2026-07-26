@@ -86,6 +86,7 @@ function createScanner(overrides = {}) {
     saveStore: () => {
       saveCalls.push('saveStore');
     },
+    shadowModeLogger: {},
     sleep: async () => {},
     systemHealth: {
       finishScan() {},
@@ -246,6 +247,28 @@ test('scan lifecycle opens and flushes PredictionAccuracy persistence batch once
     }
   };
   const { scanner } = createScanner({ predictionAccuracyEngine });
+
+  const scan = await scanner.runScoutScan('automatic');
+
+  assert.equal(scan.status, 'completed');
+  assert.deepEqual(events.map((event) => event.type), ['begin', 'flush']);
+  assert.equal(events[0].metadata.source, 'automatic');
+  assert.equal(events[1].metadata.reason, 'scout_scan_finished');
+  assert.equal(events[1].metadata.scanId, scan.id);
+});
+
+test('scan lifecycle opens and flushes ShadowMode persistence batch once', async () => {
+  const events = [];
+  const shadowModeLogger = {
+    beginPersistenceBatch(metadata) {
+      events.push({ type: 'begin', metadata });
+    },
+    flushPersistenceBatch(metadata) {
+      events.push({ type: 'flush', metadata });
+      return { persisted: false };
+    }
+  };
+  const { scanner } = createScanner({ shadowModeLogger });
 
   const scan = await scanner.runScoutScan('automatic');
 

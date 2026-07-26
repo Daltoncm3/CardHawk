@@ -19,6 +19,7 @@ function createScoutScanner(dependencies = {}) {
     saveScoutedListing,
     saveStore,
     serializationInstrumentation = defaultSerializationInstrumentation,
+    shadowModeLogger,
     sleep,
     systemHealth
   } = dependencies;
@@ -119,6 +120,14 @@ function createScoutScanner(dependencies = {}) {
       });
     } catch (predictionAccuracyPersistenceError) {
       console.warn('Prediction Accuracy Engine persistence batch failed:', predictionAccuracyPersistenceError.message);
+    }
+    try {
+      shadowModeLogger?.beginPersistenceBatch?.({
+        scanId: scan.id,
+        source
+      });
+    } catch (shadowModePersistenceError) {
+      console.warn('Shadow Mode persistence batch failed:', shadowModePersistenceError.message);
     }
 
     try {
@@ -314,6 +323,15 @@ function createScoutScanner(dependencies = {}) {
         });
       } catch (predictionAccuracyPersistenceError) {
         console.warn('Prediction Accuracy Engine persistence flush failed:', predictionAccuracyPersistenceError.message);
+      }
+      try {
+        shadowModeLogger?.flushPersistenceBatch?.({
+          scanId: scan.id,
+          source,
+          reason: 'scout_scan_finished'
+        });
+      } catch (shadowModePersistenceError) {
+        console.warn('Shadow Mode persistence flush failed:', shadowModePersistenceError.message);
       }
       systemHealth.finishScan(scan);
       if (persistenceCoordinator) {

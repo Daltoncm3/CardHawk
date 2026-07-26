@@ -2791,6 +2791,7 @@ const scoutScanner = createScoutScanner({
   predictionAccuracyEngine,
   saveScoutedListing,
   saveStore,
+  shadowModeLogger,
   sleep,
   systemHealth
 });

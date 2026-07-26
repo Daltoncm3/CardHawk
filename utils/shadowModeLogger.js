@@ -8,6 +8,9 @@ const serializationInstrumentation = require('./serializationInstrumentation');
 const DEFAULT_SHADOW_MODE_FILE = path.join(__dirname, '..', 'data', 'shadow-mode.json');
 const MAX_SHADOW_RECORDS = 1000;
 const STATE_VERSION = 1;
+let persistenceBatchDepth = 0;
+let persistenceBatchDirty = false;
+let persistenceBatchStates = new Map();
 
 function isShadowModeEnabled(env = process.env) {
   return String(env.CARDHAWK_SHADOW_MODE_ENABLED || 'false').toLowerCase() === 'true';
@@ -99,6 +102,36 @@ function normalizeState(state = {}) {
   };
 }
 
+function loadShadowModeState(filePath) {
+  return serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
+    normalizeState(stateStore.loadJsonState(filePath, createDefaultState()))
+  );
+}
+
+function saveShadowModeState(filePath, state) {
+  return serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
+    stateStore.saveJsonState(filePath, state)
+  );
+}
+
+function getBatchState(filePath) {
+  if (!persistenceBatchStates.has(filePath)) {
+    persistenceBatchStates.set(filePath, loadShadowModeState(filePath));
+  }
+
+  return persistenceBatchStates.get(filePath);
+}
+
+function persistBatchStates() {
+  const filePaths = [...persistenceBatchStates.keys()].sort();
+
+  for (const filePath of filePaths) {
+    saveShadowModeState(filePath, persistenceBatchStates.get(filePath));
+  }
+
+  return filePaths.length;
+}
+
 function buildShadowModeRecord(input = {}) {
   const listing = asObject(input.listing);
   const createdAt = input.createdAt || nowIso();
@@ -121,9 +154,9 @@ function buildShadowModeRecord(input = {}) {
 
 function writeShadowModeRecord(input = {}, options = {}) {
   const filePath = options.filePath || DEFAULT_SHADOW_MODE_FILE;
-  const state = serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
-    normalizeState(stateStore.loadJsonState(filePath, createDefaultState()))
-  );
+  const state = persistenceBatchDepth > 0
+    ? getBatchState(filePath)
+    : loadShadowModeState(filePath);
   const record = buildShadowModeRecord(input);
   const records = [...state.records, record].slice(-MAX_SHADOW_RECORDS);
   const nextState = {
@@ -132,15 +165,110 @@ function writeShadowModeRecord(input = {}, options = {}) {
     records
   };
 
-  serializationInstrumentation.withSerializationGroup('ShadowMode', () =>
-    stateStore.saveJsonState(filePath, nextState)
-  );
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchStates.set(filePath, nextState);
+    persistenceBatchDirty = true;
+  } else {
+    saveShadowModeState(filePath, nextState);
+  }
 
   return {
     ok: true,
     filePath,
     recordCount: records.length,
     record
+  };
+}
+
+function beginPersistenceBatch() {
+  persistenceBatchDepth += 1;
+  return {
+    ok: true,
+    source: 'shadow_mode_logger',
+    status: 'persistence_batch_started',
+    batchActive: true,
+    depth: persistenceBatchDepth,
+    dirty: persistenceBatchDirty
+  };
+}
+
+function flushPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  if (persistenceBatchDepth > 0) {
+    persistenceBatchDepth -= 1;
+  }
+
+  if (persistenceBatchDepth > 0) {
+    return {
+      ok: true,
+      source: 'shadow_mode_logger',
+      status: 'persistence_batch_nested',
+      batchActive: true,
+      depth: persistenceBatchDepth,
+      dirty: persistenceBatchDirty,
+      persisted: false
+    };
+  }
+
+  if (!persistenceBatchDirty) {
+    persistenceBatchStates = new Map();
+    return {
+      ok: true,
+      source: 'shadow_mode_logger',
+      status: wasActive ? 'persistence_batch_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false,
+      fileCount: 0
+    };
+  }
+
+  const fileCount = persistBatchStates();
+  persistenceBatchDirty = false;
+  persistenceBatchStates = new Map();
+  return {
+    ok: true,
+    source: 'shadow_mode_logger',
+    status: 'persistence_batch_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: fileCount > 0,
+    fileCount
+  };
+}
+
+function cancelPersistenceBatch() {
+  const wasActive = persistenceBatchDepth > 0;
+  persistenceBatchDepth = 0;
+
+  if (!persistenceBatchDirty) {
+    persistenceBatchStates = new Map();
+    return {
+      ok: true,
+      source: 'shadow_mode_logger',
+      status: wasActive ? 'persistence_batch_cancelled_clean' : 'persistence_batch_inactive',
+      batchActive: false,
+      depth: persistenceBatchDepth,
+      dirty: false,
+      persisted: false,
+      fileCount: 0
+    };
+  }
+
+  const fileCount = persistBatchStates();
+  persistenceBatchDirty = false;
+  persistenceBatchStates = new Map();
+  return {
+    ok: true,
+    source: 'shadow_mode_logger',
+    status: 'persistence_batch_cancelled_flushed',
+    batchActive: false,
+    depth: persistenceBatchDepth,
+    dirty: false,
+    persisted: fileCount > 0,
+    fileCount
   };
 }
 
@@ -161,8 +289,11 @@ function logShadowModeDecision(input = {}, options = {}) {
 module.exports = {
   DEFAULT_SHADOW_MODE_FILE,
   MAX_SHADOW_RECORDS,
+  beginPersistenceBatch,
   buildShadowModeRecord,
+  cancelPersistenceBatch,
   createDefaultState,
+  flushPersistenceBatch,
   isShadowModeEnabled,
   logShadowModeDecision,
   writeShadowModeRecord
