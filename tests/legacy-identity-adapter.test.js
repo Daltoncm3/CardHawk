@@ -157,6 +157,22 @@ test('legacy adapter exposes standalone public API', () => {
   assert.equal(typeof scoreListing, 'function');
 });
 
+test('buildCanonicalIdentityInput keeps public defensive clone behavior', () => {
+  const listing = baseListing();
+  const parsed = listing.parsed;
+
+  serializationInstrumentation.resetSerializationInstrumentation();
+  serializationInstrumentation.beginSerializationScan({ scanId: 'legacy-identity-public-input-clone' });
+  const input = legacyIdentityAdapter.buildCanonicalIdentityInput(listing, {
+    legacyParsed: parsed
+  });
+  const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+
+  assert.deepEqual(input.legacyParsed, parsed);
+  assert.notEqual(input.legacyParsed, parsed);
+  assert.equal(summary.groups.LegacyIdentityAdapter.writes, 1);
+});
+
 test('legacy parsed fields remain unchanged while canonical identity diagnostics are additive', () => {
   const listing = baseListing();
   const before = clone(listing);
@@ -356,5 +372,5 @@ test('scoreListing output remains deterministic while reusing one LegacyIdentity
   const repeated = scoreListing(baseListing(), buildUniverse());
 
   assert.deepEqual(scoringProjection(repeated), scoringProjection(scoring));
-  assert.equal(summary.groups.LegacyIdentityAdapter.writes, 2);
+  assert.equal(summary.groups.LegacyIdentityAdapter.writes, 1);
 });

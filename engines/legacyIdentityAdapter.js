@@ -81,9 +81,9 @@ function buildMarketplaceMetadata(listing = {}, overrides = {}) {
   };
 }
 
-function buildCanonicalIdentityInput(listing = {}, options = {}) {
+function buildCanonicalIdentityInputFromParsed(listing = {}, options = {}, legacyParsed = {}) {
   return {
-    legacyParsed: clone(options.legacyParsed || getLegacyParsed(listing)),
+    legacyParsed,
     listing: buildListingMetadata(listing),
     marketplace: buildMarketplaceMetadata(listing, options.marketplace || {}),
     canonicalSoldEvidenceIdentity: clone(
@@ -96,6 +96,14 @@ function buildCanonicalIdentityInput(listing = {}, options = {}) {
     parserVersion: options.parserVersion || listing.parserVersion || listing.parsed?.parserVersion || 'legacy_runtime_parser',
     rawSource: options.rawSource || 'legacy_identity_adapter'
   };
+}
+
+function buildCanonicalIdentityInput(listing = {}, options = {}) {
+  return buildCanonicalIdentityInputFromParsed(
+    listing,
+    options,
+    clone(options.legacyParsed || getLegacyParsed(listing))
+  );
 }
 
 const FIELD_MAPPINGS = [
@@ -202,7 +210,7 @@ function compareLegacyToCanonical(legacyParsed = {}, canonicalIdentity = {}) {
 function buildLegacyIdentityDiagnostics(listing = {}, options = {}) {
   const legacyParsed = clone(options.legacyParsed || getLegacyParsed(listing));
   const canonicalIdentity = canonicalIdentityEngine.buildCanonicalIdentity(
-    buildCanonicalIdentityInput(listing, { ...options, legacyParsed })
+    buildCanonicalIdentityInputFromParsed(listing, options, legacyParsed)
   );
   const canonicalIdentitySummary = canonicalIdentityEngine.summarizeCanonicalIdentity(canonicalIdentity);
   const legacyIdentityComparison = compareLegacyToCanonical(legacyParsed, canonicalIdentity);
