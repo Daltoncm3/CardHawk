@@ -532,9 +532,16 @@ function buildEmptyShadowSoldComparison({
   };
 }
 
-function buildShadowSoldComparison({ listing = {}, compData = {}, canonicalSoldEvidence = null } = {}) {
+function buildShadowSoldComparison({
+  listing = {},
+  compData = {},
+  canonicalSoldEvidence = null,
+  identityDiagnostics
+} = {}) {
   try {
-    const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+    const diagnostics = identityDiagnostics === undefined
+      ? legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing)
+      : identityDiagnostics;
     const canonicalIdentity = diagnostics.canonicalIdentity;
     const records = Array.isArray(canonicalSoldEvidence?.records) ? canonicalSoldEvidence.records : [];
     const queryDiagnostics = canonicalSoldEvidence?.queryDiagnostics || {};
@@ -708,10 +715,13 @@ function buildShadowValuation({
   marketData = {},
   compData = {},
   estimatedValue = null,
-  marketConfidence = null
+  marketConfidence = null,
+  identityDiagnostics
 } = {}) {
   try {
-    const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+    const diagnostics = identityDiagnostics === undefined
+      ? legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing)
+      : identityDiagnostics;
     const valuation = shadowValuationEngine.evaluateShadowValuation({
       canonicalIdentity: diagnostics.canonicalIdentity,
       canonicalSoldComparisonResults: shadowSoldComparison,
@@ -1213,10 +1223,18 @@ function createLegacyScoreBreakdown({ parsed = {}, trendData = {}, estimatedProf
 
 function scoreListing(listing, compUniverse = [], options = {}) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
+  const listingWithParsed = { ...listing, parsed };
   const scoringUniverse = scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || compUniverse);
   const soldSalesUniverse = options.scanUniverseSnapshot || options.soldSalesUniverse
     ? scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || options.soldSalesUniverse)
     : Object.values(store.listings);
+  let identityDiagnostics = null;
+
+  try {
+    identityDiagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listingWithParsed);
+  } catch (_) {
+    identityDiagnostics = null;
+  }
 
   const compData = compEngine.evaluateListing(listing, scoringUniverse, {
     fallbackEstimator: estimateMarketValue
@@ -1329,18 +1347,20 @@ const roi = roiData.roi;
         canonicalSoldEvidence
     });
   const shadowSoldComparison = buildShadowSoldComparison({
-    listing: { ...listing, parsed },
+    listing: listingWithParsed,
     compData,
-    canonicalSoldEvidence
+    canonicalSoldEvidence,
+    identityDiagnostics
   });
   const shadowValuation = buildShadowValuation({
-    listing: { ...listing, parsed },
+    listing: listingWithParsed,
     canonicalSoldEvidence,
     shadowSoldComparison,
     marketData,
     compData,
     estimatedValue,
-    marketConfidence: combinedConfidence
+    marketConfidence: combinedConfidence,
+    identityDiagnostics
   });
   runShadowModeDecisionIntelligence(marketIntelligenceData, {
     listing: { ...listing, parsed }

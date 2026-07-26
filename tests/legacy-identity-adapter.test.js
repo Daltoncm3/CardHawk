@@ -4,10 +4,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const legacyIdentityAdapter = require('../engines/legacyIdentityAdapter');
+const serializationInstrumentation = require('../utils/serializationInstrumentation');
 const {
+  buildShadowSoldComparison,
+  buildShadowValuation,
   buildDisplayInterpretation,
   buildCanonicalIdentityDiagnostics,
-  dealGate
+  dealGate,
+  scoreListing
 } = require('../server');
 
 function clone(value) {
@@ -91,11 +95,66 @@ function baseListing(overrides = {}) {
   };
 }
 
+function buildUniverse() {
+  return [
+    {
+      ebayItemId: 'identity-runtime-sold-1',
+      title: '2020 Panini Prizm Joe Burrow RC #307 PSA 10',
+      price: 175,
+      sold: true,
+      status: 'sold',
+      soldAt: '2026-07-01T00:00:00.000Z'
+    },
+    {
+      ebayItemId: 'identity-runtime-active-1',
+      title: '2020 Panini Prizm Joe Burrow RC #307 PSA 10',
+      price: 180,
+      status: 'active'
+    }
+  ];
+}
+
+function scoringProjection(scoring = {}) {
+  const dealGrade = scoring.dealGrade
+    ? Object.fromEntries(Object.entries(scoring.dealGrade).filter(([key]) => key !== 'createdAt'))
+    : scoring.dealGrade;
+
+  return clone({
+    score: scoring.score,
+    estimatedValue: scoring.estimatedValue,
+    estimatedProfit: scoring.estimatedProfit,
+    roi: scoring.roi,
+    ebayFees: scoring.ebayFees,
+    compData: scoring.compData,
+    marketData: scoring.marketData,
+    roiData: scoring.roiData,
+    confidenceData: scoring.confidenceData,
+    marketConfidence: scoring.marketConfidence,
+    confidenceCap: scoring.confidenceCap,
+    compCount: scoring.compCount,
+    compSource: scoring.compSource,
+    qualityData: scoring.qualityData,
+    investmentQuality: scoring.investmentQuality,
+    qualityBucket: scoring.qualityBucket,
+    riskLevel: scoring.riskLevel,
+    decision: scoring.decision,
+    dealGrade,
+    shadowSoldComparison: scoring.shadowSoldComparison,
+    shadowValuation: scoring.shadowValuation,
+    marketIntelligenceScore: scoring.marketIntelligenceScore,
+    marketTrustLevel: scoring.marketTrustLevel,
+    marketRecommendation: scoring.marketRecommendation
+  });
+}
+
 test('legacy adapter exposes standalone public API', () => {
   assert.equal(typeof legacyIdentityAdapter.buildCanonicalIdentityInput, 'function');
   assert.equal(typeof legacyIdentityAdapter.buildLegacyIdentityDiagnostics, 'function');
   assert.equal(typeof legacyIdentityAdapter.compareLegacyToCanonical, 'function');
   assert.equal(typeof buildCanonicalIdentityDiagnostics, 'function');
+  assert.equal(typeof buildShadowSoldComparison, 'function');
+  assert.equal(typeof buildShadowValuation, 'function');
+  assert.equal(typeof scoreListing, 'function');
 });
 
 test('legacy parsed fields remain unchanged while canonical identity diagnostics are additive', () => {
@@ -241,4 +300,61 @@ test('canonical identity keys remain deterministic through the legacy adapter', 
 
   assert.equal(first.canonicalIdentity.canonicalIdentityKey, second.canonicalIdentity.canonicalIdentityKey);
   assert.deepEqual(first.canonicalIdentity, second.canonicalIdentity);
+});
+
+test('shadow sold comparison output is unchanged when supplied diagnostics are reused', () => {
+  const listing = baseListing();
+  const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+  const input = {
+    listing,
+    compData: listing.compData,
+    canonicalSoldEvidence: { records: [] }
+  };
+
+  const direct = buildShadowSoldComparison(input);
+  const reused = buildShadowSoldComparison({
+    ...input,
+    identityDiagnostics: diagnostics
+  });
+
+  assert.deepEqual(reused, direct);
+});
+
+test('shadow valuation output is unchanged when supplied diagnostics are reused', () => {
+  const listing = baseListing();
+  const diagnostics = legacyIdentityAdapter.buildLegacyIdentityDiagnostics(listing);
+  const shadowSoldComparison = buildShadowSoldComparison({
+    listing,
+    compData: listing.compData,
+    canonicalSoldEvidence: { records: [] },
+    identityDiagnostics: diagnostics
+  });
+  const input = {
+    listing,
+    canonicalSoldEvidence: { records: [] },
+    shadowSoldComparison,
+    marketData: listing.marketData,
+    compData: listing.compData,
+    estimatedValue: listing.estimatedValue,
+    marketConfidence: listing.marketConfidence
+  };
+
+  const direct = buildShadowValuation(input);
+  const reused = buildShadowValuation({
+    ...input,
+    identityDiagnostics: diagnostics
+  });
+
+  assert.deepEqual(reused, direct);
+});
+
+test('scoreListing output remains deterministic while reusing one LegacyIdentityAdapter diagnostic build', () => {
+  serializationInstrumentation.resetSerializationInstrumentation();
+  serializationInstrumentation.beginSerializationScan({ scanId: 'legacy-identity-diagnostic-reuse' });
+  const scoring = scoreListing(baseListing(), buildUniverse());
+  const summary = serializationInstrumentation.endSerializationScan({ emit: false });
+  const repeated = scoreListing(baseListing(), buildUniverse());
+
+  assert.deepEqual(scoringProjection(repeated), scoringProjection(scoring));
+  assert.equal(summary.groups.LegacyIdentityAdapter.writes, 2);
 });
