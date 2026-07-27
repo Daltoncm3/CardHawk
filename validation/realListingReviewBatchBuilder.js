@@ -309,9 +309,12 @@ function selectReviewCandidates(records = [], options = {}) {
 function buildReviewPackageForCandidate(entry = {}, options = {}) {
   const candidate = entry.candidate || createCandidate(entry.record || {}, entry.index || 0, options);
   const record = entry.record || entry;
+  const packageId = options.packageIdForCandidate
+    ? options.packageIdForCandidate(candidate, record)
+    : record.packageId || `${candidate.listingId}:real-listing-review`;
   return reviewContract.createRealListingDecisionReviewPackage({
     ...record,
-    packageId: options.packageIdForCandidate ? options.packageIdForCandidate(candidate, record) : `${candidate.listingId}:real-listing-review`,
+    packageId,
     reviewBatchId: options.batchId || record.reviewBatchId || 'real-listing-review-batch',
     createdAt: options.createdAt || record.createdAt || 'not_provided',
     validationCandidate: {
@@ -325,7 +328,7 @@ function buildReviewPackageForCandidate(entry = {}, options = {}) {
       suggestedValidationFocus: candidate.suggestedValidationFocus
     }
   }, {
-    packageId: options.packageIdForCandidate ? options.packageIdForCandidate(candidate, record) : `${candidate.listingId}:real-listing-review`,
+    packageId,
     reviewBatchId: options.batchId || record.reviewBatchId || 'real-listing-review-batch',
     createdAt: options.createdAt || record.createdAt || 'not_provided',
     capturedAt: record.capturedAt || options.capturedAt || 'not_provided'
