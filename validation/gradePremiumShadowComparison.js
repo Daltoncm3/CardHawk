@@ -25,6 +25,9 @@ const {
   validateSignalAlignmentReport,
   buildSignalAlignmentReportFingerprint
 } = require('./signalAlignmentReport');
+const {
+  executeSignalShadowComparisonLifecycle
+} = require('./signalShadowComparisonCore');
 
 const GRADE_PREMIUM_SHADOW_COMPARISON_SCHEMA_VERSION = '1.0.0';
 const GRADE_PREMIUM_SHADOW_COMPARISON_SOURCE = 'grade_premium_shadow_comparison';
@@ -449,117 +452,24 @@ function buildGradePremiumShadowComparisonFingerprint(comparison = {}) {
 }
 
 function compareGradePremiumNativeToShadow(input = {}, options = {}) {
-  const migration = firstDefined(input.migration, input.gradePremiumMigration)
-    ? clone(firstDefined(input.migration, input.gradePremiumMigration))
-    : migrateGradePremiumSignal(input, options);
-  const nativeOutput = clone(firstDefined(input.nativeOutput, migration.nativeOutput, {}));
-  const canonicalSignal = asObject(migration.canonicalSignal);
-  const alignment = asObject(migration.alignment);
-  const alignmentReport = asObject(migration.alignmentReport);
-
-  const fieldResult = compareNativeFields(nativeOutput, canonicalSignal);
-  const evidenceComparison = compareEvidence(nativeOutput, canonicalSignal);
-  const confidenceComparison = compareConfidence(nativeOutput, canonicalSignal, alignment);
-  const statusComparison = compareStatus(nativeOutput, canonicalSignal, alignment, alignmentReport);
-  const metadataComparison = compareMetadata(nativeOutput, canonicalSignal, migration);
-  const unknownValueComparison = compareUnknownValues(nativeOutput, canonicalSignal);
-  const mismatches = [
-    ...fieldResult.mismatches,
-    ...evidenceComparison.mismatches,
-    ...confidenceComparison.mismatches,
-    ...statusComparison.mismatches,
-    ...metadataComparison.mismatches,
-    ...unknownValueComparison.mismatches
-  ].sort((left, right) => `${left.code}|${left.field}`.localeCompare(`${right.code}|${right.field}`));
-  const migrationValidation = validateGradePremiumMigration(migration);
-  const signalValidation = validateCanonicalSignal(canonicalSignal);
-  const alignmentValidation = validateSignalAlignment(alignment);
-  const runValidation = validateSignalAlignmentRun(migration.alignmentRun);
-  const reportValidation = validateSignalAlignmentReport(alignmentReport);
-  const validationState = {
-    migrationValid: migrationValidation.valid,
-    signalValid: signalValidation.valid,
-    alignmentValid: alignmentValidation.valid,
-    runValid: runValidation.valid,
-    reportValid: reportValidation.valid,
-    alignmentStatus: normalizeString(alignment.alignmentStatus)
-  };
-  const parityStatus = determineParityStatus({
-    fieldComparisons: fieldResult,
-    evidenceComparison,
-    confidenceComparison,
-    statusComparison,
-    metadataComparison,
-    unknownValueComparison,
-    mismatches
-  }, validationState);
-  const errors = [
-    ...(!migrationValidation.valid ? migrationValidation.errors.map((error) => ({ ...error, source: 'migration' })) : []),
-    ...(!signalValidation.valid ? signalValidation.errors.map((error) => ({ ...error, source: 'canonicalSignal' })) : []),
-    ...(!alignmentValidation.valid ? alignmentValidation.errors.map((error) => ({ ...error, source: 'alignment' })) : []),
-    ...(!runValidation.valid ? runValidation.errors.map((error) => ({ ...error, source: 'alignmentRun' })) : []),
-    ...(!reportValidation.valid ? reportValidation.errors.map((error) => ({ ...error, source: 'alignmentReport' })) : [])
-  ];
-  const warnings = unique([
-    ...asArray(migrationValidation.warnings).map((warning) => warning.code),
-    ...asArray(signalValidation.warnings).map((warning) => warning.code),
-    ...asArray(alignmentValidation.warnings).map((warning) => warning.code),
-    ...asArray(runValidation.warnings).map((warning) => warning.code),
-    ...asArray(reportValidation.warnings).map((warning) => warning.code)
-  ]).sort();
-  const core = {
+  return executeSignalShadowComparisonLifecycle(input, options, {
     schemaVersion: GRADE_PREMIUM_SHADOW_COMPARISON_SCHEMA_VERSION,
-    source: GRADE_PREMIUM_SHADOW_COMPARISON_SOURCE,
-    comparisonId: normalizeString(firstDefined(input.comparisonId, options.comparisonId, `grade-premium-shadow-comparison:${migration.sourceOutputFingerprint}`)),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, migration.createdAt, UNKNOWN_VALUE)),
-    migrationFingerprint: normalizeString(migration.migrationFingerprint),
-    nativeOutputFingerprint: normalizeString(firstDefined(migration.sourceOutputFingerprint, buildFingerprintFromProjection(nativeOutput))),
-    canonicalSignalFingerprint: normalizeString(canonicalSignal.signalFingerprint),
-    alignmentFingerprint: normalizeString(alignment.alignmentFingerprint),
-    reportFingerprint: normalizeString(alignmentReport.reportFingerprint),
-    fieldComparisons: fieldResult.comparisons,
-    evidenceComparison,
-    confidenceComparison,
-    statusComparison,
-    metadataComparison,
-    unknownValueComparison,
-    parityStatus,
-    mismatchCount: mismatches.length,
-    mismatches,
-    warnings,
-    errors,
-    sourceArtifacts: {
-      migration,
-      nativeOutput,
-      canonicalSignal: clone(canonicalSignal),
-      alignment: clone(alignment),
-      alignmentRun: clone(migration.alignmentRun),
-      alignmentReport: clone(alignmentReport)
-    },
-    productionImpact: 'none',
-    decisionImpact: 'none',
-    executionAuthority: 'none',
-    metadata: {
-      wrapperOnly: true,
-      nativeEngineExecuted: false,
-      comparisonScope: 'grade_premium_native_to_phase_13_shadow'
-    }
-  };
-  const withSummary = {
-    ...core,
-    summary: summarizeGradePremiumShadowComparison(core)
-  };
-  const prevalidated = {
-    ...withSummary,
-    comparisonFingerprint: buildGradePremiumShadowComparisonFingerprint(withSummary)
-  };
-  const withValidation = {
-    ...withSummary,
-    validation: validateGradePremiumShadowComparison(prevalidated)
-  };
-  return deepFreeze({
-    ...withValidation,
-    comparisonFingerprint: buildGradePremiumShadowComparisonFingerprint(withValidation)
+    comparisonSource: GRADE_PREMIUM_SHADOW_COMPARISON_SOURCE,
+    migrationAliases: ['gradePremiumMigration'],
+    defaultComparisonIdPrefix: 'grade-premium-shadow-comparison',
+    comparisonScope: 'grade_premium_native_to_phase_13_shadow',
+    migrate: migrateGradePremiumSignal,
+    compareNativeFields,
+    compareEvidence,
+    compareConfidence,
+    compareStatus,
+    compareMetadata,
+    compareUnknownValues,
+    determineParityStatus,
+    validateMigration: validateGradePremiumMigration,
+    summarizeComparison: summarizeGradePremiumShadowComparison,
+    validateComparison: validateGradePremiumShadowComparison,
+    buildComparisonFingerprint: buildGradePremiumShadowComparisonFingerprint
   });
 }
 
