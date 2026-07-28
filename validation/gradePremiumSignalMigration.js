@@ -39,6 +39,9 @@ const {
   validateSignalAlignmentReport,
   buildSignalAlignmentReportFingerprint
 } = require('./signalAlignmentReport');
+const {
+  executeSignalMigrationLifecycle
+} = require('./signalMigrationCore');
 
 const GRADE_PREMIUM_MIGRATION_SCHEMA_VERSION = '1.0.0';
 const GRADE_PREMIUM_MIGRATION_SOURCE = 'grade_premium_signal_migration';
@@ -457,87 +460,24 @@ function validateGradePremiumMigration(migration = {}) {
 }
 
 function migrateGradePremiumSignal(input = {}, options = {}) {
-  const nativeOutput = clone(asObject(firstDefined(input.nativeOutput, input.gradePremiumOutput, input.output, {})));
-  const registry = firstDefined(input.registry, options.registry, null);
-  const definition = resolveDefinition(registry, nativeOutput);
-  const registryResolutionStatus = getRegistryResolutionStatus(registry, definition, nativeOutput);
-  const canonicalSignal = buildCanonicalGradePremiumSignal({
-    ...input,
-    nativeOutput,
-    registry
-  }, definition);
-  const alignment = buildAlignment({
-    ...input,
-    registry
-  }, canonicalSignal, definition, registryResolutionStatus);
-  const adaptedSignal = buildAdaptedSignal(input, canonicalSignal, alignment, definition, registryResolutionStatus);
-  const alignmentBatch = createAlignmentBatch({
-    alignmentBatchId: normalizeString(firstDefined(input.alignmentBatchId, options.alignmentBatchId, 'grade-premium-signal-alignment-batch')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    adaptedSignals: [adaptedSignal],
-    metadata: {
-      migrationSource: GRADE_PREMIUM_MIGRATION_SOURCE
-    }
-  });
-  const alignmentRun = buildAlignmentRun({
-    ...input,
-    registry,
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE))
-  }, adaptedSignal, alignmentBatch);
-  const conflictAnalysis = analyzeSignalConflicts({
-    analysisId: normalizeString(firstDefined(input.conflictAnalysisId, options.conflictAnalysisId, 'grade-premium-signal-conflict-analysis')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun
-  });
-  const alignmentReport = createSignalAlignmentReport({
-    reportId: normalizeString(firstDefined(input.reportId, options.reportId, 'grade-premium-signal-alignment-report')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun,
-    conflictAnalysis
-  });
-  const parity = verifyParity(nativeOutput, { canonicalSignal, adaptedSignal });
-  const core = {
+  return executeSignalMigrationLifecycle(input, options, {
     schemaVersion: GRADE_PREMIUM_MIGRATION_SCHEMA_VERSION,
-    source: GRADE_PREMIUM_MIGRATION_SOURCE,
-    migrationId: normalizeString(firstDefined(input.migrationId, options.migrationId, `grade-premium-signal-migration:${canonicalSignal.sourceFingerprint}`)),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    nativeOutput,
-    sourceOutputFingerprint: canonicalSignal.sourceFingerprint,
-    registry,
-    registryResolutionStatus,
-    canonicalSignal,
-    alignment,
-    adaptedSignal,
-    alignmentBatch,
-    alignmentRun,
-    conflictAnalysis,
-    alignmentReport,
-    parityStatus: parity.parityStatus,
-    reportStatus: alignmentReport.reportValidation && alignmentReport.reportValidation.valid ? 'valid' : 'invalid',
-    productionImpact: 'none',
-    decisionImpact: 'none',
-    executionAuthority: 'none',
-    metadata: {
-      wrapperOnly: true,
-      nativeEngineExecuted: false,
-      ...clone(asObject(input.metadata))
-    }
-  };
-  const withSummary = {
-    ...core,
-    summary: summarizeGradePremiumMigration(core)
-  };
-  const prevalidated = {
-    ...withSummary,
-    migrationFingerprint: buildGradePremiumMigrationFingerprint(withSummary)
-  };
-  const withValidation = {
-    ...withSummary,
-    validation: validateGradePremiumMigration(prevalidated)
-  };
-  return deepFreeze({
-    ...withValidation,
-    migrationFingerprint: buildGradePremiumMigrationFingerprint(withValidation)
+    migrationSource: GRADE_PREMIUM_MIGRATION_SOURCE,
+    nativeOutputAliases: ['nativeOutput', 'gradePremiumOutput', 'output'],
+    defaultMigrationIdPrefix: 'grade-premium-signal-migration',
+    defaultAlignmentBatchId: 'grade-premium-signal-alignment-batch',
+    defaultConflictAnalysisId: 'grade-premium-signal-conflict-analysis',
+    defaultReportId: 'grade-premium-signal-alignment-report',
+    resolveDefinition,
+    getRegistryResolutionStatus,
+    buildCanonicalSignal: buildCanonicalGradePremiumSignal,
+    buildAlignment,
+    buildAdaptedSignal,
+    buildAlignmentRun,
+    verifyParity,
+    summarizeMigration: summarizeGradePremiumMigration,
+    validateMigration: validateGradePremiumMigration,
+    buildMigrationFingerprint: buildGradePremiumMigrationFingerprint
   });
 }
 

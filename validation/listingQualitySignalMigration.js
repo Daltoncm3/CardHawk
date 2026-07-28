@@ -39,6 +39,9 @@ const {
   validateSignalAlignmentReport,
   buildSignalAlignmentReportFingerprint
 } = require('./signalAlignmentReport');
+const {
+  executeSignalMigrationLifecycle
+} = require('./signalMigrationCore');
 
 const LISTING_QUALITY_MIGRATION_SCHEMA_VERSION = '1.0.0';
 const LISTING_QUALITY_MIGRATION_SOURCE = 'listing_quality_signal_migration';
@@ -474,82 +477,24 @@ function validateListingQualityMigration(migration = {}) {
 }
 
 function migrateListingQualitySignal(input = {}, options = {}) {
-  const nativeOutput = clone(asObject(firstDefined(input.nativeOutput, input.listingQualityOutput, input.diagnosticOutput, input.output, {})));
-  const registry = firstDefined(input.registry, options.registry, null);
-  const definition = resolveDefinition(registry, nativeOutput);
-  const registryResolutionStatus = getRegistryResolutionStatus(registry, definition);
-  const canonicalSignal = buildCanonicalListingQualitySignal({
-    ...input,
-    nativeOutput,
-    registry
-  }, definition);
-  const alignment = buildAlignment({ ...input, registry }, canonicalSignal, definition, registryResolutionStatus);
-  const adaptedSignal = buildAdaptedSignal(input, canonicalSignal, alignment, definition, registryResolutionStatus);
-  const alignmentBatch = createAlignmentBatch({
-    alignmentBatchId: normalizeString(firstDefined(input.alignmentBatchId, options.alignmentBatchId, 'listing-quality-signal-alignment-batch')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    adaptedSignals: [adaptedSignal],
-    metadata: { migrationSource: LISTING_QUALITY_MIGRATION_SOURCE }
-  });
-  const alignmentRun = buildAlignmentRun({
-    ...input,
-    registry,
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE))
-  }, adaptedSignal, alignmentBatch);
-  const conflictAnalysis = analyzeSignalConflicts({
-    analysisId: normalizeString(firstDefined(input.conflictAnalysisId, options.conflictAnalysisId, 'listing-quality-signal-conflict-analysis')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun
-  });
-  const alignmentReport = createSignalAlignmentReport({
-    reportId: normalizeString(firstDefined(input.reportId, options.reportId, 'listing-quality-signal-alignment-report')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun,
-    conflictAnalysis
-  });
-  const parity = verifyParity(nativeOutput, { canonicalSignal, adaptedSignal });
-  const core = {
+  return executeSignalMigrationLifecycle(input, options, {
     schemaVersion: LISTING_QUALITY_MIGRATION_SCHEMA_VERSION,
-    source: LISTING_QUALITY_MIGRATION_SOURCE,
-    migrationId: normalizeString(firstDefined(input.migrationId, options.migrationId, `listing-quality-signal-migration:${canonicalSignal.sourceFingerprint}`)),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    nativeOutput,
-    sourceOutputFingerprint: canonicalSignal.sourceFingerprint,
-    registry,
-    registryResolutionStatus,
-    canonicalSignal,
-    alignment,
-    adaptedSignal,
-    alignmentBatch,
-    alignmentRun,
-    conflictAnalysis,
-    alignmentReport,
-    parityStatus: parity.parityStatus,
-    reportStatus: alignmentReport.reportValidation && alignmentReport.reportValidation.valid ? 'valid' : 'invalid',
-    productionImpact: 'none',
-    decisionImpact: 'none',
-    executionAuthority: 'none',
-    metadata: {
-      wrapperOnly: true,
-      nativeEngineExecuted: false,
-      ...clone(asObject(input.metadata))
-    }
-  };
-  const withSummary = {
-    ...core,
-    summary: summarizeListingQualityMigration(core)
-  };
-  const prevalidated = {
-    ...withSummary,
-    migrationFingerprint: buildListingQualityMigrationFingerprint(withSummary)
-  };
-  const withValidation = {
-    ...withSummary,
-    validation: validateListingQualityMigration(prevalidated)
-  };
-  return deepFreeze({
-    ...withValidation,
-    migrationFingerprint: buildListingQualityMigrationFingerprint(withValidation)
+    migrationSource: LISTING_QUALITY_MIGRATION_SOURCE,
+    nativeOutputAliases: ['nativeOutput', 'listingQualityOutput', 'diagnosticOutput', 'output'],
+    defaultMigrationIdPrefix: 'listing-quality-signal-migration',
+    defaultAlignmentBatchId: 'listing-quality-signal-alignment-batch',
+    defaultConflictAnalysisId: 'listing-quality-signal-conflict-analysis',
+    defaultReportId: 'listing-quality-signal-alignment-report',
+    resolveDefinition,
+    getRegistryResolutionStatus,
+    buildCanonicalSignal: buildCanonicalListingQualitySignal,
+    buildAlignment,
+    buildAdaptedSignal,
+    buildAlignmentRun,
+    verifyParity,
+    summarizeMigration: summarizeListingQualityMigration,
+    validateMigration: validateListingQualityMigration,
+    buildMigrationFingerprint: buildListingQualityMigrationFingerprint
   });
 }
 

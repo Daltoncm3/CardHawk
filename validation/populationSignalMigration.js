@@ -39,6 +39,9 @@ const {
   validateSignalAlignmentReport,
   buildSignalAlignmentReportFingerprint
 } = require('./signalAlignmentReport');
+const {
+  executeSignalMigrationLifecycle
+} = require('./signalMigrationCore');
 
 const POPULATION_MIGRATION_SCHEMA_VERSION = '1.0.0';
 const POPULATION_MIGRATION_SOURCE = 'population_signal_migration';
@@ -483,87 +486,24 @@ function validatePopulationMigration(migration = {}) {
 }
 
 function migratePopulationSignal(input = {}, options = {}) {
-  const nativeOutput = clone(asObject(firstDefined(input.nativeOutput, input.populationOutput, input.output, {})));
-  const registry = firstDefined(input.registry, options.registry, null);
-  const definition = resolveDefinition(registry, nativeOutput);
-  const registryResolutionStatus = getRegistryResolutionStatus(registry, definition);
-  const canonicalSignal = buildCanonicalPopulationSignal({
-    ...input,
-    nativeOutput,
-    registry
-  }, definition);
-  const alignment = buildAlignment({
-    ...input,
-    registry
-  }, canonicalSignal, definition, registryResolutionStatus);
-  const adaptedSignal = buildAdaptedSignal(input, canonicalSignal, alignment, definition, registryResolutionStatus);
-  const alignmentBatch = createAlignmentBatch({
-    alignmentBatchId: normalizeString(firstDefined(input.alignmentBatchId, options.alignmentBatchId, 'population-signal-alignment-batch')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    adaptedSignals: [adaptedSignal],
-    metadata: {
-      migrationSource: POPULATION_MIGRATION_SOURCE
-    }
-  });
-  const alignmentRun = buildAlignmentRun({
-    ...input,
-    registry,
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE))
-  }, adaptedSignal, alignmentBatch);
-  const conflictAnalysis = analyzeSignalConflicts({
-    analysisId: normalizeString(firstDefined(input.conflictAnalysisId, options.conflictAnalysisId, 'population-signal-conflict-analysis')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun
-  });
-  const alignmentReport = createSignalAlignmentReport({
-    reportId: normalizeString(firstDefined(input.reportId, options.reportId, 'population-signal-alignment-report')),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    alignmentRun,
-    conflictAnalysis
-  });
-  const parity = verifyParity(nativeOutput, { canonicalSignal, adaptedSignal });
-  const core = {
+  return executeSignalMigrationLifecycle(input, options, {
     schemaVersion: POPULATION_MIGRATION_SCHEMA_VERSION,
-    source: POPULATION_MIGRATION_SOURCE,
-    migrationId: normalizeString(firstDefined(input.migrationId, options.migrationId, `population-signal-migration:${canonicalSignal.sourceFingerprint}`)),
-    createdAt: normalizeDate(firstDefined(input.createdAt, options.createdAt, UNKNOWN_VALUE)),
-    nativeOutput,
-    sourceOutputFingerprint: canonicalSignal.sourceFingerprint,
-    registry,
-    registryResolutionStatus,
-    canonicalSignal,
-    alignment,
-    adaptedSignal,
-    alignmentBatch,
-    alignmentRun,
-    conflictAnalysis,
-    alignmentReport,
-    parityStatus: parity.parityStatus,
-    reportStatus: alignmentReport.reportValidation && alignmentReport.reportValidation.valid ? 'valid' : 'invalid',
-    productionImpact: 'none',
-    decisionImpact: 'none',
-    executionAuthority: 'none',
-    metadata: {
-      wrapperOnly: true,
-      nativeEngineExecuted: false,
-      ...clone(asObject(input.metadata))
-    }
-  };
-  const withSummary = {
-    ...core,
-    summary: summarizePopulationMigration(core)
-  };
-  const prevalidated = {
-    ...withSummary,
-    migrationFingerprint: buildPopulationMigrationFingerprint(withSummary)
-  };
-  const withValidation = {
-    ...withSummary,
-    validation: validatePopulationMigration(prevalidated)
-  };
-  return deepFreeze({
-    ...withValidation,
-    migrationFingerprint: buildPopulationMigrationFingerprint(withValidation)
+    migrationSource: POPULATION_MIGRATION_SOURCE,
+    nativeOutputAliases: ['nativeOutput', 'populationOutput', 'output'],
+    defaultMigrationIdPrefix: 'population-signal-migration',
+    defaultAlignmentBatchId: 'population-signal-alignment-batch',
+    defaultConflictAnalysisId: 'population-signal-conflict-analysis',
+    defaultReportId: 'population-signal-alignment-report',
+    resolveDefinition,
+    getRegistryResolutionStatus,
+    buildCanonicalSignal: buildCanonicalPopulationSignal,
+    buildAlignment,
+    buildAdaptedSignal,
+    buildAlignmentRun,
+    verifyParity,
+    summarizeMigration: summarizePopulationMigration,
+    validateMigration: validatePopulationMigration,
+    buildMigrationFingerprint: buildPopulationMigrationFingerprint
   });
 }
 
