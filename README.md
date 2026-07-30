@@ -1,5 +1,6 @@
 # CardHawk
 
+
 CardHawk Scouting Engine is a production Node.js application for evidence-based sports card scouting. It evaluates marketplace listings, market evidence, risk, confidence, quality, history, and operational signals to surface recommendations for human review.
 
 ## Current Status
