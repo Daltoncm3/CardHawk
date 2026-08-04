@@ -1,0 +1,490 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "phase_18_1c_runtime_canonical_signal_compatibility_fixtures",
+  "purpose": "Specification fixtures for future offline Runtime-to-Canonical Signal Compatibility Adapter conformance. These are not runtime data and must not be imported by production runtime.",
+  "createdAt": "2026-08-04T00:00:00.000Z",
+  "authorityBoundary": {
+    "productionImpact": "none",
+    "decisionImpact": "none",
+    "executionAuthority": "none",
+    "runtimeIntegration": false,
+    "adapterImplemented": false
+  },
+  "classificationVocabulary": [
+    "DIRECT",
+    "DERIVED",
+    "CONDITIONAL",
+    "ONE_WAY_ONLY",
+    "INTENTIONALLY_UNMAPPED",
+    "INCOMPATIBLE",
+    "LEGACY_ALIAS"
+  ],
+  "scenarios": [
+    {
+      "id": "fixture-001-direct-market-context",
+      "title": "Direct mapping of runtime context signal type",
+      "category": "direct mapping",
+      "classification": "DIRECT",
+      "runtimeInput": {
+        "runtimeSignalId": "market_confidence",
+        "runtimeSignalContract": {
+          "signalId": "market_confidence",
+          "owner": "server.scoreListing",
+          "signalType": "context",
+          "decisionEligibility": "decision_support",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": 82
+      },
+      "expectedCompatibility": {
+        "preserveRawOutput": true,
+        "canonicalSignalType": "context",
+        "canonicalDecisionRole": "supporting_context",
+        "canonicalAuthorityLevel": "display_metadata",
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "direct_copy",
+          "runtime_context_preserved"
+        ]
+      }
+    },
+    {
+      "id": "fixture-002-derived-owner-producer",
+      "title": "Derived producer identity from runtime owner",
+      "category": "derived mapping",
+      "classification": "DERIVED",
+      "runtimeInput": {
+        "runtimeSignalId": "quality_score",
+        "runtimeSignalContract": {
+          "signalId": "quality_score",
+          "owner": "qualityEngine.evaluateQuality",
+          "signalType": "context",
+          "decisionEligibility": "context_only",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": 74
+      },
+      "expectedCompatibility": {
+        "producerName": "qualityEngine.evaluateQuality",
+        "preserveOriginalOwner": true,
+        "allowModuleFunctionSplitOnlyWhenUnambiguous": true,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "derived_field",
+          "owner_preserved"
+        ]
+      }
+    },
+    {
+      "id": "fixture-003-conditional-sold-evidence-count",
+      "title": "Conditional true sold evidence count mapping",
+      "category": "conditional mapping",
+      "classification": "CONDITIONAL",
+      "runtimeInput": {
+        "runtimeSignalId": "sold_evidence_confidence",
+        "runtimeSignalContract": {
+          "signalId": "sold_evidence_confidence",
+          "owner": "canonicalSoldEvidence/evidenceSufficiency",
+          "signalType": "evidence",
+          "decisionEligibility": "evidence_only",
+          "requiresTrueSold": true,
+          "allowsActiveEvidence": false,
+          "allowsFallbackEvidence": false,
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "trueSoldCompCount": 5
+        }
+      },
+      "expectedCompatibility": {
+        "canonicalEvidenceBasis": {
+          "trueSoldCount": 5
+        },
+        "requiresVerifiedTrueSoldSource": true,
+        "activeEvidenceMaySatisfyTrueSoldCount": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "conditional_true_sold_mapping",
+          "evidence_count_preserved"
+        ]
+      }
+    },
+    {
+      "id": "fixture-004-one-way-deal-gate-decision",
+      "title": "One-way Deal Gate decision preservation",
+      "category": "one-way mapping",
+      "classification": "ONE_WAY_ONLY",
+      "runtimeInput": {
+        "runtimeSignalId": "deal_gate",
+        "runtimeSignalContract": {
+          "signalId": "deal_gate",
+          "owner": "server.dealGate",
+          "signalType": "production_decision",
+          "decisionEligibility": "production_decision",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "passed": true,
+          "buyNowAllowed": true,
+          "decision": "BUY_NOW",
+          "recommendation": "buy_now",
+          "reasons": [],
+          "positives": [
+            "Supported by 8 sold comps."
+          ]
+        }
+      },
+      "expectedCompatibility": {
+        "preserveDealGateRawOutput": true,
+        "mayRecordRuntimeDecisionFact": true,
+        "mayCreateCanonicalAuthority": false,
+        "mayCreateBuyNow": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "one_way_raw_preservation",
+          "deal_gate_authority_preserved"
+        ]
+      }
+    },
+    {
+      "id": "fixture-005-legacy-alias-deal-grade",
+      "title": "Legacy alias preservation for deal grade",
+      "category": "legacy alias",
+      "classification": "LEGACY_ALIAS",
+      "runtimeInput": {
+        "runtimeSignalId": "deal_grade",
+        "runtimeSignalContract": {
+          "signalId": "deal_grade",
+          "owner": "gradingEngine.gradeDeal",
+          "signalType": "legacy",
+          "decisionEligibility": "decision_support",
+          "allowedDisplayLanguage": "legacy_context",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "grade": "A",
+          "action": "BUY_NOW"
+        }
+      },
+      "expectedCompatibility": {
+        "preserveLegacyAlias": true,
+        "preserveRawAction": true,
+        "neutralizeDisplayAuthority": true,
+        "mayMapActionToAuthority": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "legacy_alias_preserved",
+          "buy_like_label_non_authoritative"
+        ]
+      }
+    },
+    {
+      "id": "fixture-006-intentionally-unmapped-display-language",
+      "title": "Runtime-only display language policy remains unmapped",
+      "category": "intentionally unmapped field",
+      "classification": "INTENTIONALLY_UNMAPPED",
+      "runtimeInput": {
+        "runtimeSignalId": "roi_recommendation",
+        "runtimeSignalContract": {
+          "signalId": "roi_recommendation",
+          "owner": "roiEngine.evaluateROI",
+          "signalType": "financial",
+          "decisionEligibility": "context_only",
+          "allowedDisplayLanguage": "financial_only",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": "good_flip_candidate"
+      },
+      "expectedCompatibility": {
+        "preserveAllowedDisplayLanguageAsMetadata": true,
+        "canonicalFieldRequired": false,
+        "mayMapToValuationConfidence": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "intentionally_unmapped",
+          "display_language_metadata_only"
+        ]
+      }
+    },
+    {
+      "id": "fixture-007-incompatible-fallback-policy",
+      "title": "Fallback permission cannot become fallback usage",
+      "category": "incompatible mapping",
+      "classification": "INCOMPATIBLE",
+      "runtimeInput": {
+        "runtimeSignalId": "quality_score",
+        "runtimeSignalContract": {
+          "signalId": "quality_score",
+          "owner": "qualityEngine.evaluateQuality",
+          "signalType": "context",
+          "decisionEligibility": "context_only",
+          "allowsFallbackEvidence": true,
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": 68
+      },
+      "expectedCompatibility": {
+        "mayMapAllowsFallbackEvidenceToFallbackUsed": false,
+        "preservePolicyOnly": true,
+        "canonicalEvidenceBasis": {
+          "fallbackUsed": "unknown"
+        },
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "incompatible_mapping",
+          "fallback_policy_not_observed_usage"
+        ]
+      }
+    },
+    {
+      "id": "fixture-008-warning-bearing-decision-intelligence",
+      "title": "Warning-bearing Decision Intelligence readiness signal",
+      "category": "warning-bearing signal",
+      "classification": "DERIVED",
+      "runtimeInput": {
+        "runtimeSignalId": "decision_intelligence",
+        "runtimeSignalContract": {
+          "signalId": "decision_intelligence",
+          "owner": "decisionIntelligenceEngine.evaluateDecisionIntelligence",
+          "signalType": "evidence",
+          "decisionEligibility": "evidence_only",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "overallReadiness": "cautious_context",
+          "cautionSignals": [
+            "Comparable support is thin"
+          ],
+          "conflicts": [
+            "Positive ROI conflicts with limited evidence"
+          ],
+          "blockers": []
+        }
+      },
+      "expectedCompatibility": {
+        "preserveWarnings": true,
+        "preserveConflicts": true,
+        "preserveReadinessAsContextualOnly": true,
+        "mayUpgradeReadiness": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "warning_preserved",
+          "readiness_contextual_only"
+        ]
+      }
+    },
+    {
+      "id": "fixture-009-insufficient-evidence",
+      "title": "Insufficient evidence remains non-authoritative",
+      "category": "insufficient evidence",
+      "classification": "CONDITIONAL",
+      "runtimeInput": {
+        "runtimeSignalId": "sold_evidence_confidence",
+        "runtimeSignalContract": {
+          "signalId": "sold_evidence_confidence",
+          "owner": "canonicalSoldEvidence/evidenceSufficiency",
+          "signalType": "evidence",
+          "decisionEligibility": "evidence_only",
+          "requiresTrueSold": true,
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "trueSoldCompCount": 1,
+          "minimumRequired": 3
+        }
+      },
+      "expectedCompatibility": {
+        "evidenceQualityMayBeInsufficient": true,
+        "missingEvidenceRemainsVisible": true,
+        "mayCreateDealGateRejection": false,
+        "mayCreateBuyNow": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "insufficient_evidence_preserved",
+          "no_authority_from_evidence_state"
+        ]
+      }
+    },
+    {
+      "id": "fixture-010-unknown-native-status",
+      "title": "Unknown native status is preserved without canonical status invention",
+      "category": "unknown status",
+      "classification": "CONDITIONAL",
+      "runtimeInput": {
+        "runtimeSignalId": "identity_parser_diagnostics",
+        "runtimeSignalContract": {
+          "signalId": "identity_parser_diagnostics",
+          "owner": "identityParserDiagnostics",
+          "signalType": "context",
+          "decisionEligibility": "context_only",
+          "schemaVersion": "unknown"
+        },
+        "runtimeRawValue": {
+          "status": "needs_manual_review",
+          "ambiguity": "unknown"
+        }
+      },
+      "expectedCompatibility": {
+        "preserveNativeStatus": true,
+        "canonicalStatusMayBeInferred": false,
+        "unknownStatusWarningRequired": true,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "unknown_native_status_preserved",
+          "canonical_status_not_invented"
+        ]
+      }
+    },
+    {
+      "id": "fixture-011-missing-confidence",
+      "title": "Missing confidence remains unknown",
+      "category": "missing confidence",
+      "classification": "CONDITIONAL",
+      "runtimeInput": {
+        "runtimeSignalId": "confidence_score",
+        "runtimeSignalContract": {
+          "signalId": "confidence_score",
+          "owner": "marketIntelligenceEngine.evaluateMarketIntelligence",
+          "signalType": "context",
+          "decisionEligibility": "decision_support",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": null
+      },
+      "expectedCompatibility": {
+        "preserveRawNull": true,
+        "canonicalConfidenceValue": "unknown",
+        "canonicalConfidenceLevel": "unknown",
+        "mayConvertMissingConfidenceToZero": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "null_preserved",
+          "missing_confidence_unknown"
+        ]
+      }
+    },
+    {
+      "id": "fixture-012-missing-readiness",
+      "title": "Missing readiness remains unknown",
+      "category": "missing readiness",
+      "classification": "CONDITIONAL",
+      "runtimeInput": {
+        "runtimeSignalId": "decision_intelligence",
+        "runtimeSignalContract": {
+          "signalId": "decision_intelligence",
+          "owner": "decisionIntelligenceEngine.evaluateDecisionIntelligence",
+          "signalType": "evidence",
+          "decisionEligibility": "evidence_only",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "summary": "Decision Intelligence output omitted readiness."
+        }
+      },
+      "expectedCompatibility": {
+        "canonicalReadiness": "unknown",
+        "readinessMissingWarningRequired": true,
+        "mayDefaultToSupportedContext": false,
+        "mayMapToAvailableStatus": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "missing_readiness_unknown",
+          "readiness_not_upgraded"
+        ]
+      }
+    },
+    {
+      "id": "fixture-013-unknown-source-version",
+      "title": "Unknown source version is preserved",
+      "category": "unknown source version",
+      "classification": "DERIVED",
+      "runtimeInput": {
+        "runtimeSignalId": "legacy_score",
+        "runtimeSignalContract": {
+          "signalId": "legacy_score",
+          "owner": "server.scoreListing",
+          "signalType": "legacy",
+          "decisionEligibility": "decision_support",
+          "schemaVersion": "unknown"
+        },
+        "runtimeRawValue": 79
+      },
+      "expectedCompatibility": {
+        "preserveSourceVersion": "unknown",
+        "schemaVersionWarningRequired": true,
+        "mayTreatRuntimeSchemaAsCanonicalSchema": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "unknown_source_version_preserved",
+          "schema_versions_not_equivalent"
+        ]
+      }
+    },
+    {
+      "id": "fixture-014-prohibited-authority-escalation",
+      "title": "Prohibited authority escalation is rejected",
+      "category": "prohibited authority escalation",
+      "classification": "INCOMPATIBLE",
+      "runtimeInput": {
+        "runtimeSignalId": "decision_intelligence",
+        "runtimeSignalContract": {
+          "signalId": "decision_intelligence",
+          "owner": "decisionIntelligenceEngine.evaluateDecisionIntelligence",
+          "signalType": "evidence",
+          "decisionEligibility": "evidence_only",
+          "schemaVersion": "1.0.0"
+        },
+        "runtimeRawValue": {
+          "overallReadiness": "supported_context",
+          "confidence": 95
+        },
+        "attemptedTarget": {
+          "decisionRole": "authoritative",
+          "productionImpact": "BUY_NOW",
+          "decisionImpact": "approved",
+          "executionAuthority": "production"
+        }
+      },
+      "expectedCompatibility": {
+        "mustReject": true,
+        "preserveRuntimeReadiness": true,
+        "preserveRuntimeConfidence": true,
+        "mayCreateBuyNow": false,
+        "productionImpact": "none",
+        "decisionImpact": "none",
+        "executionAuthority": "none",
+        "reasonCodes": [
+          "prohibited_authority_mapping",
+          "readiness_not_purchase_approval",
+          "confidence_not_purchase_approval"
+        ]
+      }
+    }
+  ]
+}
