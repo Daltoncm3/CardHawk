@@ -236,16 +236,22 @@ test('canonicalSoldEvidence appears in runtime Market Intelligence output', () =
   assert.equal(canonical.decisionImpact, 'none');
 });
 
-test('Market Intelligence decision-bearing fields remain byte-for-byte identical', () => {
+test('canonical true sold evidence feeds runtime valuation while remaining non-authoritative', () => {
   const emptyScoring = scoreWithStore(createEmptySoldEvidenceStore());
   const evidenceScoring = scoreWithStore(buildSoldEvidenceStore([
     normalizeSoldRecord(soldRecord())
   ]));
+  const canonical = evidenceScoring.marketIntelligenceData.canonicalSoldEvidence;
 
-  assert.equal(
+  assert.notEqual(
     JSON.stringify(decisionBearingMarketIntelligence(evidenceScoring.marketIntelligenceData)),
     JSON.stringify(decisionBearingMarketIntelligence(emptyScoring.marketIntelligenceData))
   );
+  assert.equal(canonical.trueSoldCount, 1);
+  assert.equal(canonical.decisionImpact, 'none');
+  assert.equal(['sold_market', 'blended_market'].includes(evidenceScoring.marketData.source), true);
+  assert.ok(evidenceScoring.marketData.soldCompCount >= 1);
+  assert.equal(evidenceScoring.marketData.evidence.sold.some((comp) => comp.source === 'canonical_sold_evidence'), true);
 });
 
 test('empty sold evidence degrades safely in runtime output', () => {

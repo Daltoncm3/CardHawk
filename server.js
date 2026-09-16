@@ -309,6 +309,100 @@ function getCanonicalSoldEvidenceForListing(listing = {}) {
   }
 }
 
+function normalizeRuntimeParsedText(value) {
+  if (value === undefined || value === null) return value;
+  return String(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function buildRuntimeParsedIdentity(identity = {}, fallback = {}) {
+  const parsed = {
+    ...(fallback && typeof fallback === 'object' ? fallback : {}),
+    ...(identity && typeof identity === 'object' ? identity : {})
+  };
+  const gradeCompany = parsed.gradeCompany || parsed.grader || fallback.gradeCompany || fallback.grader || null;
+  const grade = parsed.grade || fallback.grade || null;
+
+  return {
+    ...parsed,
+    category: normalizeRuntimeParsedText(parsed.category),
+    sport: normalizeRuntimeParsedText(parsed.sport || parsed.league),
+    game: normalizeRuntimeParsedText(parsed.game || parsed.tcg),
+    player: normalizeRuntimeParsedText(parsed.player || parsed.subject || parsed.character),
+    character: normalizeRuntimeParsedText(parsed.character),
+    year: parsed.year === undefined || parsed.year === null ? parsed.year : String(parsed.year),
+    brand: normalizeRuntimeParsedText(parsed.brand || parsed.manufacturer),
+    product: normalizeRuntimeParsedText(parsed.product || parsed.productName),
+    setName: normalizeRuntimeParsedText(parsed.setName || parsed.set || parsed.cardSet),
+    cardNumber: parsed.cardNumber || parsed.cardNo || parsed.number,
+    parallel: normalizeRuntimeParsedText(parsed.parallel || parsed.variation || parsed.color),
+    variation: normalizeRuntimeParsedText(parsed.variation),
+    gradeCompany,
+    grade,
+    flags: {
+      ...(parsed.flags && typeof parsed.flags === 'object' ? parsed.flags : {}),
+      rookie: Boolean(parsed.rookie ?? parsed.isRookie),
+      autograph: Boolean(parsed.autograph ?? parsed.auto ?? parsed.isAutograph),
+      graded: Boolean(gradeCompany && String(gradeCompany).toLowerCase() !== 'raw'),
+      numbered: Boolean(parsed.serialNumbered ?? parsed.numbered ?? parsed.isNumbered ?? parsed.numberedTo),
+      firstBowman: Boolean(parsed.firstBowman),
+      refractor: Boolean(parsed.refractor ?? parsed.parallel ?? parsed.variation),
+      pokemon: Boolean(parsed.pokemon ?? (parsed.game === 'pokemon') ?? (parsed.category === 'tcg_card'))
+    }
+  };
+}
+
+function canonicalSoldRecordToRuntimeSoldItem(record = {}) {
+  const soldPrice = Number(record.totalPaid ?? record.soldPrice ?? record.price ?? 0);
+  const shipping = Number(record.shipping ?? 0);
+  const parsedIdentity = buildRuntimeParsedIdentity(
+    record.parsedIdentity || record.identity || record.parsed || {},
+    {
+      gradeCompany: record.gradeCompany,
+      grade: record.grade,
+      condition: record.condition
+    }
+  );
+
+  return {
+    ebayItemId: record.marketplaceListingId || record.marketplaceSaleId || record.id || null,
+    id: record.id || record.marketplaceSaleId || record.marketplaceListingId || null,
+    title: record.rawTitle || record.title || record.normalizedTitle || 'Untitled canonical sold evidence',
+    price: Number.isFinite(soldPrice) ? soldPrice : 0,
+    soldPrice: Number.isFinite(soldPrice) ? soldPrice : 0,
+    shipping: Number.isFinite(shipping) ? shipping : 0,
+    totalCost: Number.isFinite(soldPrice) ? soldPrice : 0,
+    url: record.url || record.itemWebUrl || '',
+    image: record.image || '',
+    soldAt: record.soldAt || record.dateSold || record.soldDate || null,
+    dateSold: record.soldAt || record.dateSold || record.soldDate || null,
+    source: 'canonical_sold_evidence',
+    type: 'sold',
+    status: 'sold',
+    evidenceType: 'true_sold',
+    sold: true,
+    isSold: true,
+    saleType: record.saleType || 'unknown',
+    marketplace: record.marketplace || record.marketplaceLabel || 'unknown',
+    canonicalCardKey: record.canonicalCardKey || '',
+    evidenceQualityScore: record.evidenceQualityScore,
+    evidenceQualityLevel: record.evidenceQualityLevel,
+    parsed: parsedIdentity
+  };
+}
+
+function buildRuntimeSoldSalesUniverse(baseUniverse = [], canonicalSoldEvidence = {}) {
+  const canonicalRuntimeSoldItems = Array.isArray(canonicalSoldEvidence.records)
+    ? canonicalSoldEvidence.records
+      .filter((record) => record && record.evidenceType === 'true_sold' && record.status === 'active_evidence')
+      .map(canonicalSoldRecordToRuntimeSoldItem)
+    : [];
+
+  return [
+    ...scanUniverseSnapshot.getScanUniverseListings(baseUniverse),
+    ...canonicalRuntimeSoldItems
+  ];
+}
+
 function __setCanonicalSoldEvidenceStoreForTest(nextStore) {
   canonicalSoldEvidenceStore = nextStore || null;
 }
@@ -1225,9 +1319,6 @@ function scoreListing(listing, compUniverse = [], options = {}) {
   const parsed = listing.parsed || parseCardTitle(listing.title);
   const listingWithParsed = { ...listing, parsed };
   const scoringUniverse = scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || compUniverse);
-  const soldSalesUniverse = options.scanUniverseSnapshot || options.soldSalesUniverse
-    ? scanUniverseSnapshot.getScanUniverseListings(options.scanUniverseSnapshot || options.soldSalesUniverse)
-    : Object.values(store.listings);
   let identityDiagnostics = null;
 
   try {
@@ -1242,14 +1333,20 @@ function scoreListing(listing, compUniverse = [], options = {}) {
 
   const populationData = populationEngine.getPopulation(listing);
   const trendData = trendEngine.evaluateTrend(listing);
+  const canonicalSoldEvidence = getCanonicalSoldEvidenceForListing(listingWithParsed);
+  const evidenceParsed = buildRuntimeParsedIdentity(listing.parsedIdentity || listing.identity || parsed);
+  const soldSalesUniverse = buildRuntimeSoldSalesUniverse(
+    options.scanUniverseSnapshot || options.soldSalesUniverse || Object.values(store.listings),
+    canonicalSoldEvidence
+  );
 
- const soldSalesSummary = soldSalesEngine.summarizeSoldSales(
-    { ...listing, parsed },
+  const soldSalesSummary = soldSalesEngine.summarizeSoldSales(
+    { ...listing, parsed: evidenceParsed },
     soldSalesUniverse
-);
+  );
 
-const marketData = marketValueEngine.calculateMarketValue({
-    listing: { ...listing, parsed },
+  const marketData = marketValueEngine.calculateMarketValue({
+    listing: { ...listing, parsed: evidenceParsed },
     activeCompData: compData,
     soldComps: soldSalesSummary.sales,
     populationData,
@@ -1257,7 +1354,7 @@ const marketData = marketValueEngine.calculateMarketValue({
     options: {
         fallbackEstimator: estimateMarketValue
     }
-});
+  });
 
   let salesVelocityData = null;
 let salesVelocity = "";
@@ -1334,8 +1431,6 @@ const roi = roiData.roi;
     trendData,
     qualityData
 });
-
-  const canonicalSoldEvidence = getCanonicalSoldEvidenceForListing({ ...listing, parsed });
 
   const marketIntelligenceData =
     marketIntelligenceEngine.evaluateMarketIntelligence({
@@ -2615,6 +2710,9 @@ function saveScoutedListing(listing, query, lane, context = {}) {
     roi: scoring.roi,
     ebayFees: scoring.ebayFees,
     compData: scoring.compData,
+    marketData: scoring.marketData,
+    soldSales: scoring.soldSales,
+    roiData: scoring.roiData,
     salesVelocityData: scoring.salesVelocityData,
     salesVelocity: scoring.salesVelocity,
     marketConfidence: scoring.marketConfidence,
@@ -2627,6 +2725,8 @@ function saveScoutedListing(listing, query, lane, context = {}) {
     qualityBucket: scoring.qualityBucket,
     liquidityScore: scoring.liquidityScore,
     riskLevel: scoring.riskLevel,
+    riskData: scoring.riskData,
+    marketIntelligenceData: scoring.marketIntelligenceData,
     qualityReasons: scoring.qualityReasons,
     qualityWarnings: scoring.qualityWarnings,
     dealGrade: scoring.dealGrade,

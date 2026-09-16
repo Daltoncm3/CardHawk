@@ -83,6 +83,46 @@ function normalizeGradeCompany(value) {
   return value ? String(value).trim() : 'unknown';
 }
 
+function normalizeRetentionStatus(value) {
+  const normalized = normalizeText(value).replace(/\s+/g, '_');
+  if (['permanent_allowed', 'allowed', 'retain_allowed', 'internal_retention_allowed'].includes(normalized)) {
+    return 'permanent_allowed';
+  }
+  if (['restricted', 'retention_restricted', 'limited', 'limited_retention'].includes(normalized)) {
+    return 'restricted';
+  }
+  if (['prohibited', 'not_allowed', 'do_not_retain'].includes(normalized)) {
+    return 'prohibited';
+  }
+  if (['unknown', ''].includes(normalized)) return 'unknown';
+  return normalized;
+}
+
+function normalizeRetentionMetadata(input = {}, options = {}) {
+  const retention = input.retention || input.retentionMetadata || {};
+  const status = normalizeRetentionStatus(
+    input.retentionStatus ||
+    retention.status ||
+    options.retentionStatus ||
+    'unknown'
+  );
+
+  return {
+    status,
+    sourceTerms: retention.sourceTerms || input.sourceTerms || options.sourceTerms || 'unknown',
+    retentionNotes: Array.isArray(retention.notes)
+      ? [...retention.notes]
+      : Array.isArray(input.retentionNotes)
+        ? [...input.retentionNotes]
+        : Array.isArray(options.retentionNotes)
+          ? [...options.retentionNotes]
+          : [],
+    reviewedBy: retention.reviewedBy || input.retentionReviewedBy || options.retentionReviewedBy || null,
+    reviewedAt: normalizeDate(retention.reviewedAt || input.retentionReviewedAt || options.retentionReviewedAt || null),
+    sourceApprovalStatus: retention.sourceApprovalStatus || input.sourceApprovalStatus || options.sourceApprovalStatus || 'unknown'
+  };
+}
+
 function normalizeParsedIdentity(identity = {}) {
   const cardNumber = pickFirstValue([identity], ['cardNumber', 'cardNo', 'number'], null);
 
@@ -279,8 +319,10 @@ function normalizeSoldEvidenceRecord(input = {}, options = {}) {
       acquiredAt: normalizeDate(input.source?.acquiredAt || options.acquiredAt) || new Date().toISOString(),
       query: input.source?.query || input.query || '',
       retrievalMethod: input.source?.retrievalMethod || options.retrievalMethod || 'manual_import',
-      sourceReliability: input.source?.sourceReliability || options.sourceReliability || 'unknown'
+      sourceReliability: input.source?.sourceReliability || options.sourceReliability || 'unknown',
+      transformation: input.source?.transformation || options.transformation || 'canonical_sold_evidence_normalization'
     },
+    retention: normalizeRetentionMetadata(input, options),
     duplicateGroupId: input.duplicateGroupId || null,
     status: input.status || 'active_evidence',
     rejectionReasons: Array.isArray(input.rejectionReasons) ? [...input.rejectionReasons] : [],

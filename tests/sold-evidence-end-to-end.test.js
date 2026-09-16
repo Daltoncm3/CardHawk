@@ -286,15 +286,19 @@ test('Anthony Hernandez pilot context records never count as sold evidence', () 
   assert.equal(trueSoldOnly.records.every((record) => record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD), true);
 });
 
-test('Anthony Hernandez pilot does not change runtime decision-bearing outputs', () => {
+test('Anthony Hernandez pilot feeds verified true sold evidence into runtime valuation without granting authority', () => {
   const { store } = buildPilotStore();
   const emptyScoring = scoreWithStore(createEmptySoldEvidenceStore());
   const evidenceScoring = scoreWithStore(store);
 
-  assert.deepEqual(runtimeDecisionFields(evidenceScoring), runtimeDecisionFields(emptyScoring));
+  assert.notDeepEqual(runtimeDecisionFields(evidenceScoring), runtimeDecisionFields(emptyScoring));
+  assert.equal(evidenceScoring.marketData.source, 'sold_market');
+  assert.equal(evidenceScoring.marketData.soldCompCount, 4);
+  assert.equal(evidenceScoring.marketData.evidence.sold.every((comp) => comp.source === 'canonical_sold_evidence'), true);
+  assert.equal(evidenceScoring.decision.buyNowAllowed, false);
+  assert.equal(evidenceScoring.decision.shouldBuy, false);
+  assert.equal(evidenceScoring.decision.decision, 'PASS');
   assert.equal(evidenceScoring.marketIntelligenceData.canonicalSoldEvidence.trueSoldCount, 4);
+  assert.equal(evidenceScoring.marketIntelligenceData.canonicalSoldEvidence.decisionImpact, 'none');
   assert.equal(emptyScoring.marketIntelligenceData.canonicalSoldEvidence.trueSoldCount, 0);
-  assert.deepEqual(evidenceScoring.marketIntelligenceData.warnings, emptyScoring.marketIntelligenceData.warnings);
-  assert.deepEqual(evidenceScoring.marketIntelligenceData.positives, emptyScoring.marketIntelligenceData.positives);
-  assert.deepEqual(evidenceScoring.marketIntelligenceData.reasons, emptyScoring.marketIntelligenceData.reasons);
 });
