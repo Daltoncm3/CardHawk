@@ -103,19 +103,52 @@ function normalizeItem(item, options = {}) {
     sellerFeedbackPercentage: Number(item.seller?.feedbackPercentage || 0),
     sellerFeedbackScore: Number(item.seller?.feedbackScore || 0),
     buyingOptions: item.buyingOptions || [],
+    itemCreationDate: item.itemCreationDate || item.itemStartDate || item.listingStartDate || null,
+    itemLastModifiedDate: item.itemLastModifiedDate || item.lastModifiedDate || null,
     itemEndDate: item.itemEndDate || null,
+    marketplaceTimestamps: {
+      itemCreationDate: item.itemCreationDate || null,
+      itemStartDate: item.itemStartDate || item.listingStartDate || null,
+      itemLastModifiedDate: item.itemLastModifiedDate || item.lastModifiedDate || null,
+      itemEndDate: item.itemEndDate || null
+    },
     parsed,
     raw: item
   };
 }
 
-async function search(query, limit = 20, options = {}) {
+function buildBuyingOptionsFilter(listingTypes = ["FIXED_PRICE", "AUCTION"]) {
+  const safeTypes = (Array.isArray(listingTypes) ? listingTypes : [])
+    .map((type) => String(type || "").trim().toUpperCase())
+    .filter((type) => type === "FIXED_PRICE" || type === "AUCTION");
+  return `buyingOptions:{${(safeTypes.length ? safeTypes : ["FIXED_PRICE", "AUCTION"]).join("|")}}`;
+}
+
+function buildPriceFilter(options = {}) {
+  const filters = [buildBuyingOptionsFilter(options.listingTypes)];
+  const hasMin = Number.isFinite(Number(options.priceMin));
+  const hasMax = Number.isFinite(Number(options.priceMax));
+
+  if (hasMin || hasMax) {
+    const min = hasMin ? Number(options.priceMin) : "";
+    const max = hasMax ? Number(options.priceMax) : "";
+    filters.push(`price:[${min}..${max}]`);
+    filters.push("priceCurrency:USD");
+  }
+
+  return filters.join(",");
+}
+
+async function searchPage(query, limit = 20, options = {}) {
   const token = await getToken();
   const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
+  const offset = Number(options.offset || 0);
 
   url.searchParams.set("q", query);
   url.searchParams.set("limit", String(limit));
-  url.searchParams.set("filter", "buyingOptions:{FIXED_PRICE|AUCTION}");
+  url.searchParams.set("offset", String(Number.isFinite(offset) && offset >= 0 ? offset : 0));
+  url.searchParams.set("filter", buildPriceFilter(options));
+  if (options.sort) url.searchParams.set("sort", String(options.sort));
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -132,10 +165,32 @@ async function search(query, limit = 20, options = {}) {
     group: "EbayMarketplace"
   }));
 
-  return (data.itemSummaries || []).map(item => normalizeItem(item, options));
+  const items = (data.itemSummaries || []).map(item => normalizeItem(item, options));
+
+  return {
+    query,
+    limit: Number(limit),
+    offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
+    sort: options.sort || null,
+    total: Number.isFinite(Number(data.total)) ? Number(data.total) : null,
+    href: data.href || url.toString(),
+    next: data.next || null,
+    itemCount: items.length,
+    items
+  };
+}
+
+async function search(query, limit = 20, options = {}) {
+  const page = await searchPage(query, limit, options);
+  return page.items;
 }
 
 async function searchWithBackoff(query, limit = config.scanQueryLimit, options = {}) {
+  const page = await searchPageWithBackoff(query, limit, options);
+  return page.items;
+}
+
+async function searchPageWithBackoff(query, limit = config.scanQueryLimit, options = {}) {
   let lastError = null;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
@@ -146,7 +201,7 @@ async function searchWithBackoff(query, limit = config.scanQueryLimit, options =
         await sleep(waitMs);
       }
 
-      return await search(query, limit, options);
+      return await searchPage(query, limit, options);
     } catch (error) {
       lastError = error;
       if (!isRateLimitError(error) || attempt === config.maxRetries) break;
@@ -162,7 +217,9 @@ module.exports = {
   config,
   getToken,
   search,
+  searchPage,
   searchWithBackoff,
+  searchPageWithBackoff,
   normalizeItem,
   isRateLimitError,
   compactError

@@ -21,7 +21,8 @@ function createScoutScanner(dependencies = {}) {
     serializationInstrumentation = defaultSerializationInstrumentation,
     shadowModeLogger,
     sleep,
-    systemHealth
+    systemHealth,
+    targetedDiscoveryLane
   } = dependencies;
 
   let scanInProgress = false;
@@ -193,6 +194,51 @@ function createScoutScanner(dependencies = {}) {
 
         if (scan.rateLimited) break;
         await sleep(activeMarketplace.config.laneDelayMs);
+      }
+
+      if (!scan.rateLimited && targetedDiscoveryLane?.isEnabled?.()) {
+        const laneStartedMs = Date.now();
+        try {
+          const discoveryResult = await targetedDiscoveryLane.run({
+            scanId: scan.id,
+            scanUniverseSnapshot: scanUniverse,
+            source
+          });
+          const report = discoveryResult.report || {};
+          const savedListings = Array.isArray(discoveryResult.savedListings) ? discoveryResult.savedListings : [];
+
+          observedListings.push(...savedListings);
+          scan.listingsFound += Number(report.rawResults || 0);
+          scan.targetedDiscovery = report;
+          scan.lanes.push({
+            lane: report.laneId || 'targeted_discovery',
+            count: Number(report.candidatesPreserved || savedListings.length || 0),
+            errors: report.apiErrors || [],
+            durationMs: Date.now() - laneStartedMs,
+            targeted: true,
+            rawResults: report.rawResults || 0,
+            uniqueListings: report.uniqueListings || 0,
+            newListings: report.newListings || 0,
+            previouslyObservedListings: report.previouslyObservedListings || 0,
+            duplicateCount: report.duplicateCount || 0
+          });
+        } catch (targetedDiscoveryError) {
+          const compactError = activeMarketplace.compactError
+            ? activeMarketplace.compactError(targetedDiscoveryError)
+            : targetedDiscoveryError.message || String(targetedDiscoveryError);
+          scan.targetedDiscovery = {
+            status: 'failed',
+            error: compactError
+          };
+          scan.lanes.push({
+            lane: 'targeted_discovery',
+            count: 0,
+            errors: [{ error: compactError }],
+            durationMs: Date.now() - laneStartedMs,
+            targeted: true
+          });
+          systemHealth.recordScanEngine('targeted_discovery', 'warning', { error: compactError });
+        }
       }
 
       scan.newAlerts = store.alerts.length - alertsBefore;
