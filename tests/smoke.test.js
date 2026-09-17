@@ -44,7 +44,7 @@ test('stateStore handles missing, saved, and corrupt JSON state safely', () => {
 
 test('appStore preserves CardHawk store shape and lookup compatibility', () => {
   const defaultStore = appStore.createDefaultStore();
-  assert.deepEqual(Object.keys(defaultStore), ['listings', 'alerts', 'scans', 'rejections', 'settings']);
+  assert.deepEqual(Object.keys(defaultStore), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'settings']);
   assert.deepEqual(defaultStore.settings, {
     minDealScore: 85,
     minProfit: 20,

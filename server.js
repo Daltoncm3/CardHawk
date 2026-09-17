@@ -32,6 +32,9 @@ const activeListingRetention = require("./utils/activeListingRetention");
 const scanUniverseSnapshot = require("./utils/scanUniverseSnapshot");
 const appStore = require("./utils/appStore");
 const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
+const {
+  recordTargetedDiscoveryObservation
+} = require("./utils/targetedDiscoveryObservationStore");
 const serializationInstrumentation = require("./utils/serializationInstrumentation");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
@@ -2924,6 +2927,13 @@ const scoutScanner = createScoutScanner({
     historyEngine,
     now: () => new Date().toISOString(),
     parseCardTitle,
+    recordTargetedDiscoveryObservation: (input) => {
+      const result = recordTargetedDiscoveryObservation(store, input, { env: process.env });
+      if (result.recorded) {
+        persistenceCoordinator?.markStateDirty?.('targeted_discovery_observation_saved');
+      }
+      return result;
+    },
     saveScoutedListing,
     sleep
   }),

@@ -7,6 +7,9 @@ const {
 const {
   enforceActiveListingRetention
 } = require('./activeListingRetention');
+const {
+  normalizeTargetedDiscoveryObservations
+} = require('./targetedDiscoveryObservationStore');
 const { loadJsonState, saveJsonState } = require('./stateStore');
 const serializationInstrumentation = require('./serializationInstrumentation');
 
@@ -16,6 +19,7 @@ function createDefaultStore() {
     alerts: [],
     scans: [],
     rejections: [],
+    targetedDiscoveryObservations: [],
     settings: {
       minDealScore: 85,
       minProfit: 20,
@@ -38,6 +42,10 @@ function normalizeStore(loaded = {}, options = {}) {
     alerts: loaded.alerts || [],
     scans: loaded.scans || [],
     rejections: loaded.rejections || [],
+    targetedDiscoveryObservations: normalizeTargetedDiscoveryObservations(
+      loaded.targetedDiscoveryObservations,
+      options.targetedDiscoveryObservationRetention || options
+    ),
     settings: {
       minDealScore: loaded.settings?.minDealScore || 85,
       minProfit: loaded.settings?.minProfit || 20,

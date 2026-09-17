@@ -206,7 +206,7 @@ test('appStore load/save enforces resident retention without changing store shap
   });
 
   const persisted = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  assert.deepEqual(Object.keys(persisted), ['listings', 'alerts', 'scans', 'rejections', 'settings']);
+  assert.deepEqual(Object.keys(persisted), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'settings']);
   assert.equal(Object.keys(persisted.listings).length, 3);
   assert.equal(persisted.listings['listing-5'].title.includes('Retention Test Player'), true);
 
@@ -219,7 +219,7 @@ test('appStore load/save enforces resident retention without changing store shap
     now: NOW
   });
 
-  assert.deepEqual(Object.keys(loaded), ['listings', 'alerts', 'scans', 'rejections', 'settings']);
+  assert.deepEqual(Object.keys(loaded), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'settings']);
   assert.deepEqual(Object.keys(loaded.listings).sort(), ['listing-3', 'listing-4', 'listing-5']);
 });
 
@@ -236,7 +236,7 @@ test('applyActiveListingRetentionToStore returns a compatible store copy without
   });
 
   assert.equal(JSON.stringify(store), before);
-  assert.deepEqual(Object.keys(result.store), ['listings', 'alerts', 'scans', 'rejections', 'settings']);
+  assert.deepEqual(Object.keys(result.store), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'settings']);
   assert.deepEqual(Object.keys(result.store.listings).sort(), ['listing-3', 'listing-4']);
   assert.equal(result.retention.evictedCount, 2);
 });

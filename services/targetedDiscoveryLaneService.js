@@ -271,6 +271,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
     historyEngine,
     getStore = () => ({}),
     parseCardTitle,
+    recordTargetedDiscoveryObservation,
     saveScoutedListing,
     sleep = async () => {},
     now = () => new Date().toISOString()
@@ -331,6 +332,8 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
     let duplicateCount = 0;
     let newListings = 0;
     let previouslyObservedListings = 0;
+    let rawNewListings = 0;
+    let rawPreviouslyObservedListings = 0;
     let budgetReached = false;
 
     for (const query of queries) {
@@ -360,20 +363,45 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
 
             increment(listingTypeBreakdown, getListingType(listing));
 
+            const priorHistory = historyEngine?.getListing?.(listingId);
+            const priorStoreListing = asObject(getStore().listings)?.[listingId];
+            const observedAt = now();
+            const marketplaceTimestamp = getMarketplaceStartTimestamp(listing);
+            const ageMs = calculateAgeMsAtObservation(listing, observedAt);
             const triage = classifyListingForCheapTriage(listing, config);
+            const observationStatus = priorHistory || priorStoreListing ? 'previously_observed' : 'new';
+            if (observationStatus === 'previously_observed') rawPreviouslyObservedListings += 1;
+            else rawNewListings += 1;
+
+            recordTargetedDiscoveryObservation?.({
+              runId,
+              listing,
+              listingId,
+              laneId: config.laneId,
+              laneName: config.laneName,
+              query,
+              page,
+              offset,
+              marketplaceStartTimestamp: marketplaceTimestamp,
+              observedAt,
+              firstObservedAt: priorHistory?.firstSeenAt || priorStoreListing?.firstSeenAt || observedAt,
+              ageAtObservationMs: ageMs,
+              ageAtFirstObservationMs: ageMs,
+              duplicateClassification: 'unique_raw_result',
+              observationStatus,
+              candidatePreserved: !triage.rejected,
+              triage,
+              config
+            });
+
             if (triage.rejected) {
               rejected.push({ listingId, reason: triage.reason });
               continue;
             }
 
-            const priorHistory = historyEngine?.getListing?.(listingId);
-            const priorStoreListing = asObject(getStore().listings)?.[listingId];
             if (priorHistory || priorStoreListing) previouslyObservedListings += 1;
             else newListings += 1;
 
-            const observedAt = now();
-            const marketplaceTimestamp = getMarketplaceStartTimestamp(listing);
-            const ageMs = calculateAgeMsAtObservation(listing, observedAt);
             if (ageMs !== null) freshnessAges.push(ageMs);
 
             const enrichedListing = {
@@ -440,12 +468,15 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
         pagesRequested,
         rawResults,
         uniqueListings: seenListingIds.size,
+        rawNewListings,
+        rawPreviouslyObservedListings,
         newListings,
         previouslyObservedListings,
         cheaplyRejectedListings: rejected.length,
         candidatesPreserved: savedListings.length,
         apiErrors,
         duplicateCount,
+        observationsRecorded: seenListingIds.size,
         rejectedListings: rejected,
         listingTypeBreakdown,
         freshness: summarizeFreshness(freshnessAges),
