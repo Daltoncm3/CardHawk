@@ -32,6 +32,7 @@ const activeListingRetention = require("./utils/activeListingRetention");
 const scanUniverseSnapshot = require("./utils/scanUniverseSnapshot");
 const appStore = require("./utils/appStore");
 const { createPersistenceCoordinator } = require("./utils/persistenceCoordinator");
+const { addOrCoalesceRejection } = require("./utils/rejectionStore");
 const {
   recordTargetedDiscoveryObservation
 } = require("./utils/targetedDiscoveryObservationStore");
@@ -154,7 +155,14 @@ let canonicalSoldEvidenceStore = null;
 let shadowModeDecisionIntelligenceEvaluator = null;
 let shadowModeDecisionLogger = shadowModeLogger.logShadowModeDecision;
 const persistenceCoordinator = createPersistenceCoordinator({
-  persist: () => appStore.saveStore(DATA_FILE, store),
+  persist: (metadata = {}) => appStore.saveStore(DATA_FILE, store, {
+    reason: metadata.reason || 'coordinated_store_save',
+    context: {
+      dirtyReasons: metadata.dirtyReasons || [],
+      forced: Boolean(metadata.forced),
+      batchId: metadata.batchId || null
+    }
+  }),
   idPrefix: 'scout-scan-persistence'
 });
 
@@ -878,13 +886,40 @@ function buildShadowValuation({
 
 function loadStore() {
   try {
-    store = appStore.loadStore(DATA_FILE, store);
+    const loadPlan = appStore.loadStoreWithPersistencePlan(DATA_FILE, store);
+    store = loadPlan.store;
+    const beforeRescoreFingerprint = appStore.buildStoreFingerprint(store, { alreadyNormalized: true });
 
     rescoreExistingData();
-    saveStore();
+    const afterRescoreStore = appStore.normalizeStore(store);
+    const afterRescoreFingerprint = appStore.buildStoreFingerprint(afterRescoreStore, { alreadyNormalized: true });
+    store = afterRescoreStore;
+
+    if (loadPlan.persistenceRequired || beforeRescoreFingerprint !== afterRescoreFingerprint) {
+      saveStore({
+        reason: 'startup_state_materially_changed',
+        context: {
+          loadPersistenceReasons: loadPlan.persistenceReasons,
+          rescoreChangedStore: beforeRescoreFingerprint !== afterRescoreFingerprint
+        }
+      });
+    } else {
+      appStore.recordStoreSaveDiagnostic({
+        filePath: DATA_FILE,
+        reason: 'startup_state_unchanged',
+        context: {
+          loadPersistenceReasons: loadPlan.persistenceReasons,
+          rescoreChangedStore: false
+        },
+        executed: false,
+        skipped: true,
+        skipReason: 'startup_state_materially_unchanged',
+        store
+      });
+    }
   } catch (error) {
     console.error("Failed to load data:", error.message);
-    saveStore();
+    saveStore({ reason: 'startup_load_failed_fallback_save' });
   }
 }
 
@@ -894,7 +929,10 @@ function saveStore(options = {}) {
     return persistenceCoordinator.emergencyFlush(options.reason || 'immediate_store_save');
   }
 
-  return appStore.saveStore(DATA_FILE, store);
+  return appStore.saveStore(DATA_FILE, store, {
+    reason: options.reason || 'store_save',
+    context: options.context || null
+  });
 }
 
 function enforceResidentListingRetention() {
@@ -2877,7 +2915,7 @@ function saveScoutedListing(listing, query, lane, context = {}) {
         console.error("Notification alert failed:", error.message);
       });
   } else if (!gate.passed) {
-    store.rejections.unshift({
+    const rejectionResult = addOrCoalesceRejection(store.rejections, {
       ebayItemId: listing.ebayItemId,
       lane: detectedLane,
       title: listing.title,
@@ -2899,7 +2937,11 @@ function saveScoutedListing(listing, query, lane, context = {}) {
       dealGrade: saved.dealGrade,
       reasons: gate.reasons,
       createdAt: now
+    }, {
+      observedAt: now,
+      limit: 300
     });
+    store.rejections = rejectionResult.rejections;
   }
 
   store.rejections = store.rejections.slice(0, 300);
