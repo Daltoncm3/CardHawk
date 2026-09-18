@@ -127,6 +127,38 @@ function buildTargetedDiscoveryQueries(config = {}) {
   return Array.from(new Set([core, secondary].filter(Boolean)));
 }
 
+function inferTargetedDiscoveryParallel(config = {}) {
+  const keyword = asArray(config.keywords)
+    .find((term) => /\bsilver\s+prizm\b/i.test(String(term || '')));
+  if (keyword) return 'Silver Prizm';
+  return config.parallel || config.variation || null;
+}
+
+function buildTargetedDiscoveryParsedIdentity(config = {}) {
+  const lane = createTargetedDiscoveryLaneConfig({}, config);
+  const player = lane.players[0] || null;
+  const year = Number(lane.year);
+  const product = lane.product || '';
+  const brand = /\bpanini\b/i.test(product) ? 'Panini' : null;
+  const normalizedKeywords = asArray(lane.keywords).map((keyword) => normalizeText(keyword));
+
+  return {
+    category: 'sports_card',
+    sport: lane.sport || null,
+    player,
+    year: Number.isFinite(year) ? year : lane.year || null,
+    brand,
+    product: product || null,
+    setName: lane.setName || null,
+    cardNumber: lane.cardNumber || null,
+    parallel: inferTargetedDiscoveryParallel(lane),
+    rookie: normalizedKeywords.some((keyword) => keyword === 'rookie' || keyword === 'rc'),
+    autograph: false,
+    memorabilia: false,
+    serialNumbered: false
+  };
+}
+
 function getListingId(listing = {}) {
   return String(listing.marketplaceListingId || listing.ebayItemId || listing.listingId || listing.itemId || '').trim();
 }
@@ -406,6 +438,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
 
             const enrichedListing = {
               ...listing,
+              parsedIdentity: listing.parsedIdentity || listing.canonicalIdentity || buildTargetedDiscoveryParsedIdentity(config),
               targetedDiscovery: {
                 laneId: config.laneId,
                 laneName: config.laneName,
@@ -511,6 +544,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
 module.exports = {
   DEFAULT_LANE_ID,
   DEFAULT_SCHEMA_VERSION,
+  buildTargetedDiscoveryParsedIdentity,
   buildTargetedDiscoveryQueries,
   calculateAgeMsAtObservation,
   classifyListingForCheapTriage,
