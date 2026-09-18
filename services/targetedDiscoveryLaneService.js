@@ -2,6 +2,8 @@
 
 const DEFAULT_LANE_ID = 'ufc_prizm_anthony_hernandez_silver_rookie';
 const DEFAULT_SCHEMA_VERSION = '1.0.0';
+const DEFAULT_MULTI_LANE_ID = 'multi_targeted_discovery';
+const DEFAULT_MAX_ACTIVE_TARGETED_LANES = 3;
 
 const DEFAULT_EXCLUDED_TERMS = Object.freeze([
   'poster',
@@ -71,6 +73,16 @@ function normalizeBuyingOptions(listingTypes = []) {
     .filter((type) => type === 'FIXED_PRICE' || type === 'AUCTION');
 }
 
+function parseJsonArray(value) {
+  if (value === undefined || value === null || value === '') return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
 function createTargetedDiscoveryLaneConfig(env = process.env, overrides = {}) {
   const lane = {
     enabled: String(env.CARDHAWK_TARGETED_DISCOVERY_ENABLED || 'false').toLowerCase() === 'true',
@@ -110,6 +122,26 @@ function createTargetedDiscoveryLaneConfig(env = process.env, overrides = {}) {
   };
 }
 
+function createTargetedDiscoveryLaneConfigs(env = process.env, overrides = {}) {
+  const laneOverrides = Array.isArray(overrides.lanes)
+    ? overrides.lanes
+    : parseJsonArray(env.CARDHAWK_TARGETED_DISCOVERY_LANES_JSON);
+  const maxActiveLanes = toPositiveInteger(
+    overrides.maxActiveLanes ?? env.CARDHAWK_TARGETED_DISCOVERY_MAX_ACTIVE_LANES,
+    DEFAULT_MAX_ACTIVE_TARGETED_LANES
+  );
+  const base = createTargetedDiscoveryLaneConfig(env, overrides);
+
+  if (!laneOverrides.length) return [base];
+
+  return laneOverrides.slice(0, maxActiveLanes).map((lane, index) => createTargetedDiscoveryLaneConfig(env, {
+    ...base,
+    ...lane,
+    laneId: lane.laneId || `${DEFAULT_MULTI_LANE_ID}_${index + 1}`,
+    laneName: lane.laneName || lane.name || `Targeted Discovery Lane ${index + 1}`
+  }));
+}
+
 function buildTargetedDiscoveryQueries(config = {}) {
   const lane = createTargetedDiscoveryLaneConfig({}, config);
   const player = lane.players[0] || '';
@@ -125,6 +157,10 @@ function buildTargetedDiscoveryQueries(config = {}) {
     .trim();
 
   return Array.from(new Set([core, secondary].filter(Boolean)));
+}
+
+function normalizeLaneTerm(value) {
+  return normalizeText(value).replace(/^#/, '');
 }
 
 function inferTargetedDiscoveryParallel(config = {}) {
@@ -157,6 +193,55 @@ function buildTargetedDiscoveryParsedIdentity(config = {}) {
     memorabilia: false,
     serialNumbered: false
   };
+}
+
+function getLaneRequiredTerms(config = {}) {
+  return [
+    ...asArray(config.players),
+    config.year,
+    config.setName || config.product,
+    config.cardNumber
+  ].filter(Boolean);
+}
+
+function evaluateLaneIdentityMatch(listing = {}, config = {}) {
+  const normalizedTitle = normalizeText(listing.title || '');
+  const requiredTerms = getLaneRequiredTerms(config);
+  const missingTerms = requiredTerms.filter((term) => !normalizedTitle.includes(normalizeLaneTerm(term)));
+
+  if (!requiredTerms.length) {
+    return {
+      compatible: false,
+      exact: false,
+      ambiguous: true,
+      missingTerms,
+      reason: 'missing_lane_identity_terms'
+    };
+  }
+
+  if (missingTerms.length > 2) {
+    return {
+      compatible: false,
+      exact: false,
+      ambiguous: false,
+      missingTerms,
+      reason: 'clearly_irrelevant_lane_terms'
+    };
+  }
+
+  return {
+    compatible: true,
+    exact: missingTerms.length === 0,
+    ambiguous: missingTerms.length > 0,
+    missingTerms,
+    reason: missingTerms.length ? 'ambiguous_lane_identity_match' : 'exact_lane_identity_match'
+  };
+}
+
+function shouldAttachLaneParsedIdentity(listing = {}, config = {}, triage = {}) {
+  if (triage.rejected) return false;
+  const match = evaluateLaneIdentityMatch(listing, config);
+  return match.compatible && match.exact && !match.ambiguous;
 }
 
 function getListingId(listing = {}) {
@@ -209,14 +294,9 @@ function classifyListingForCheapTriage(listing = {}, config = {}) {
   if (config.priceMax !== null && price > Number(config.priceMax)) return { rejected: true, reason: 'above_lane_price_ceiling' };
   if (hasAnyTerm(title, config.excludedTerms)) return { rejected: true, reason: 'excluded_keyword' };
 
-  const requiredTerms = [
-    ...asArray(config.players),
-    config.year,
-    config.setName || config.product,
-    config.cardNumber
-  ].filter(Boolean);
+  const requiredTerms = getLaneRequiredTerms(config);
 
-  const missingHardTerms = requiredTerms.filter((term) => !normalizedTitle.includes(normalizeText(term).replace(/^#/, '')));
+  const missingHardTerms = requiredTerms.filter((term) => !normalizedTitle.includes(normalizeLaneTerm(term)));
   if (missingHardTerms.length > 2) {
     return { rejected: true, reason: 'clearly_irrelevant_lane_terms', missingTerms: missingHardTerms };
   }
@@ -260,6 +340,37 @@ function increment(summary, key) {
   summary[safeKey] = (summary[safeKey] || 0) + 1;
 }
 
+function getSavedSoldCompCount(listing = {}) {
+  const candidates = [
+    listing.marketData?.soldCompCount,
+    listing.soldSales?.saleCount,
+    Array.isArray(listing.soldSales?.sales) ? listing.soldSales.sales.length : undefined,
+    listing.compData?.trueSoldCompCount,
+    listing.dealGate?.gate?.soldCompCount
+  ];
+
+  for (const value of candidates) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return Math.max(0, Math.round(number));
+  }
+
+  return 0;
+}
+
+function buildCandidatePipelineMetrics(savedListings = []) {
+  const saved = asArray(savedListings);
+  return {
+    soldEvidenceLookupReached: saved.length,
+    sufficientSoldEvidenceListings: saved.filter((listing) => getSavedSoldCompCount(listing) >= 3).length,
+    supportedValuationListings: saved.filter((listing) => {
+      const source = String(listing.marketData?.source || '');
+      return source && source !== 'insufficient_evidence';
+    }).length,
+    dealGatePassedListings: saved.filter((listing) => listing.dealGate?.passed === true).length,
+    dealGateRejectedListings: saved.filter((listing) => listing.dealGate?.passed === false).length
+  };
+}
+
 function createDisabledReport(config = {}, nowIso) {
   const timestamp = nowIso();
   return {
@@ -282,6 +393,9 @@ function createDisabledReport(config = {}, nowIso) {
     candidatesPreserved: 0,
     apiErrors: [],
     duplicateCount: 0,
+    laneReports: [],
+    lanesExecuted: 0,
+    candidatePipeline: buildCandidatePipelineMetrics([]),
     listingTypeBreakdown: {},
     freshness: summarizeFreshness([]),
     requestEfficiency: {
@@ -367,10 +481,16 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
     let rawNewListings = 0;
     let rawPreviouslyObservedListings = 0;
     let budgetReached = false;
+    const effectiveMaxRequests = Math.max(0, Math.min(
+      toPositiveInteger(config.maxRequests, 1),
+      Number.isFinite(Number(options.remainingRequestBudget))
+        ? Math.max(0, Math.floor(Number(options.remainingRequestBudget)))
+        : toPositiveInteger(config.maxRequests, 1)
+    ));
 
     for (const query of queries) {
       for (let page = 0; page < config.maxPages; page++) {
-        if (apiRequests >= config.maxRequests || rawResults >= config.maxResults) {
+        if (apiRequests >= effectiveMaxRequests || rawResults >= config.maxResults) {
           budgetReached = true;
           break;
         }
@@ -438,7 +558,11 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
 
             const enrichedListing = {
               ...listing,
-              parsedIdentity: listing.parsedIdentity || listing.canonicalIdentity || buildTargetedDiscoveryParsedIdentity(config),
+              parsedIdentity: listing.parsedIdentity ||
+                listing.canonicalIdentity ||
+                (shouldAttachLaneParsedIdentity(listing, config, triage)
+                  ? buildTargetedDiscoveryParsedIdentity(config)
+                  : undefined),
               targetedDiscovery: {
                 laneId: config.laneId,
                 laneName: config.laneName,
@@ -450,6 +574,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
                 marketplaceStartTimestamp: marketplaceTimestamp,
                 ageAtFirstObservationMs: ageMs,
                 freshnessAvailable: ageMs !== null,
+                identityMatch: evaluateLaneIdentityMatch(listing, config),
                 triage
               }
             };
@@ -484,6 +609,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
     const completedAt = now();
     const durationMs = Math.max(0, (parseTimestamp(completedAt) || Date.now()) - startedMs);
     const safeRequests = apiRequests || 1;
+    const candidatePipeline = buildCandidatePipelineMetrics(savedListings);
 
     return {
       report: {
@@ -510,7 +636,10 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
         apiErrors,
         duplicateCount,
         observationsRecorded: seenListingIds.size,
+        lanesExecuted: 1,
+        laneReports: [],
         rejectedListings: rejected,
+        candidatePipeline,
         listingTypeBreakdown,
         freshness: summarizeFreshness(freshnessAges),
         requestEfficiency: {
@@ -523,6 +652,7 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
           pageLimit: config.pageLimit,
           maxPages: config.maxPages,
           maxRequests: config.maxRequests,
+          effectiveMaxRequests,
           maxResults: config.maxResults,
           budgetReached
         },
@@ -541,15 +671,171 @@ function createTargetedDiscoveryLaneService(dependencies = {}) {
   };
 }
 
+function createMultiTargetedDiscoveryLaneService(dependencies = {}) {
+  const {
+    config = {},
+    env = process.env,
+    lanes = createTargetedDiscoveryLaneConfigs(env, config),
+    now = () => new Date().toISOString()
+  } = dependencies;
+  const activeLanes = asArray(lanes).filter((lane) => lane && lane.enabled === true);
+  const maxActiveLanes = toPositiveInteger(
+    config.maxActiveLanes ?? env.CARDHAWK_TARGETED_DISCOVERY_MAX_ACTIVE_LANES,
+    DEFAULT_MAX_ACTIVE_TARGETED_LANES
+  );
+  const selectedLanes = activeLanes.slice(0, maxActiveLanes);
+  const fallbackTotalRequests = selectedLanes.reduce(
+    (sum, lane) => sum + toPositiveInteger(lane.maxRequests, 1),
+    0
+  );
+  const maxTotalRequests = toPositiveInteger(
+    config.maxTotalRequests ?? env.CARDHAWK_TARGETED_DISCOVERY_MAX_TOTAL_REQUESTS,
+    fallbackTotalRequests || createTargetedDiscoveryLaneConfig(env, config).maxRequests
+  );
+
+  function isEnabled() {
+    return selectedLanes.length > 0;
+  }
+
+  async function run(options = {}) {
+    if (!isEnabled()) {
+      return {
+        report: createDisabledReport({ laneId: DEFAULT_MULTI_LANE_ID, laneName: 'Multi-Target Discovery' }, now),
+        savedListings: []
+      };
+    }
+
+    const startedAt = now();
+    const startedMs = parseTimestamp(startedAt) || Date.now();
+    const runId = options.scanId ? `${options.scanId}:${DEFAULT_MULTI_LANE_ID}` : `targeted-discovery-${startedMs}`;
+    const savedListings = [];
+    const laneReports = [];
+    let usedRequests = 0;
+    let budgetReached = false;
+
+    for (const laneConfig of selectedLanes) {
+      const remainingRequestBudget = Math.max(0, maxTotalRequests - usedRequests);
+      if (remainingRequestBudget <= 0) {
+        budgetReached = true;
+        break;
+      }
+
+      const service = createTargetedDiscoveryLaneService({
+        ...dependencies,
+        config: laneConfig,
+        now
+      });
+      const result = await service.run({
+        ...options,
+        scanId: runId,
+        remainingRequestBudget
+      });
+      const report = result.report || {};
+      usedRequests += Number(report.apiRequests || 0);
+      savedListings.push(...asArray(result.savedListings));
+      laneReports.push(report);
+
+      if (usedRequests >= maxTotalRequests) {
+        budgetReached = true;
+        break;
+      }
+    }
+
+    const completedAt = now();
+    const durationMs = Math.max(0, (parseTimestamp(completedAt) || Date.now()) - startedMs);
+    const sum = (key) => laneReports.reduce((total, report) => total + Number(report[key] || 0), 0);
+    const listingTypeBreakdown = laneReports.reduce((summary, report) => {
+      for (const [key, value] of Object.entries(report.listingTypeBreakdown || {})) {
+        summary[key] = (summary[key] || 0) + Number(value || 0);
+      }
+      return summary;
+    }, {});
+    const candidatePipeline = laneReports.reduce((summary, report) => {
+      const metrics = report.candidatePipeline || {};
+      for (const key of Object.keys(summary)) {
+        summary[key] += Number(metrics[key] || 0);
+      }
+      return summary;
+    }, buildCandidatePipelineMetrics([]));
+
+    return {
+      report: {
+        schemaVersion: DEFAULT_SCHEMA_VERSION,
+        runId,
+        laneId: DEFAULT_MULTI_LANE_ID,
+        laneName: 'Multi-Target Discovery',
+        status: laneReports.some((report) => report.status === 'completed_with_errors')
+          ? 'completed_with_errors'
+          : 'completed',
+        startedAt,
+        completedAt,
+        durationMs,
+        lanesExecuted: laneReports.length,
+        laneReports,
+        queriesExecuted: sum('queriesExecuted'),
+        apiRequests: usedRequests,
+        pagesRequested: sum('pagesRequested'),
+        rawResults: sum('rawResults'),
+        uniqueListings: sum('uniqueListings'),
+        rawNewListings: sum('rawNewListings'),
+        rawPreviouslyObservedListings: sum('rawPreviouslyObservedListings'),
+        newListings: sum('newListings'),
+        previouslyObservedListings: sum('previouslyObservedListings'),
+        cheaplyRejectedListings: sum('cheaplyRejectedListings'),
+        candidatesPreserved: savedListings.length,
+        observationsRecorded: sum('observationsRecorded'),
+        duplicateCount: sum('duplicateCount'),
+        candidatePipeline,
+        listingTypeBreakdown,
+        requestEfficiency: {
+          apiRequestsConsumed: usedRequests,
+          listingsReturnedPerRequest: usedRequests ? Math.round((sum('rawResults') / usedRequests) * 100) / 100 : 0,
+          uniqueListingsPerRequest: usedRequests ? Math.round((sum('uniqueListings') / usedRequests) * 100) / 100 : 0,
+          newListingsPerRequest: usedRequests ? Math.round((sum('newListings') / usedRequests) * 100) / 100 : 0
+        },
+        budget: {
+          maxActiveLanes,
+          maxTotalRequests,
+          budgetReached,
+          lanesConfigured: activeLanes.length,
+          lanesExecuted: laneReports.length
+        },
+        productionImpact: 'none',
+        decisionImpact: 'none',
+        executionAuthority: 'none'
+      },
+      savedListings
+    };
+  }
+
+  return {
+    config: {
+      laneId: DEFAULT_MULTI_LANE_ID,
+      maxActiveLanes,
+      maxTotalRequests,
+      lanes: selectedLanes
+    },
+    isEnabled,
+    run
+  };
+}
+
 module.exports = {
   DEFAULT_LANE_ID,
+  DEFAULT_MAX_ACTIVE_TARGETED_LANES,
+  DEFAULT_MULTI_LANE_ID,
   DEFAULT_SCHEMA_VERSION,
+  buildCandidatePipelineMetrics,
   buildTargetedDiscoveryParsedIdentity,
   buildTargetedDiscoveryQueries,
   calculateAgeMsAtObservation,
   classifyListingForCheapTriage,
+  createMultiTargetedDiscoveryLaneService,
   createTargetedDiscoveryLaneConfig,
+  createTargetedDiscoveryLaneConfigs,
   createTargetedDiscoveryLaneService,
+  evaluateLaneIdentityMatch,
   getMarketplaceStartTimestamp,
+  shouldAttachLaneParsedIdentity,
   summarizeFreshness
 };

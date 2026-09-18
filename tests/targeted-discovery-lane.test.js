@@ -6,9 +6,13 @@ const test = require('node:test');
 const { createScoutScanner } = require('../services/scoutScannerService');
 const {
   buildTargetedDiscoveryQueries,
+  createMultiTargetedDiscoveryLaneService,
   classifyListingForCheapTriage,
   createTargetedDiscoveryLaneConfig,
+  createTargetedDiscoveryLaneConfigs,
   createTargetedDiscoveryLaneService,
+  evaluateLaneIdentityMatch,
+  shouldAttachLaneParsedIdentity,
   summarizeFreshness
 } = require('../services/targetedDiscoveryLaneService');
 
@@ -78,6 +82,92 @@ function createHarness(overrides = {}) {
   });
 
   return { calls, config, saved, service, store };
+}
+
+function createMultiHarness(overrides = {}) {
+  const saved = [];
+  const calls = [];
+  const observations = [];
+  const store = overrides.store || { listings: {} };
+  const lanes = overrides.lanes || [
+    createTargetedDiscoveryLaneConfig({}, {
+      enabled: true,
+      laneId: 'anthony_lane',
+      laneName: 'Anthony Hernandez Lane',
+      players: ['Anthony Hernandez'],
+      year: '2023',
+      product: 'Panini Prizm UFC',
+      setName: 'Prizm',
+      cardNumber: '181',
+      keywords: ['Silver Prizm', 'rookie', 'RC'],
+      pageLimit: 1,
+      maxPages: 2,
+      maxRequests: 2,
+      maxResults: 10
+    }),
+    createTargetedDiscoveryLaneConfig({}, {
+      enabled: true,
+      laneId: 'brandon_lane',
+      laneName: 'Brandon Miller Lane',
+      sport: 'basketball',
+      players: ['Brandon Miller'],
+      year: '2023-24',
+      product: 'Panini Prizm',
+      setName: 'Prizm',
+      cardNumber: '152',
+      keywords: ['Silver Prizm', 'rookie', 'RC'],
+      pageLimit: 1,
+      maxPages: 2,
+      maxRequests: 2,
+      maxResults: 10
+    })
+  ];
+  const service = createMultiTargetedDiscoveryLaneService({
+    activeMarketplace: {
+      config: { searchDelayMs: 0 },
+      searchPageWithBackoff: async (query, limit, options) => {
+        calls.push({ query, limit, options });
+        const key = `${query}:${options.offset || 0}`;
+        return {
+          query,
+          offset: options.offset || 0,
+          limit,
+          items: overrides.pages?.[key] || []
+        };
+      },
+      compactError: (error) => error.message,
+      isRateLimitError: () => false
+    },
+    config: {
+      enabled: true,
+      maxActiveLanes: overrides.maxActiveLanes ?? 3,
+      maxTotalRequests: overrides.maxTotalRequests ?? 4
+    },
+    lanes,
+    getStore: () => store,
+    historyEngine: { getListing: () => null },
+    parseCardTitle: () => ({}),
+    recordTargetedDiscoveryObservation: (input) => {
+      observations.push(input);
+    },
+    saveScoutedListing: (item, query, lane) => {
+      const savedListing = {
+        ...item,
+        query,
+        lane,
+        marketData: item.marketData || { source: 'sold_market', soldCompCount: 3 },
+        soldSales: item.soldSales || { saleCount: 3, sales: [{}, {}, {}] },
+        dealGate: item.dealGate || { passed: false, gate: { soldCompCount: 3 } }
+      };
+      saved.push(savedListing);
+      store.listings[item.ebayItemId] = savedListing;
+      return savedListing;
+    },
+    sleep: async () => {},
+    now: () => overrides.now || '2026-07-10T12:00:00.000Z'
+  });
+
+  return { calls, lanes, observations, saved, service, store };
 }
 
 test('A2 targeted lane configuration is disabled by default and preserves explicit scope', () => {
@@ -229,6 +319,133 @@ test('A2 report contains discovery metrics and non-authoritative boundaries', as
   assert.equal(Object.hasOwn(result.report, 'purchaseAutomation'), false);
   assert.equal(Object.hasOwn(result.report, 'bidAutomation'), false);
   assert.equal(Object.hasOwn(result.report, 'offerAutomation'), false);
+});
+
+test('A4 multiple targeted lanes execute in one bounded run with lane metrics', async () => {
+  const { lanes } = createMultiHarness();
+  const anthonyQuery = buildTargetedDiscoveryQueries(lanes[0])[0];
+  const brandonQuery = buildTargetedDiscoveryQueries(lanes[1])[0];
+  const { calls, observations, saved, service } = createMultiHarness({
+    pages: {
+      [`${anthonyQuery}:0`]: [listing('anthony-a4', {
+        title: '2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC Rookie'
+      })],
+      [`${brandonQuery}:0`]: [listing('brandon-a4', {
+        title: '2023-24 Panini Prizm Brandon Miller #152 Silver Prizm RC Rookie'
+      })]
+    }
+  });
+
+  const result = await service.run({ scanId: 'scan-a4-multi' });
+
+  assert.equal(calls.length, 4);
+  assert.equal(result.report.lanesExecuted, 2);
+  assert.equal(result.report.laneReports.length, 2);
+  assert.equal(result.report.rawResults, 2);
+  assert.equal(result.report.uniqueListings, 2);
+  assert.equal(result.report.candidatesPreserved, 2);
+  assert.equal(result.report.candidatePipeline.soldEvidenceLookupReached, 2);
+  assert.equal(result.report.candidatePipeline.sufficientSoldEvidenceListings, 2);
+  assert.deepEqual(saved.map((item) => item.targetedDiscovery.laneId).sort(), ['anthony_lane', 'brandon_lane']);
+  assert.deepEqual(observations.map((item) => item.laneId).sort(), ['anthony_lane', 'brandon_lane']);
+});
+
+test('A4 total targeted-discovery request budget cannot be exceeded', async () => {
+  const { lanes } = createMultiHarness();
+  const anthonyQueries = buildTargetedDiscoveryQueries(lanes[0]);
+  const { calls, service } = createMultiHarness({
+    maxTotalRequests: 2,
+    pages: {
+      [`${anthonyQueries[0]}:0`]: [listing('a4-budget-1')],
+      [`${anthonyQueries[0]}:1`]: [listing('a4-budget-2')]
+    }
+  });
+
+  const result = await service.run({ scanId: 'scan-a4-total-budget' });
+
+  assert.equal(calls.length, 2);
+  assert.equal(result.report.apiRequests, 2);
+  assert.equal(result.report.budget.maxTotalRequests, 2);
+  assert.equal(result.report.budget.budgetReached, true);
+  assert.equal(result.report.lanesExecuted, 1);
+});
+
+test('A4 per-lane request limit cannot be exceeded even when total budget remains', async () => {
+  const { lanes } = createMultiHarness();
+  const limitedLane = { ...lanes[0], maxRequests: 1, maxPages: 3 };
+  const query = buildTargetedDiscoveryQueries(limitedLane)[0];
+  const { calls, service } = createMultiHarness({
+    lanes: [limitedLane],
+    maxTotalRequests: 5,
+    pages: {
+      [`${query}:0`]: [listing('a4-per-lane-1')]
+    }
+  });
+
+  const result = await service.run({ scanId: 'scan-a4-per-lane-budget' });
+
+  assert.equal(calls.length, 1);
+  assert.equal(result.report.apiRequests, 1);
+  assert.equal(result.report.laneReports[0].budget.effectiveMaxRequests, 1);
+});
+
+test('A4 candidate identity does not leak between lanes', async () => {
+  const { lanes } = createMultiHarness();
+  const anthonyQuery = buildTargetedDiscoveryQueries(lanes[0])[0];
+  const brandonQuery = buildTargetedDiscoveryQueries(lanes[1])[0];
+  const { saved, service } = createMultiHarness({
+    pages: {
+      [`${anthonyQuery}:0`]: [listing('anthony-identity', {
+        title: '2023 Panini Prizm UFC Anthony Hernandez #181 Silver Prizm RC Rookie'
+      })],
+      [`${brandonQuery}:0`]: [listing('brandon-identity', {
+        title: '2023-24 Panini Prizm Brandon Miller #152 Silver Prizm RC Rookie'
+      })]
+    }
+  });
+
+  await service.run({ scanId: 'scan-a4-identity-isolation' });
+
+  const anthony = saved.find((item) => item.ebayItemId === 'anthony-identity');
+  const brandon = saved.find((item) => item.ebayItemId === 'brandon-identity');
+  assert.equal(anthony.parsedIdentity.player, 'Anthony Hernandez');
+  assert.equal(anthony.parsedIdentity.cardNumber, '181');
+  assert.equal(brandon.parsedIdentity.player, 'Brandon Miller');
+  assert.equal(brandon.parsedIdentity.cardNumber, '152');
+});
+
+test('A4 incompatible or ambiguous lane result cannot inherit exact parsed identity', () => {
+  const config = createTargetedDiscoveryLaneConfig({}, { enabled: true });
+  const ambiguous = listing('ambiguous-a4', {
+    title: 'Anthony Hernandez Silver Prizm Rookie UFC Card'
+  });
+  const incompatible = listing('wrong-a4', {
+    title: '2023 Panini Donruss UFC Wrong Player #999 Base RC Rookie'
+  });
+  const ambiguousTriage = classifyListingForCheapTriage(ambiguous, config);
+  const incompatibleTriage = classifyListingForCheapTriage(incompatible, config);
+
+  assert.equal(ambiguousTriage.rejected, false);
+  assert.equal(evaluateLaneIdentityMatch(ambiguous, config).ambiguous, true);
+  assert.equal(shouldAttachLaneParsedIdentity(ambiguous, config, ambiguousTriage), false);
+  assert.equal(incompatibleTriage.rejected, true);
+  assert.equal(evaluateLaneIdentityMatch(incompatible, config).compatible, false);
+  assert.equal(shouldAttachLaneParsedIdentity(incompatible, config, incompatibleTriage), false);
+});
+
+test('A4 lane JSON configuration supports multiple explicit lane definitions', () => {
+  const lanes = createTargetedDiscoveryLaneConfigs({
+    CARDHAWK_TARGETED_DISCOVERY_ENABLED: 'true',
+    CARDHAWK_TARGETED_DISCOVERY_LANES_JSON: JSON.stringify([
+      { laneId: 'lane_one', players: ['Anthony Hernandez'], cardNumber: '181' },
+      { laneId: 'lane_two', players: ['Brandon Miller'], sport: 'basketball', cardNumber: '152' }
+    ])
+  });
+
+  assert.equal(lanes.length, 2);
+  assert.equal(lanes[0].laneId, 'lane_one');
+  assert.deepEqual(lanes[1].players, ['Brandon Miller']);
+  assert.equal(lanes[1].enabled, true);
 });
 
 test('A2 disabled lane performs no marketplace requests and returns a disabled report', async () => {

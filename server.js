@@ -46,8 +46,9 @@ const soldEvidenceStore = require("./utils/soldEvidenceStore");
 const reviewWorkspaceBatchExporter = require("./validation/exportReviewWorkspaceBatch");
 const { createScoutScanner } = require("./services/scoutScannerService");
 const {
+  createMultiTargetedDiscoveryLaneService,
   createTargetedDiscoveryLaneConfig,
-  createTargetedDiscoveryLaneService
+  createTargetedDiscoveryLaneConfigs
 } = require("./services/targetedDiscoveryLaneService");
 const soldEvidenceService = require("./services/soldEvidenceService");
 const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
@@ -149,6 +150,7 @@ const CONFIG_READINESS = configReadiness.evaluateConfigReadiness(process.env, {
   alertsEnabled: notificationEngine.getStatus()?.enabled
 });
 const TARGETED_DISCOVERY_LANE_CONFIG = createTargetedDiscoveryLaneConfig(process.env);
+const TARGETED_DISCOVERY_LANE_CONFIGS = createTargetedDiscoveryLaneConfigs(process.env);
 
 let store = appStore.createDefaultStore();
 let canonicalSoldEvidenceStore = null;
@@ -2962,9 +2964,10 @@ const scoutScanner = createScoutScanner({
   saveScoutedListing,
   saveStore,
   shadowModeLogger,
-  targetedDiscoveryLane: createTargetedDiscoveryLaneService({
+  targetedDiscoveryLane: createMultiTargetedDiscoveryLaneService({
     activeMarketplace,
     config: TARGETED_DISCOVERY_LANE_CONFIG,
+    lanes: TARGETED_DISCOVERY_LANE_CONFIGS,
     getStore: () => store,
     historyEngine,
     now: () => new Date().toISOString(),
