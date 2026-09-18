@@ -12,7 +12,6 @@ const {
   asArray,
   asObject,
   fingerprint,
-  toNumber,
   unique
 } = require('./canonicalValidationCore');
 
@@ -48,9 +47,15 @@ const BRAND_PATTERNS = Object.freeze([
 ]);
 
 const PRODUCT_PATTERNS = Object.freeze([
+  ['Topps Chrome Update', /\btopps\s+chrome\s+update\b/i],
+  ['Topps Cosmic Chrome', /\btopps\s+cosmic\s+chrome\b/i],
   ['Topps Chrome', /\btopps\s+chrome\b/i],
+  ['Topps Series 1', /\btopps\s+series\s+1\b/i],
+  ['Topps Series 2', /\btopps\s+series\s+2\b/i],
   ['Topps Update', /\btopps\s+update\b/i],
   ['Topps Heritage', /\btopps\s+heritage\b/i],
+  ['Topps Finest', /\btopps\s+finest\b/i],
+  ['Topps Stadium Club', /\btopps\s+stadium\s+club\b|\bstadium\s+club\b/i],
   ['Topps', /\btopps\b/i],
   ['Bowman Chrome', /\bbowman\s+chrome\b/i],
   ['Bowman', /\bbowman\b/i],
@@ -60,8 +65,14 @@ const PRODUCT_PATTERNS = Object.freeze([
 ]);
 
 const PARALLEL_PATTERNS = Object.freeze([
+  ['Atomic Refractor', /\batomic\s+refractor\b/i],
+  ['Prism Refractor', /\bprism\s+refractor\b/i],
+  ['Chrome Refractor', /\bchrome\s+refractor\b/i],
+  ['Rainbow Foil', /\brainbow\s+foil\b/i],
   ['Silver Prizm', /\bsilver\s+prizm\b/i],
   ['Refractor', /\brefractor\b/i],
+  ['Aqua', /\baqua\b/i],
+  ['Black', /\bblack\b/i],
   ['Gold', /\bgold\b/i],
   ['Blue', /\bblue\b/i],
   ['Red', /\bred\b/i],
@@ -70,8 +81,23 @@ const PARALLEL_PATTERNS = Object.freeze([
   ['Purple', /\bpurple\b/i],
   ['Pink', /\bpink\b/i],
   ['Sepia', /\bsepia\b/i],
-  ['X-Fractor', /\bx[-\s]?fractor\b/i]
+  ['X-Fractor', /\bx[-\s]?fractor\b/i],
+  ['Base', /\bbase\b/i]
 ]);
+
+const MATERIAL_FIELD_DERIVATION_HINTS = Object.freeze({
+  sport: /\b(ufc|mma|mlb|baseball|nba|basketball|nfl|football|nhl|hockey|soccer|fifa)\b/i,
+  subjectName: /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/,
+  year: /\b(19\d{2}|20\d{2}(?:-\d{2})?)\b/,
+  manufacturer: /\b(Panini|Topps|Bowman|Upper\s+Deck|Fleer)\b/i,
+  setName: /\b(Topps|Bowman|Panini|Prizm|Select|Optic|Chrome|Update|Heritage|Finest|Stadium\s+Club)\b/i,
+  cardNumber: /(?:#\s*|(?:card|no\.?|number|num)\s*[:#-]?\s*)([A-Za-z0-9/-]{1,12})\b/i,
+  parallel: /\b(base|refractor|prizm|foil|gold|blue|red|green|orange|purple|pink|sepia|aqua|black|x[-\s]?fractor|atomic|rainbow)\b/i,
+  autographState: /\b(auto|autograph|rpa|non[-\s]?auto|no\s+auto|not\s+autographed|no\s+autograph)\b/i,
+  memorabiliaState: /\b(patch|relic|memorabilia|jersey|rpa|non[-\s]?mem|no\s+(patch|relic|memorabilia|jersey)|not\s+patch)\b/i,
+  serialNumbered: /\/\d{1,5}\b|\b(numbered\s+to|out\s+of|sn)\s*\d{1,5}\b|\b(non[-\s]?numbered|unnumbered|not\s+numbered)\b/i,
+  rawOrGraded: /\b(raw|ungraded|PSA|BGS|SGC|CGC)\b/i
+});
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -118,7 +144,7 @@ function detectBoolean(title = '', positivePattern, negativePattern) {
 }
 
 function parseGradeFromTitle(title = '') {
-  const match = title.match(/\b(PSA|BGS|SGC|CGC)\s*([0-9](?:\.[0-9])?|10|AUTH)\b/i);
+  const match = title.match(/\b(PSA|BGS|SGC|CGC)\s*(?:GEM\s*MT\s*)?([0-9](?:\.[0-9])?|10|AUTH)\b/i);
   if (!match) {
     if (/\braw\b|\bungraded\b/i.test(title)) {
       return { rawOrGraded: 'raw', company: 'raw', grade: 'unknown', certificationNumber: null };
@@ -135,11 +161,12 @@ function parseGradeFromTitle(title = '') {
 }
 
 function parseSubjectFromTitle(title = '') {
-  const beforeNumber = String(title || '').split(/#\s*[A-Za-z0-9/-]+/)[0] || '';
+  if (/\blot\b/i.test(title)) return null;
+  const beforeNumber = String(title || '').split(/(?:#\s*|(?:card|no\.?|number|num)\s*[:#-]?\s*)[A-Za-z0-9/-]+/i)[0] || '';
   const cleaned = beforeNumber
     .replace(/\b(19\d{2}|20\d{2}(?:-\d{2})?)\b/gi, ' ')
-    .replace(/\b(Panini|Topps|Bowman|Upper|Deck|Fleer|Chrome|Update|Heritage|Prizm|Select|Optic|UFC|MLB|NBA|NFL|NHL|Baseball|Basketball|Football|Hockey|Soccer)\b/gi, ' ')
-    .replace(/\b(PSA|BGS|SGC|CGC|RC|Rookie|Auto|Autograph|Patch|Relic|Refractor|Silver|Gold|Blue|Red|Green|Orange|Purple|Pink|Sepia|Raw|Graded)\b/gi, ' ')
+    .replace(/\b(Panini|Topps|Bowman|Upper|Deck|Fleer|Chrome|Update|Heritage|Finest|Cosmic|Stadium|Club|Series|Prizm|Select|Optic|UFC|MLB|NBA|NFL|NHL|Baseball|Basketball|Football|Hockey|Soccer)\b/gi, ' ')
+    .replace(/\b(PSA|BGS|SGC|CGC|GEM|MT|RC|Rookie|Auto|Autograph|Patch|Relic|Jersey|Memorabilia|Refractor|Silver|Gold|Blue|Red|Green|Orange|Purple|Pink|Sepia|Aqua|Black|Atomic|Rainbow|Foil|Base|Raw|Graded|Numbered|Unnumbered|Invest|Rare|Wow|Hot|Look|L@@K|Read|Mint|Sale|Lot)\b/gi, ' ')
     .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
     .replace(/[^A-Za-z\s'-]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -152,10 +179,27 @@ function parseSubjectFromTitle(title = '') {
   return words.join(' ');
 }
 
+function parseCardNumberFromTitle(title = '') {
+  const explicitHash = title.match(/#\s*([A-Za-z0-9/-]{1,12})\b/i);
+  if (explicitHash) return explicitHash[1].replace(/^#/, '');
+
+  const explicitLabel = title.match(/\b(?:card|no\.?|number|num)\s*[:#-]?\s*([A-Za-z0-9/-]{1,12})\b/i);
+  if (!explicitLabel) return null;
+  return /\d/.test(explicitLabel[1]) ? explicitLabel[1] : null;
+}
+
+function parsePrintRunFromTitle(title = '') {
+  const slash = title.match(/\/(\d{1,5})\b/);
+  if (slash) return Number(slash[1]);
+
+  const labeled = title.match(/\b(?:numbered\s+to|out\s+of|sn)\s*(\d{1,5})\b/i);
+  return labeled ? Number(labeled[1]) : null;
+}
+
 function parseTitleIdentity(title = '') {
   const grade = parseGradeFromTitle(title);
-  const serialMatch = title.match(/\/(\d{1,5})\b/);
-  const cardNumberMatch = title.match(/#\s*([A-Za-z0-9/-]+)/);
+  const printRun = parsePrintRunFromTitle(title);
+  const cardNumber = parseCardNumberFromTitle(title);
 
   return {
     sport: detectSport(title),
@@ -164,13 +208,13 @@ function parseTitleIdentity(title = '') {
     manufacturer: firstMatch(title, BRAND_PATTERNS),
     product: firstMatch(title, PRODUCT_PATTERNS),
     setName: firstMatch(title, PRODUCT_PATTERNS),
-    cardNumber: cardNumberMatch ? cardNumberMatch[1].replace(/^#/, '') : null,
+    cardNumber,
     parallel: firstMatch(title, PARALLEL_PATTERNS),
     rookieDesignation: /\b(rc|rookie)\b/i.test(title) ? true : 'unknown',
-    autographState: detectBoolean(title, /\b(auto|autograph|rpa)\b/i, /\b(non[-\s]?auto|no\s+auto)\b/i),
-    memorabiliaState: detectBoolean(title, /\b(patch|relic|memorabilia|jersey|rpa)\b/i, /\b(non[-\s]?mem|no\s+(patch|relic|memorabilia|jersey))\b/i),
-    serialNumbered: serialMatch ? true : detectBoolean(title, /\bnumbered\b/i, /\b(non[-\s]?numbered|unnumbered|not\s+numbered)\b/i),
-    printRun: serialMatch ? Number(serialMatch[1]) : null,
+    autographState: detectBoolean(title, /\b(auto|autograph|rpa)\b/i, /\b(non[-\s]?auto|non\s+autograph|no\s+auto|no\s+autograph|not\s+autographed)\b/i),
+    memorabiliaState: detectBoolean(title, /\b(patch|relic|memorabilia|jersey|rpa)\b/i, /\b(non[-\s]?mem|no\s+(patch|relic|memorabilia|jersey)|not\s+(patch|relic|memorabilia|jersey))\b/i),
+    serialNumbered: printRun ? true : detectBoolean(title, /\b(numbered|out\s+of|sn)\b/i, /\b(non[-\s]?numbered|unnumbered|not\s+numbered)\b/i),
+    printRun,
     rawOrGraded: grade.rawOrGraded,
     gradeCompany: grade.company,
     grade: grade.grade,
@@ -517,12 +561,159 @@ function summarizeCardApiIdentityResolution(resolutions = []) {
   });
 }
 
+function increment(counter, key, amount = 1) {
+  const normalizedKey = key === undefined || key === null || key === '' ? 'unknown' : String(key);
+  counter[normalizedKey] = (counter[normalizedKey] || 0) + amount;
+}
+
+function countKnownFieldsFromProvenance(resolution = {}, predicate) {
+  const counts = {};
+  for (const field of MATERIAL_FIELDS) {
+    const entry = asObject(resolution.fieldProvenance)[field];
+    if (entry && predicate(entry)) increment(counts, field);
+  }
+  return counts;
+}
+
+function titleMayContainDerivableEvidence(title = '', field) {
+  const pattern = MATERIAL_FIELD_DERIVATION_HINTS[field];
+  return pattern ? pattern.test(String(title || '')) : false;
+}
+
+function buildSanitizedRecordGap(resolution = {}, record = {}) {
+  const missingFields = asArray(resolution.missingMaterialFields).sort();
+  const derivableMissingFields = {};
+  const title = getRawTitle(record);
+
+  for (const field of missingFields) {
+    derivableMissingFields[field] = titleMayContainDerivableEvidence(title, field);
+  }
+
+  return Object.freeze({
+    classification: resolution.classification || RESOLUTION_CLASSIFICATIONS.UNRESOLVED,
+    missingMaterialFieldCount: missingFields.length,
+    missingMaterialFields: Object.freeze(missingFields),
+    conflictFields: Object.freeze(asArray(resolution.conflicts).map((conflict) => conflict.field).filter(Boolean).sort()),
+    canonicalSoldEvidenceReadinessReasons: Object.freeze(asArray(resolution.canonicalSoldEvidenceReadinessReasons).sort()),
+    titleParsingUsed: resolution.titleParsingUsed === true,
+    structuredProviderMetadataUsed: resolution.structuredProviderMetadataUsed === true,
+    derivableMissingFields: Object.freeze(derivableMissingFields)
+  });
+}
+
+function buildCardApiIdentityGapReport(transactionsOrResolutions = [], options = {}) {
+  const inputs = asArray(transactionsOrResolutions);
+  const pairs = inputs.map((input) => {
+    if (input && input.source === SOURCE && input.resolutionFingerprint) {
+      return { record: {}, resolution: input };
+    }
+    return {
+      record: input,
+      resolution: resolveCardApiTransactionIdentity(input, options)
+    };
+  });
+  const resolutions = pairs.map((pair) => pair.resolution);
+  const summary = summarizeCardApiIdentityResolution(resolutions);
+  const missingMaterialFieldFrequency = {};
+  const canonicalEligibilityBlockerFrequency = {};
+  const canonicalSoldEvidenceReadinessBlockerFrequency = {};
+  const titleParserExtractionFrequency = {};
+  const providerMetadataAvailabilityFrequency = {};
+  const conflictFrequencyByField = {};
+  const missingMaterialFieldCountDistribution = {};
+  const missingMaterialFieldDerivationHints = {};
+  const sanitizedRecordGaps = [];
+
+  for (const { record, resolution } of pairs) {
+    const missingFields = asArray(resolution.missingMaterialFields).sort();
+    increment(missingMaterialFieldCountDistribution, missingFields.length);
+
+    for (const field of missingFields) {
+      increment(missingMaterialFieldFrequency, field);
+      if (!missingMaterialFieldDerivationHints[field]) {
+        missingMaterialFieldDerivationHints[field] = { potentiallyDerivable: 0, notVisibleInTitle: 0 };
+      }
+      if (titleMayContainDerivableEvidence(getRawTitle(record), field)) {
+        missingMaterialFieldDerivationHints[field].potentiallyDerivable += 1;
+      } else {
+        missingMaterialFieldDerivationHints[field].notVisibleInTitle += 1;
+      }
+    }
+
+    for (const reason of asArray(resolution.canonicalSoldEvidenceReadinessReasons)) {
+      increment(canonicalSoldEvidenceReadinessBlockerFrequency, reason);
+    }
+
+    for (const warning of asArray(resolution.canonicalIdentity?.normalizationWarnings)) {
+      increment(canonicalEligibilityBlockerFrequency, warning);
+    }
+    for (const unknownField of asArray(resolution.canonicalIdentity?.unknownFields)) {
+      increment(canonicalEligibilityBlockerFrequency, `unknown_${unknownField}`);
+    }
+    if (resolution.canonicalIdentity?.eligibility?.exactCompEligible !== true) {
+      increment(canonicalEligibilityBlockerFrequency, 'exact_comp_ineligible');
+    }
+
+    for (const conflict of asArray(resolution.conflicts)) {
+      increment(conflictFrequencyByField, conflict.field || 'unknown');
+    }
+
+    const titleCounts = countKnownFieldsFromProvenance(resolution, (entry) => (
+      entry.source === 'deterministic_title_parse' ||
+      entry.source === 'explicit_provider_metadata_and_title_confirmed'
+    ) && hasKnown(entry.titleValue));
+    const providerCounts = countKnownFieldsFromProvenance(resolution, (entry) => (
+      entry.source === 'explicit_provider_metadata' ||
+      entry.source === 'explicit_provider_metadata_and_title_confirmed' ||
+      entry.source === 'conflict_provider_preferred_for_review'
+    ) && hasKnown(entry.providerValue));
+
+    for (const [field, count] of Object.entries(titleCounts)) increment(titleParserExtractionFrequency, field, count);
+    for (const [field, count] of Object.entries(providerCounts)) increment(providerMetadataAvailabilityFrequency, field, count);
+
+    sanitizedRecordGaps.push(buildSanitizedRecordGap(resolution, record));
+  }
+
+  const report = {
+    source: SOURCE,
+    version: VERSION,
+    reportType: 'sanitized_card_api_identity_gap_report',
+    evaluated: resolutions.length,
+    classifications: {
+      exact: summary.exact,
+      ambiguous: summary.ambiguous,
+      unresolved: summary.unresolved
+    },
+    missingMaterialFieldFrequency,
+    canonicalEligibilityBlockerFrequency,
+    canonicalSoldEvidenceReadinessBlockerFrequency,
+    titleParserExtractionFrequency,
+    providerMetadataAvailabilityFrequency,
+    conflictFrequencyByField,
+    missingMaterialFieldCountDistribution,
+    missingMaterialFieldDerivationHints,
+    sanitizedRecordGaps,
+    retentionAuthority: {
+      persistenceAllowed: false,
+      writesProductionStore: false,
+      blocker: 'sanitized_aggregate_identity_gap_report_only'
+    },
+    productionImpact: 'none',
+    decisionImpact: 'none',
+    executionAuthority: 'none'
+  };
+
+  report.reportFingerprint = fingerprint(report);
+  return Object.freeze(report);
+}
+
 module.exports = {
   SOURCE,
   VERSION,
   RESOLUTION_CLASSIFICATIONS,
   MATERIAL_FIELDS,
   parseTitleIdentity,
+  buildCardApiIdentityGapReport,
   resolveCardApiTransactionIdentity,
   resolveCardApiIdentityBatch,
   summarizeCardApiIdentityResolution
