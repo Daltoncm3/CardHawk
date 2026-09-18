@@ -19,6 +19,7 @@ const BASE_URL = 'https://thecardapi.com/api/v1/market';
 const SALES_PATH = '/sales';
 const DEFAULT_LIMIT = 3;
 const MAX_COMPATIBILITY_LIMIT = 5;
+const OHTANI_CONTROL_QUERY = '2024 Topps Shohei Ohtani';
 
 const CONTROL_IDENTITY = Object.freeze({
   category: 'sports_card',
@@ -100,6 +101,70 @@ function providerError(code, message, details = {}) {
     message,
     retryable: Boolean(details.retryable),
     providerStatus: details.providerStatus || null
+  };
+}
+
+function getResponseHeader(response = {}, name = '') {
+  if (!response.headers || typeof response.headers.get !== 'function') return null;
+  return response.headers.get(name) || response.headers.get(name.toLowerCase()) || null;
+}
+
+function sanitizeDiagnosticText(value, secrets = []) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  const redacted = secrets
+    .filter(Boolean)
+    .reduce((current, secret) => current.split(secret).join('[REDACTED_API_KEY]'), text)
+    .replace(/tca_[A-Za-z0-9_-]+/g, '[REDACTED_API_KEY]');
+
+  return redacted.length > 500 ? `${redacted.slice(0, 500)}…` : redacted;
+}
+
+function buildRequestDiagnostics(url, headers = {}) {
+  const headerNames = Object.keys(headers).sort();
+
+  return {
+    method: 'GET',
+    origin: url.origin,
+    path: url.pathname,
+    queryParameterNames: Array.from(url.searchParams.keys()).sort(),
+    queryPresent: url.searchParams.has('q'),
+    limit: Number(url.searchParams.get('limit')),
+    headerNames,
+    authHeaderPresent: headerNames.includes('x-market-api-key'),
+    acceptsJson: headers.Accept === 'application/json',
+    hasRequestBody: false,
+    timeoutMs: null
+  };
+}
+
+async function buildResponseDiagnostics(response = {}, secrets = []) {
+  const diagnostics = {
+    status: response.status || null,
+    ok: Boolean(response.ok),
+    contentType: getResponseHeader(response, 'content-type')
+  };
+
+  if (response.ok) return diagnostics;
+
+  try {
+    if (typeof response.text === 'function') {
+      diagnostics.providerBodySnippet = sanitizeDiagnosticText(await response.text(), secrets);
+    } else if (typeof response.json === 'function') {
+      diagnostics.providerBodySnippet = sanitizeDiagnosticText(await response.json(), secrets);
+    }
+  } catch (_) {
+    diagnostics.providerBodySnippet = null;
+    diagnostics.providerBodyReadError = 'unavailable';
+  }
+
+  return diagnostics;
+}
+
+function buildExceptionDiagnostics(error = {}, secrets = []) {
+  return {
+    classification: error?.name === 'AbortError' ? 'abort_or_timeout' : 'request_exception',
+    name: error?.name || 'Error',
+    message: sanitizeDiagnosticText(error?.message || 'The Card API request threw before an HTTP response was available.', secrets)
   };
 }
 
@@ -420,15 +485,18 @@ async function executeCardApiSalesRequest(request = {}, options = {}) {
   }
 
   const url = buildCardApiSalesUrl(normalizedRequest, options);
+  const headers = {
+    'x-market-api-key': apiKey,
+    Accept: 'application/json'
+  };
+  const requestDiagnostics = buildRequestDiagnostics(url, headers);
 
   try {
     const response = await fetchImpl(url.toString(), {
       method: 'GET',
-      headers: {
-        'x-market-api-key': apiKey,
-        Accept: 'application/json'
-      }
+      headers
     });
+    const responseDiagnostics = await buildResponseDiagnostics(response, [apiKey]);
 
     if (!response.ok) {
       return {
@@ -449,7 +517,11 @@ async function executeCardApiSalesRequest(request = {}, options = {}) {
           requestUrl: `${url.origin}${url.pathname}`,
           query: normalizedRequest.query,
           limit: boundedLimit(normalizedRequest.limit || options.limit),
-          providerStatus: response.status
+          providerStatus: response.status,
+          diagnostics: {
+            request: requestDiagnostics,
+            response: responseDiagnostics
+          }
         }
       };
     }
@@ -480,6 +552,10 @@ async function executeCardApiSalesRequest(request = {}, options = {}) {
         approximateUsage: {
           requests: 1,
           resultRows: sales.length
+        },
+        diagnostics: {
+          request: requestDiagnostics,
+          response: responseDiagnostics
         }
       }
     };
@@ -497,7 +573,11 @@ async function executeCardApiSalesRequest(request = {}, options = {}) {
         nonPersistent: true,
         writesProductionStore: false,
         query: normalizedRequest.query,
-        limit: boundedLimit(normalizedRequest.limit || options.limit)
+        limit: boundedLimit(normalizedRequest.limit || options.limit),
+        diagnostics: {
+          request: requestDiagnostics,
+          exception: buildExceptionDiagnostics(_, [apiKey])
+        }
       }
     };
   }
@@ -688,6 +768,7 @@ module.exports = {
   DEFAULT_SOURCE_ID,
   LIVE_FLAG_ENV,
   MAX_COMPATIBILITY_LIMIT,
+  OHTANI_CONTROL_QUERY,
   REQUIRED_PROVIDER_FIELDS,
   SOURCE,
   boundedLimit,

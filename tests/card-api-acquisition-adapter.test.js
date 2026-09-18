@@ -12,6 +12,7 @@ const {
   DEFAULT_ADAPTER_NAME,
   LIVE_FLAG_ENV,
   MAX_COMPATIBILITY_LIMIT,
+  OHTANI_CONTROL_QUERY,
   boundedLimit,
   buildCardApiSalesUrl,
   buildLocalCanonicalCardKey,
@@ -94,6 +95,9 @@ test('API key is never exposed in provider error reports', async () => {
     fetchImpl: async () => ({
       ok: false,
       status: 401,
+      headers: {
+        get: (name) => (name === 'content-type' ? 'application/json' : null)
+      },
       json: async () => ({ error: 'bad key tca_test_secret' })
     })
   });
@@ -102,7 +106,9 @@ test('API key is never exposed in provider error reports', async () => {
   assert.equal(result.errors[0].code, 'card_api_request_failed');
   assert.equal(result.errors[0].providerStatus, 401);
   assert.equal(serialized.includes('tca_test_secret'), false);
-  assert.equal(serialized.includes('bad key'), false);
+  assert.equal(result.metadata.diagnostics.request.authHeaderPresent, true);
+  assert.equal(result.metadata.diagnostics.request.headerNames.includes('x-market-api-key'), true);
+  assert.equal(result.metadata.diagnostics.response.providerBodySnippet.includes('[REDACTED_API_KEY]'), true);
 });
 
 test('valid provider transaction maps to CardHawk-compatible true sold candidate', () => {
@@ -212,14 +218,22 @@ test('provider errors fail safely without response body exposure', async () => {
     fetchImpl: async () => ({
       ok: false,
       status: 500,
-      json: async () => ({ raw: 'do not expose' })
+      headers: {
+        get: (name) => (name === 'content-type' ? 'application/json' : null)
+      },
+      json: async () => ({ raw: 'provider diagnostic message' })
     })
   });
   const result = await adapter.acquireSoldEvidence({ query: CONTROL_QUERY, limit: 1 });
 
   assert.equal(result.records.length, 0);
   assert.equal(result.errors[0].code, 'card_api_request_failed');
-  assert.equal(JSON.stringify(result).includes('do not expose'), false);
+  assert.equal(result.metadata.diagnostics.request.method, 'GET');
+  assert.equal(result.metadata.diagnostics.request.path, '/api/v1/market/sales');
+  assert.equal(result.metadata.diagnostics.request.queryParameterNames.join(','), 'limit,q');
+  assert.equal(result.metadata.diagnostics.response.status, 500);
+  assert.equal(result.metadata.diagnostics.response.contentType, 'application/json');
+  assert.equal(result.metadata.diagnostics.response.providerBodySnippet.includes('provider diagnostic message'), true);
 });
 
 test('bounded result and request behavior is enforced', async () => {
@@ -238,6 +252,9 @@ test('bounded result and request behavior is enforced', async () => {
       return {
         ok: true,
         status: 200,
+        headers: {
+          get: (name) => (name === 'content-type' ? 'application/json' : null)
+        },
         json: async () => ({ data: sales })
       };
     },
@@ -246,6 +263,8 @@ test('bounded result and request behavior is enforced', async () => {
 
   assert.equal(requestedUrl.searchParams.get('limit'), String(MAX_COMPATIBILITY_LIMIT));
   assert.equal(result.records.length, MAX_COMPATIBILITY_LIMIT);
+  assert.equal(result.metadata.diagnostics.request.limit, MAX_COMPATIBILITY_LIMIT);
+  assert.equal(result.metadata.diagnostics.response.ok, true);
 });
 
 test('compatibility report is aggregate and redacted', async () => {
@@ -257,6 +276,9 @@ test('compatibility report is aggregate and redacted', async () => {
     fetchImpl: async () => ({
       ok: true,
       status: 200,
+      headers: {
+        get: (name) => (name === 'content-type' ? 'application/json' : null)
+      },
       json: async () => ({ data: [providerSale(), providerSale({ id: 'ebay-2', listing_type: 'auction', price: 11 })] })
     }),
     acquiredAt: '2026-09-18T00:00:00.000Z'
@@ -285,4 +307,51 @@ test('URL builder uses documented Card API sales endpoint and authentication rem
   assert.equal(url.searchParams.get('limit'), '2');
   assert.equal(url.toString().includes(API_KEY_ENV), false);
   assert.equal(boundedLimit(1000), MAX_COMPATIBILITY_LIMIT);
+});
+
+test('Ohtani control query is supported without changing Anthony Hernandez control defaults', async () => {
+  let requestedUrl = null;
+  const result = await executeCardApiSalesRequest({ query: OHTANI_CONTROL_QUERY, limit: 3 }, {
+    env: env({
+      [API_KEY_ENV]: 'tca_test_secret',
+      [LIVE_FLAG_ENV]: 'true'
+    }),
+    fetchImpl: async (url) => {
+      requestedUrl = new URL(url);
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name) => (name === 'content-type' ? 'application/json' : null)
+        },
+        json: async () => ({ data: [] })
+      };
+    }
+  });
+
+  assert.equal(CONTROL_QUERY.includes('Anthony Hernandez'), true);
+  assert.equal(requestedUrl.searchParams.get('q'), OHTANI_CONTROL_QUERY);
+  assert.equal(requestedUrl.searchParams.get('limit'), '3');
+  assert.equal(result.metadata.diagnostics.request.queryPresent, true);
+  assert.equal(result.metadata.diagnostics.request.authHeaderPresent, true);
+});
+
+test('network exceptions include sanitized non-secret diagnostics only', async () => {
+  const result = await executeCardApiSalesRequest({ query: OHTANI_CONTROL_QUERY, limit: 3 }, {
+    env: env({
+      [API_KEY_ENV]: 'tca_test_secret',
+      [LIVE_FLAG_ENV]: 'true'
+    }),
+    fetchImpl: async () => {
+      const error = new Error('upstream refused tca_test_secret');
+      error.name = 'FetchError';
+      throw error;
+    }
+  });
+
+  assert.equal(result.records.length, 0);
+  assert.equal(result.errors[0].code, 'card_api_request_exception');
+  assert.equal(result.metadata.diagnostics.exception.classification, 'request_exception');
+  assert.equal(result.metadata.diagnostics.exception.message.includes('[REDACTED_API_KEY]'), true);
+  assert.equal(JSON.stringify(result).includes('tca_test_secret'), false);
 });
