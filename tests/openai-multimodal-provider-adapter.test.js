@@ -14,9 +14,11 @@ const {
 } = require('../validation/multimodalModelAdapterContract');
 const {
   ADAPTER_ID,
+  DEFAULT_MAX_OUTPUT_TOKENS,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_TIMEOUT_MS,
   LIVE_STATUS,
+  MAX_OUTPUT_TOKENS,
   MAX_TIMEOUT_MS,
   OPENAI_API_KEY_ENV,
   OPENAI_LIVE_FLAG_ENV,
@@ -25,6 +27,7 @@ const {
   PROVIDER_ID,
   buildOpenAIResponsesRequestBody,
   createOpenAIMultimodalProviderAdapter,
+  normalizeOpenAIMaxOutputTokens,
   normalizeOpenAITimeoutMs,
   runOpenAIMultimodalCompatibilityPilot,
   validateOpenAILiveGates
@@ -168,7 +171,21 @@ test('OpenAI request shape uses Responses image input and strict structured outp
   assert.equal(body.text.format.strict, true);
   assert.equal(body.text.format.schema.additionalProperties, false);
   assert.equal(Object.hasOwn(body, 'temperature'), false);
-  assert.equal(body.max_output_tokens, 1600);
+  assert.equal(body.max_output_tokens, 4000);
+});
+
+test('OpenAI output budget defaults to 4000 tokens and cannot exceed 4000 tokens', () => {
+  assert.equal(DEFAULT_MAX_OUTPUT_TOKENS, 4000);
+  assert.equal(MAX_OUTPUT_TOKENS, 4000);
+  assert.equal(normalizeOpenAIMaxOutputTokens(), 4000);
+  assert.equal(normalizeOpenAIMaxOutputTokens(9000), 4000);
+  assert.equal(normalizeOpenAIMaxOutputTokens(4001), 4000);
+  assert.equal(normalizeOpenAIMaxOutputTokens(1600), 1600);
+  assert.equal(normalizeOpenAIMaxOutputTokens(-1), 4000);
+  assert.equal(buildOpenAIResponsesRequestBody({
+    requestId: 'req-cap',
+    imageReference: 'https://i.ebayimg.example/card.jpg'
+  }, { maxOutputTokens: 12000 }).max_output_tokens, 4000);
 });
 
 test('OpenAI timeout defaults to 60 seconds and cannot exceed 60 seconds', () => {
@@ -328,6 +345,42 @@ test('timeout aborts safely without retry and keeps output sanitized', async () 
   assert.equal(response.productionImpact, 'none');
   assert.equal(response.decisionImpact, 'none');
   assert.equal(response.executionAuthority, 'none');
+});
+
+test('incomplete OpenAI responses fail safely with sanitized bounded reason and no retry', async () => {
+  const calls = [];
+  const payload = {
+    status: 'incomplete',
+    incomplete_details: {
+      reason: 'max_output_tokens'
+    },
+    output_text: '{"raw":"do not retain this partial model output","url":"https://i.ebayimg.example/sale-secret-id-001/full-image.jpg"}',
+    usage: {
+      input_tokens: 2526,
+      output_tokens: 4000,
+      total_tokens: 6526
+    }
+  };
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: combinedFetch(payload, calls)
+  });
+  const serialized = JSON.stringify(result);
+
+  assert.equal(calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL).length, 1);
+  assert.equal(result.report.liveExecutionStatus, LIVE_STATUS.MODEL_INVALID_RESPONSE);
+  assert.equal(result.report.modelRequestsAttempted, 1);
+  assert.equal(result.report.modelRequestsCompleted, 0);
+  assert.equal(result.report.sanitizedFailureCategory, 'openai_response_incomplete');
+  assert.equal(result.report.boundedUsage.openAiIncompleteReason, 'max_output_tokens');
+  assert.equal(result.report.boundedUsage.inputTokens, 2526);
+  assert.equal(result.report.boundedUsage.outputTokens, 4000);
+  assert.equal(serialized.includes('do not retain this partial model output'), false);
+  assert.equal(serialized.includes('https://i.ebayimg.example'), false);
+  assert.equal(serialized.includes('sale-secret-id-001'), false);
+  assert.equal(result.report.productionImpact, 'none');
+  assert.equal(result.report.decisionImpact, 'none');
+  assert.equal(result.report.executionAuthority, 'none');
 });
 
 test('HTTP 400 diagnostics are safely reduced to approved OpenAI error fields', async () => {

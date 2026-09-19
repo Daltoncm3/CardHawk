@@ -45,7 +45,8 @@ const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_TIMEOUT_MS = 60000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1600;
+const DEFAULT_MAX_OUTPUT_TOKENS = 4000;
+const MAX_OUTPUT_TOKENS = 4000;
 const MAX_TRANSACTIONS = 1;
 const MAX_IMAGES = 1;
 const MAX_MODEL_REQUESTS = 1;
@@ -107,6 +108,12 @@ function normalizeOpenAITimeoutMs(value = DEFAULT_TIMEOUT_MS) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(Math.floor(numeric), MAX_TIMEOUT_MS);
+}
+
+function normalizeOpenAIMaxOutputTokens(value = DEFAULT_MAX_OUTPUT_TOKENS) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.floor(numeric), MAX_OUTPUT_TOKENS);
 }
 
 function buildOpenAIObservationJsonSchema() {
@@ -289,7 +296,7 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
         schema: buildOpenAIObservationJsonSchema()
       }
     },
-    max_output_tokens: Number(options.maxOutputTokens || DEFAULT_MAX_OUTPUT_TOKENS),
+    max_output_tokens: normalizeOpenAIMaxOutputTokens(options.maxOutputTokens),
     store: false
   });
 }
@@ -314,6 +321,12 @@ function sanitizeOpenAIUsage(payload = {}) {
     outputTokens: Number.isFinite(Number(usage.output_tokens)) ? Number(usage.output_tokens) : null,
     totalTokens: Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : null
   };
+}
+
+function sanitizeOpenAIIncompleteReason(payload = {}) {
+  const reason = sanitizeErrorCode(asObject(payload.incomplete_details).reason || '');
+  const allowedReasons = new Set(['max_output_tokens', 'content_filter']);
+  return allowedReasons.has(reason) ? reason : 'unknown_incomplete_reason';
 }
 
 async function buildOpenAIErrorDiagnostics(response = {}) {
@@ -442,7 +455,10 @@ function createOpenAIMultimodalProviderAdapter(options = {}) {
           return safeAdapterResponse(request.requestId, model, EXECUTION_STATUS.INVALID_RESPONSE, [`openai_response_${payload.status}`], [], {
             modelRequests: 1,
             inputImages: 1,
-            ...sanitizeOpenAIUsage(payload)
+            ...sanitizeOpenAIUsage(payload),
+            openAiIncompleteReason: payload.status === 'incomplete'
+              ? sanitizeOpenAIIncompleteReason(payload)
+              : null
           });
         }
 
@@ -803,6 +819,7 @@ module.exports = {
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
   DEFAULT_MAX_OUTPUT_TOKENS,
+  MAX_OUTPUT_TOKENS,
   MAX_TRANSACTIONS,
   MAX_IMAGES,
   MAX_MODEL_REQUESTS,
@@ -811,6 +828,7 @@ module.exports = {
   buildOpenAIObservationJsonSchema,
   buildOpenAIResponsesRequestBody,
   normalizeOpenAITimeoutMs,
+  normalizeOpenAIMaxOutputTokens,
   createOpenAIMultimodalProviderAdapter,
   validateOpenAILiveGates,
   buildSanitizedOpenAIPilotReport,
