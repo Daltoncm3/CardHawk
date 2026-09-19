@@ -15,7 +15,9 @@ const {
 const {
   ADAPTER_ID,
   DEFAULT_OPENAI_MODEL,
+  DEFAULT_TIMEOUT_MS,
   LIVE_STATUS,
+  MAX_TIMEOUT_MS,
   OPENAI_API_KEY_ENV,
   OPENAI_LIVE_FLAG_ENV,
   OPENAI_MODEL_ENV,
@@ -23,6 +25,7 @@ const {
   PROVIDER_ID,
   buildOpenAIResponsesRequestBody,
   createOpenAIMultimodalProviderAdapter,
+  normalizeOpenAITimeoutMs,
   runOpenAIMultimodalCompatibilityPilot,
   validateOpenAILiveGates
 } = require('../validation/openaiMultimodalProviderAdapter');
@@ -168,6 +171,16 @@ test('OpenAI request shape uses Responses image input and strict structured outp
   assert.equal(body.max_output_tokens, 1600);
 });
 
+test('OpenAI timeout defaults to 60 seconds and cannot exceed 60 seconds', () => {
+  assert.equal(DEFAULT_TIMEOUT_MS, 60000);
+  assert.equal(MAX_TIMEOUT_MS, 60000);
+  assert.equal(normalizeOpenAITimeoutMs(), 60000);
+  assert.equal(normalizeOpenAITimeoutMs(90000), 60000);
+  assert.equal(normalizeOpenAITimeoutMs(60001), 60000);
+  assert.equal(normalizeOpenAITimeoutMs(250), 250);
+  assert.equal(normalizeOpenAITimeoutMs(-1), 60000);
+});
+
 test('live execution is disabled by default and missing OpenAI credential is sanitized', async () => {
   let calls = 0;
   const result = await runOpenAIMultimodalCompatibilityPilot({
@@ -280,6 +293,41 @@ test('no retries occur after timeout, HTTP failure, invalid JSON, or schema fail
     assert.equal(calls, 1);
     assert.notEqual(response.executionStatus, EXECUTION_STATUS.SUCCESS);
   }
+});
+
+test('timeout aborts safely without retry and keeps output sanitized', async () => {
+  let calls = 0;
+  const adapter = createOpenAIMultimodalProviderAdapter({
+    env: env(),
+    timeoutMs: 1,
+    fetchImpl: async (_url, options = {}) => {
+      calls += 1;
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('Timed out while reading https://i.ebayimg.example/sale-secret-id-001/full-image.jpg sk-test-secret-not-printed');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    }
+  });
+  const response = await adapter.analyzeImage({
+    requestId: 'req-timeout',
+    imageReference: 'https://i.ebayimg.example/card.jpg'
+  }, { env: env() });
+  const serialized = JSON.stringify(response);
+
+  assert.equal(calls, 1);
+  assert.equal(response.executionStatus, EXECUTION_STATUS.ERROR);
+  assert.deepEqual(response.errors, ['openai_request_timeout']);
+  assert.equal(response.usage.modelRequests, 1);
+  assert.equal(response.usage.inputImages, 1);
+  assert.equal(serialized.includes('https://i.ebayimg.example'), false);
+  assert.equal(serialized.includes('sale-secret-id-001'), false);
+  assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(response.productionImpact, 'none');
+  assert.equal(response.decisionImpact, 'none');
+  assert.equal(response.executionAuthority, 'none');
 });
 
 test('HTTP 400 diagnostics are safely reduced to approved OpenAI error fields', async () => {

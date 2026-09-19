@@ -43,7 +43,8 @@ const OPENAI_MODEL_ENV = 'CARDHAWK_OPENAI_MULTIMODAL_MODEL';
 const OPENAI_LIVE_FLAG_ENV = 'CARDHAWK_OPENAI_MULTIMODAL_LIVE';
 const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 60000;
+const MAX_TIMEOUT_MS = 60000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1600;
 const MAX_TRANSACTIONS = 1;
 const MAX_IMAGES = 1;
@@ -100,6 +101,12 @@ function requestedLimit(value, fallback = 1) {
   const number = Number(value ?? fallback);
   if (!Number.isFinite(number)) return fallback;
   return Math.floor(number);
+}
+
+function normalizeOpenAITimeoutMs(value = DEFAULT_TIMEOUT_MS) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.floor(numeric), MAX_TIMEOUT_MS);
 }
 
 function buildOpenAIObservationJsonSchema() {
@@ -377,7 +384,7 @@ function createOpenAIMultimodalProviderAdapter(options = {}) {
   const env = options.env || process.env;
   const model = safeModelName(options.model || env[OPENAI_MODEL_ENV] || DEFAULT_OPENAI_MODEL);
   const apiUrl = options.apiUrl || OPENAI_RESPONSES_URL;
-  const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const timeoutMs = normalizeOpenAITimeoutMs(options.timeoutMs);
 
   return deepFreeze({
     adapterId: ADAPTER_ID,
@@ -794,6 +801,7 @@ module.exports = {
   DEFAULT_OPENAI_MODEL,
   OPENAI_RESPONSES_URL,
   DEFAULT_TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
   DEFAULT_MAX_OUTPUT_TOKENS,
   MAX_TRANSACTIONS,
   MAX_IMAGES,
@@ -802,6 +810,7 @@ module.exports = {
   LIVE_STATUS,
   buildOpenAIObservationJsonSchema,
   buildOpenAIResponsesRequestBody,
+  normalizeOpenAITimeoutMs,
   createOpenAIMultimodalProviderAdapter,
   validateOpenAILiveGates,
   buildSanitizedOpenAIPilotReport,
