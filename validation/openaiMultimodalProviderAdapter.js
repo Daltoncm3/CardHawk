@@ -85,7 +85,9 @@ function sanitizeErrorCode(value) {
     .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
     .replace(/sk-[A-Za-z0-9_-]+/gi, '[REDACTED_API_KEY]')
-    .slice(0, 160);
+    .replace(/tca_[A-Za-z0-9_-]+/gi, '[REDACTED_API_KEY]')
+    .replace(/[^A-Za-z0-9_.:-]+/g, '_')
+    .slice(0, 80);
 }
 
 function safeModelName(value) {
@@ -280,7 +282,6 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
         schema: buildOpenAIObservationJsonSchema()
       }
     },
-    temperature: 0,
     max_output_tokens: Number(options.maxOutputTokens || DEFAULT_MAX_OUTPUT_TOKENS),
     store: false
   });
@@ -306,6 +307,27 @@ function sanitizeOpenAIUsage(payload = {}) {
     outputTokens: Number.isFinite(Number(usage.output_tokens)) ? Number(usage.output_tokens) : null,
     totalTokens: Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : null
   };
+}
+
+async function buildOpenAIErrorDiagnostics(response = {}) {
+  const diagnostics = {
+    providerStatus: response?.status || null,
+    openAiErrorType: null,
+    openAiErrorCode: null,
+    openAiErrorParam: null
+  };
+
+  try {
+    const payload = typeof response.json === 'function' ? await response.json() : {};
+    const error = asObject(payload.error);
+    diagnostics.openAiErrorType = error.type ? sanitizeErrorCode(error.type) : null;
+    diagnostics.openAiErrorCode = error.code ? sanitizeErrorCode(error.code) : null;
+    diagnostics.openAiErrorParam = error.param ? sanitizeErrorCode(error.param) : null;
+  } catch (_) {
+    diagnostics.openAiErrorType = 'unavailable';
+  }
+
+  return diagnostics;
 }
 
 function normalizeOpenAIParsedResponse(parsed = {}, request = {}, model = DEFAULT_OPENAI_MODEL, usage = null) {
@@ -400,10 +422,11 @@ function createOpenAIMultimodalProviderAdapter(options = {}) {
         if (timer) clearTimeout(timer);
 
         if (!response || response.ok !== true) {
+          const diagnostics = await buildOpenAIErrorDiagnostics(response);
           return safeAdapterResponse(request.requestId, model, EXECUTION_STATUS.ERROR, ['openai_request_failed'], [], {
             modelRequests: 1,
             inputImages: 1,
-            providerStatus: response?.status || null
+            ...diagnostics
           });
         }
 

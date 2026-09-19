@@ -164,6 +164,8 @@ test('OpenAI request shape uses Responses image input and strict structured outp
   assert.equal(body.text.format.type, 'json_schema');
   assert.equal(body.text.format.strict, true);
   assert.equal(body.text.format.schema.additionalProperties, false);
+  assert.equal(Object.hasOwn(body, 'temperature'), false);
+  assert.equal(body.max_output_tokens, 1600);
 });
 
 test('live execution is disabled by default and missing OpenAI credential is sanitized', async () => {
@@ -278,6 +280,41 @@ test('no retries occur after timeout, HTTP failure, invalid JSON, or schema fail
     assert.equal(calls, 1);
     assert.notEqual(response.executionStatus, EXECUTION_STATUS.SUCCESS);
   }
+});
+
+test('HTTP 400 diagnostics are safely reduced to approved OpenAI error fields', async () => {
+  let calls = 0;
+  const adapter = createOpenAIMultimodalProviderAdapter({
+    env: env(),
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({
+        error: {
+          message: 'Unsupported parameter temperature for https://i.ebayimg.example/sale-secret-id-001/full-image.jpg sk-test-secret-not-printed 2024 Topps Chrome Shohei Ohtani',
+          type: 'invalid_request_error',
+          code: 'unsupported_parameter',
+          param: 'temperature'
+        }
+      }, 400);
+    }
+  });
+  const response = await adapter.analyzeImage({
+    requestId: 'req-http-400',
+    imageReference: 'https://i.ebayimg.example/card.jpg'
+  }, { env: env() });
+  const serialized = JSON.stringify(response);
+
+  assert.equal(calls, 1);
+  assert.equal(response.executionStatus, EXECUTION_STATUS.ERROR);
+  assert.equal(response.usage.providerStatus, 400);
+  assert.equal(response.usage.openAiErrorType, 'invalid_request_error');
+  assert.equal(response.usage.openAiErrorCode, 'unsupported_parameter');
+  assert.equal(response.usage.openAiErrorParam, 'temperature');
+  assert.equal(serialized.includes('Unsupported parameter'), false);
+  assert.equal(serialized.includes('https://i.ebayimg.example'), false);
+  assert.equal(serialized.includes('sale-secret-id-001'), false);
+  assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(serialized.includes('2024 Topps Chrome'), false);
 });
 
 test('strict schema validation rejects arbitrary prose, malformed responses, unsupported and excessive observations', async () => {
