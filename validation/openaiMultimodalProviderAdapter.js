@@ -890,6 +890,124 @@ function classificationImproved(pre, post) {
   return (score[post] || 0) > (score[pre] || 0);
 }
 
+// Non-authoritative helper for bounded owner-operated pilots. It consumes one in-memory
+// transaction and returns sanitized diagnostics only; it never persists raw provider data.
+async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
+  const transaction = input.transaction || null;
+  const env = input.env || process.env;
+  const model = safeModelName(input.model || env[OPENAI_MODEL_ENV] || DEFAULT_OPENAI_MODEL);
+  const fetchImpl = input.fetchImpl || globalThis.fetch;
+  const adapter = input.adapter || createOpenAIMultimodalProviderAdapter({
+    env,
+    model,
+    fetchImpl,
+    timeoutMs: input.timeoutMs
+  });
+  const transactionsRequested = requestedLimit(input.transactionsRequested, 1);
+  const transactionsEvaluated = transaction ? 1 : 0;
+
+  if (!transaction) {
+    return {
+      report: buildSanitizedOpenAIPilotReport({
+        model,
+        liveExecutionStatus: input.liveExecutionStatus || LIVE_STATUS.CARD_API_NO_TRANSACTION,
+        transactionsRequested,
+        transactionsEvaluated: 0,
+        sanitizedFailureCategory: 'card_api_no_transaction'
+      }),
+      modelValidation: null,
+      evidenceResult: null
+    };
+  }
+
+  const preResolution = input.preResolution || resolveCardApiTransactionIdentity(transaction);
+  const imageReference = transaction.image || null;
+  if (!imageReference) {
+    return {
+      preResolution,
+      report: buildSanitizedOpenAIPilotReport({
+        model,
+        liveExecutionStatus: input.liveExecutionStatus || LIVE_STATUS.CARD_API_NO_IMAGE,
+        transactionsRequested,
+        transactionsEvaluated,
+        imagesEvaluated: 0,
+        preResolution,
+        sanitizedFailureCategory: 'image_not_available'
+      }),
+      modelValidation: null,
+      evidenceResult: null
+    };
+  }
+
+  const request = createMultimodalModelRequest({
+    requestId: input.requestId || 'a5-7-openai-multimodal-request-1',
+    titleContext: transaction.rawTitle || '',
+    imageReference,
+    modelConfig: {
+      provider: PROVIDER_ID,
+      model,
+      maxRequests: 1,
+      maxImages: 1,
+      liveCompatibilityFlag: true
+    }
+  });
+  const modelResponse = await adapter.analyzeImage(request, { env, fetchImpl });
+  const modelValidation = validateMultimodalModelResponse(modelResponse, request);
+
+  if (!modelValidation.valid || modelValidation.response.executionStatus !== EXECUTION_STATUS.SUCCESS) {
+    const sanitizedFailureCategory = modelValidation.reasonCodes[0] || asArray(modelResponse.errors)[0] || 'model_invalid_response';
+    return {
+      preResolution,
+      modelValidation,
+      report: buildSanitizedOpenAIPilotReport({
+        model,
+        liveExecutionStatus: modelResponse.executionStatus === EXECUTION_STATUS.ERROR
+          ? LIVE_STATUS.MODEL_REQUEST_FAILED
+          : LIVE_STATUS.MODEL_INVALID_RESPONSE,
+        transactionsRequested,
+        transactionsEvaluated,
+        imagesEvaluated: 1,
+        modelRequestsAttempted: 1,
+        modelRequestsCompleted: modelResponse.executionStatus === EXECUTION_STATUS.SUCCESS ? 1 : 0,
+        preResolution,
+        modelValidation,
+        boundedUsage: modelResponse.usage || null,
+        sanitizedFailureCategory
+      }),
+      evidenceResult: null
+    };
+  }
+
+  const observations = modelValidation.response.observations
+    .map((observation) => mapModelObservationToEvidenceObservation(observation, modelValidation.response));
+  const evidenceResult = resolveMultimodalSoldIdentityEvidence({
+    transaction,
+    titleResolution: preResolution,
+    observations
+  });
+  const improved = classificationImproved(preResolution.classification, evidenceResult.postMultimodalClassification);
+
+  return {
+    preResolution,
+    modelValidation,
+    evidenceResult,
+    report: buildSanitizedOpenAIPilotReport({
+      model,
+      liveExecutionStatus: input.liveExecutionStatus || LIVE_STATUS.COMPLETED,
+      transactionsRequested,
+      transactionsEvaluated,
+      imagesEvaluated: 1,
+      modelRequestsAttempted: 1,
+      modelRequestsCompleted: 1,
+      preResolution,
+      modelValidation,
+      evidenceResult,
+      classificationImproved: improved,
+      boundedUsage: modelValidation.response.usage || null
+    })
+  };
+}
+
 async function runOpenAIMultimodalCompatibilityPilot(options = {}) {
   const env = options.env || process.env;
   const model = safeModelName(options.model || env[OPENAI_MODEL_ENV] || DEFAULT_OPENAI_MODEL);
@@ -971,112 +1089,36 @@ async function runOpenAIMultimodalCompatibilityPilot(options = {}) {
     };
   }
 
-  const imageReference = transaction.image || null;
-  const preResolution = resolveCardApiTransactionIdentity(transaction);
-  if (!imageReference) {
-    return {
-      source: SOURCE,
-      version: VERSION,
-      schemaVersion: SCHEMA_VERSION,
-      liveGateValidation: gates,
-      report: buildSanitizedOpenAIPilotReport({
-        model,
-        liveExecutionStatus: LIVE_STATUS.CARD_API_NO_IMAGE,
-        transactionsRequested: 1,
-        transactionsEvaluated: 1,
-        imagesEvaluated: 0,
-        preResolution,
-        sanitizedFailureCategory: 'image_not_available'
-      }),
-      productionImpact: 'none',
-      decisionImpact: 'none',
-      executionAuthority: 'none'
-    };
-  }
-
-  const request = createMultimodalModelRequest({
-    requestId: 'a5-7-openai-multimodal-request-1',
-    titleContext: transaction.rawTitle || '',
-    imageReference,
-    modelConfig: {
-      provider: PROVIDER_ID,
-      model,
-      maxRequests: 1,
-      maxImages: 1,
-      liveCompatibilityFlag: true
-    }
-  });
   const adapter = options.adapter || createOpenAIMultimodalProviderAdapter({
     env,
     model,
     fetchImpl,
     timeoutMs: options.timeoutMs
   });
-  const modelResponse = await adapter.analyzeImage(request, { env, fetchImpl });
-  const modelValidation = validateMultimodalModelResponse(modelResponse, request);
-
-  if (!modelValidation.valid || modelValidation.response.executionStatus !== EXECUTION_STATUS.SUCCESS) {
-    return {
-      source: SOURCE,
-      version: VERSION,
-      schemaVersion: SCHEMA_VERSION,
-      liveGateValidation: gates,
-      report: buildSanitizedOpenAIPilotReport({
-        model,
-        liveExecutionStatus: modelResponse.executionStatus === EXECUTION_STATUS.ERROR
-          ? LIVE_STATUS.MODEL_REQUEST_FAILED
-          : LIVE_STATUS.MODEL_INVALID_RESPONSE,
-        transactionsRequested: 1,
-        transactionsEvaluated: 1,
-        imagesEvaluated: 1,
-        modelRequestsAttempted: 1,
-        modelRequestsCompleted: modelResponse.executionStatus === EXECUTION_STATUS.SUCCESS ? 1 : 0,
-        preResolution,
-        modelValidation,
-        boundedUsage: modelResponse.usage || null,
-        sanitizedFailureCategory: modelValidation.reasonCodes[0] || asArray(modelResponse.errors)[0] || 'model_invalid_response'
-      }),
-      productionImpact: 'none',
-      decisionImpact: 'none',
-      executionAuthority: 'none'
-    };
-  }
-
-  const observations = modelValidation.response.observations
-    .map((observation) => mapModelObservationToEvidenceObservation(observation, modelValidation.response));
-  const evidenceResult = resolveMultimodalSoldIdentityEvidence({
+  const analysis = await runOpenAIMultimodalTransactionAnalysis({
     transaction,
-    titleResolution: preResolution,
-    observations
-  });
-  const improved = classificationImproved(preResolution.classification, evidenceResult.postMultimodalClassification);
-  const report = buildSanitizedOpenAIPilotReport({
+    env,
     model,
-    liveExecutionStatus: LIVE_STATUS.COMPLETED,
-    transactionsRequested: 1,
-    transactionsEvaluated: 1,
-    imagesEvaluated: 1,
-    modelRequestsAttempted: 1,
-    modelRequestsCompleted: 1,
-    preResolution,
-    modelValidation,
-    evidenceResult,
-    classificationImproved: improved,
-    boundedUsage: modelValidation.response.usage || null
+    fetchImpl,
+    adapter,
+    timeoutMs: options.timeoutMs,
+    requestId: 'a5-7-openai-multimodal-request-1',
+    transactionsRequested: 1
   });
 
-  return deepFreeze({
+  const result = {
     source: SOURCE,
     version: VERSION,
     schemaVersion: SCHEMA_VERSION,
     liveGateValidation: gates,
-    modelValidation,
-    evidenceResult,
-    report,
+    report: analysis.report,
     productionImpact: 'none',
     decisionImpact: 'none',
     executionAuthority: 'none'
-  });
+  };
+  if (analysis.modelValidation) result.modelValidation = analysis.modelValidation;
+  if (analysis.evidenceResult) result.evidenceResult = analysis.evidenceResult;
+  return deepFreeze(result);
 }
 
 module.exports = {
@@ -1107,5 +1149,6 @@ module.exports = {
   createOpenAIMultimodalProviderAdapter,
   validateOpenAILiveGates,
   buildSanitizedOpenAIPilotReport,
+  runOpenAIMultimodalTransactionAnalysis,
   runOpenAIMultimodalCompatibilityPilot
 };
