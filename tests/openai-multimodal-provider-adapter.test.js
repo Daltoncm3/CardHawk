@@ -17,6 +17,7 @@ const {
   DEFAULT_MAX_OUTPUT_TOKENS,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_TIMEOUT_MS,
+  FEASIBILITY_CLASSIFICATIONS,
   LIVE_STATUS,
   MAX_OUTPUT_TOKENS,
   MAX_TIMEOUT_MS,
@@ -637,6 +638,135 @@ test('A5.8 resolver-derived fields do not count as recovered without same-field 
   assert.deepEqual(report.recoveredMaterialFields, []);
   assert.equal(report.materialFieldRecoveryCount, 0);
   assert.equal(report.materialFieldRecoveryRate, 0);
+});
+
+test('A5.9 missing material fields receive conservative feasibility classifications', async () => {
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball Shohei Ohtani #17 Gold' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('subjectName', 'Shohei Ohtani')
+      ]));
+    }
+  });
+  const report = result.report;
+
+  for (const field of report.missingMaterialFieldsAfter) {
+    assert.equal(Object.hasOwn(report.blockerClassificationByField, field), true);
+    assert.equal(Object.hasOwn(report.requiredEvidenceCategoriesByField, field), true);
+  }
+  for (const field of ['autographState', 'memorabiliaState', 'rawOrGraded', 'serialNumbered']) {
+    assert.equal(report.missingMaterialFieldsAfter.includes(field), true);
+    assert.equal(
+      report.blockerClassificationByField[field],
+      FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE
+    );
+    assert.equal(report.requiredEvidenceCategoriesByField[field].includes('manual_verification'), true);
+  }
+  assert.equal(report.exactIdentityFeasibleFromCurrentEvidence, false);
+  assert.equal(report.additionalEvidenceRequired, true);
+  assert.equal(report.feasibilityReasonCodes.includes('missing_material_identity_fields'), true);
+  assert.equal(report.feasibilityReasonCodes.includes('absence_sensitive_fields_require_explicit_evidence'), true);
+  assert.deepEqual(report.exactIdentityBlockerFields, [...report.exactIdentityBlockerFields].sort());
+  assert.deepEqual(report.recommendedEvidenceCategories, [...new Set(report.recommendedEvidenceCategories)].sort());
+  assert.equal(report.recommendedEvidenceCategories.includes('explicit_visual_evidence'), true);
+  assert.equal(report.recommendedEvidenceCategories.includes('manual_verification'), true);
+  assert.equal(report.recommendedEvidenceCategories.includes('provider_metadata'), true);
+});
+
+test('A5.9 conflict diagnostics are field-only and confidence cannot resolve conflict', async () => {
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball Shohei Ohtani #17 Gold' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('cardNumber', 'CARDHAWKLEAKCARD', { confidence: 1 }),
+        obs('setName', 'CARDHAWKLEAKSET', { confidence: 1 })
+      ]));
+    }
+  });
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.postVisionClassification, 'AMBIGUOUS');
+  assert.equal(report.exactIdentityFeasibleFromCurrentEvidence, false);
+  assert.deepEqual(report.conflictFields, ['cardNumber', 'setName']);
+  assert.equal(
+    report.blockerClassificationByField.cardNumber,
+    FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+  );
+  assert.equal(
+    report.blockerClassificationByField.setName,
+    FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+  );
+  assert.deepEqual(report.conflictDiagnostics.cardNumber, {
+    sourceCategories: ['explicit_visual_evidence', 'title_parse'],
+    resolutionRequirement: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+  });
+  assert.deepEqual(report.conflictDiagnostics.setName, {
+    sourceCategories: ['explicit_visual_evidence', 'title_parse'],
+    resolutionRequirement: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+  });
+  assert.deepEqual(report.requiredEvidenceCategoriesByField.cardNumber, ['manual_verification']);
+  assert.equal(report.feasibilityReasonCodes.includes('unresolved_identity_conflicts'), true);
+  assert.equal(report.recommendedEvidenceCategories.every((category) => /^[a-z_]+$/.test(category)), true);
+  assert.equal(serialized.includes('CARDHAWKLEAKCARD'), false);
+  assert.equal(serialized.includes('CARDHAWKLEAKSET'), false);
+  assert.equal(serialized.includes('Topps Chrome'), false);
+  assert.equal(serialized.includes('Shohei Ohtani'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(serialized.includes('sale-secret-id-001'), false);
+  assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(serialized.includes('tca_test_secret_not_printed'), false);
+});
+
+test('A5.9 feasible audit does not alter exact identity classification or A5.8 recovery diagnostics', async () => {
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('subjectName', 'Shohei Ohtani'),
+        obs('cardNumber', '17'),
+        obs('parallel', 'Gold'),
+        obs('autographState', true),
+        obs('memorabiliaState', true),
+        obs('printRun', 99),
+        obs('gradeCompany', 'PSA'),
+        obs('grade', '10')
+      ]));
+    }
+  });
+  const report = result.report;
+
+  assert.equal(report.postVisionClassification, 'EXACT');
+  assert.equal(report.exactIdentityFeasibleFromCurrentEvidence, true);
+  assert.equal(report.additionalEvidenceRequired, false);
+  assert.deepEqual(report.exactIdentityBlockerFields, []);
+  assert.deepEqual(report.blockerClassificationByField, {});
+  assert.deepEqual(report.requiredEvidenceCategoriesByField, {});
+  assert.deepEqual(report.conflictDiagnostics, {});
+  assert.deepEqual(report.recommendedEvidenceCategories, []);
+  assert.deepEqual(report.feasibilityReasonCodes, ['exact_identity_feasible_from_current_evidence']);
+  assert.deepEqual(report.recoveredMaterialFields, [
+    'autographState',
+    'cardNumber',
+    'memorabiliaState',
+    'parallel',
+    'subjectName'
+  ]);
+  assert.equal(report.materialFieldRecoveryCount, 5);
+  assert.equal(report.materialFieldRecoveryRate, 0.7143);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
 });
 
 test('sanitized reports contain no credentials, raw provider payloads, raw model output, full image URLs, or identifiers', async () => {

@@ -86,6 +86,75 @@ const REJECTION_REASON_CODES = Object.freeze([
   'unsupported_schema_version'
 ]);
 
+const FEASIBILITY_CLASSIFICATIONS = Object.freeze({
+  EXPLICIT_VISUAL_EVIDENCE_POSSIBLE: 'EXPLICIT_VISUAL_EVIDENCE_POSSIBLE',
+  ADDITIONAL_IMAGE_OR_VIEW_REQUIRED: 'ADDITIONAL_IMAGE_OR_VIEW_REQUIRED',
+  EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED: 'EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED',
+  ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE: 'ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE',
+  CONFLICT_REQUIRES_RESOLUTION: 'CONFLICT_REQUIRES_RESOLUTION',
+  MANUAL_VERIFICATION_REQUIRED: 'MANUAL_VERIFICATION_REQUIRED',
+  CURRENT_EVIDENCE_SUFFICIENT: 'CURRENT_EVIDENCE_SUFFICIENT',
+  UNKNOWN_RESOLUTION_PATH: 'UNKNOWN_RESOLUTION_PATH'
+});
+
+const EVIDENCE_CATEGORY_CODES = Object.freeze([
+  'additional_image_or_view',
+  'canonical_resolver',
+  'explicit_title_evidence',
+  'explicit_visual_evidence',
+  'image_ocr',
+  'manual_verification',
+  'provider_metadata',
+  'slab_label',
+  'unknown'
+]);
+
+const CONFLICT_SOURCE_CATEGORIES = Object.freeze([
+  'canonical_resolver',
+  'explicit_title_evidence',
+  'explicit_visual_evidence',
+  'image_ocr',
+  'provider_metadata',
+  'slab_label',
+  'title_parse',
+  'unknown'
+]);
+
+const ABSENCE_SENSITIVE_FEASIBILITY_FIELDS = Object.freeze([
+  'autographState',
+  'memorabiliaState',
+  'rawOrGraded',
+  'serialNumbered'
+]);
+
+const FIELD_FEASIBILITY_CLASSIFICATIONS = Object.freeze({
+  sport: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+  subjectName: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE,
+  year: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+  manufacturer: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+  setName: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+  cardNumber: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE,
+  parallel: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE,
+  autographState: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+  memorabiliaState: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+  serialNumbered: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+  rawOrGraded: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE
+});
+
+const REQUIRED_EVIDENCE_CATEGORIES_BY_FIELD = Object.freeze({
+  sport: Object.freeze(['explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  subjectName: Object.freeze(['explicit_visual_evidence', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  year: Object.freeze(['explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  manufacturer: Object.freeze(['explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  setName: Object.freeze(['explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  cardNumber: Object.freeze(['explicit_visual_evidence', 'image_ocr', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  parallel: Object.freeze(['explicit_visual_evidence', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  autographState: Object.freeze(['explicit_visual_evidence', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  memorabiliaState: Object.freeze(['explicit_visual_evidence', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  serialNumbered: Object.freeze(['explicit_visual_evidence', 'image_ocr', 'explicit_title_evidence', 'provider_metadata', 'manual_verification']),
+  rawOrGraded: Object.freeze(['slab_label', 'explicit_title_evidence', 'provider_metadata', 'manual_verification'])
+});
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -656,6 +725,114 @@ function buildFieldRecoveryDiagnostics(evidenceResult = {}, preResolution = {}) 
   });
 }
 
+function sanitizeCategoryArray(values = [], allowlist = EVIDENCE_CATEGORY_CODES) {
+  const allowed = new Set(allowlist);
+  return unique(asArray(values)
+    .map((value) => String(value || '').trim())
+    .filter((value) => allowed.has(value)))
+    .sort()
+    .slice(0, MAX_DIAGNOSTIC_FIELDS);
+}
+
+function categoriesForExistingSource(source = '') {
+  const value = String(source || '').trim();
+  if (value === 'provider_metadata' || value === 'explicit_provider_metadata') return ['provider_metadata'];
+  if (value === 'title_parse' || value === 'deterministic_title_parse') return ['title_parse'];
+  if (value === 'explicit_provider_metadata_and_title_confirmed') {
+    return ['provider_metadata', 'explicit_title_evidence', 'title_parse'];
+  }
+  if (value === 'conflict_provider_preferred_for_review') return ['provider_metadata', 'title_parse'];
+  if (value === 'admitted_multimodal_identity_evidence') return ['explicit_visual_evidence'];
+  if (value === 'canonical_resolver') return ['canonical_resolver'];
+  return [];
+}
+
+function categoriesForConflict(conflict = {}, fieldProvenance = {}) {
+  const categories = [
+    ...categoriesForExistingSource(conflict.existingSource),
+    ...categoriesForExistingSource(asObject(fieldProvenance[conflict.field]).source)
+  ];
+  const reason = String(conflict.reason || '');
+  if (reason.includes('provider_metadata')) categories.push('provider_metadata');
+  if (reason.includes('title_parse')) categories.push('title_parse');
+  if (reason.includes('multimodal')) categories.push('explicit_visual_evidence');
+  return sanitizeCategoryArray(categories.length ? categories : ['unknown'], CONFLICT_SOURCE_CATEGORIES);
+}
+
+function requiredEvidenceForField(field) {
+  return sanitizeCategoryArray(REQUIRED_EVIDENCE_CATEGORIES_BY_FIELD[field] || ['manual_verification', 'unknown']);
+}
+
+function classifyBlockerField(field, conflictSet) {
+  if (conflictSet.has(field)) return FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION;
+  if (ABSENCE_SENSITIVE_FEASIBILITY_FIELDS.includes(field)) {
+    return FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE;
+  }
+  return FIELD_FEASIBILITY_CLASSIFICATIONS[field] || FEASIBILITY_CLASSIFICATIONS.UNKNOWN_RESOLUTION_PATH;
+}
+
+function buildExactIdentityFeasibilityAudit(evidenceResult = null, fieldRecoveryDiagnostics = {}) {
+  const missingFields = sanitizeFieldArray(fieldRecoveryDiagnostics.missingMaterialFieldsAfter, MATERIAL_FIELDS);
+  const conflictFields = sanitizeFieldArray(fieldRecoveryDiagnostics.conflictFields, SUPPORTED_FIELDS);
+  const blockerFields = sanitizeFieldArray([...missingFields, ...conflictFields], MATERIAL_FIELDS);
+  const conflictSet = new Set(conflictFields);
+  const blockerClassificationByField = {};
+  const requiredEvidenceCategoriesByField = {};
+  const conflictDiagnostics = {};
+
+  for (const field of blockerFields) {
+    blockerClassificationByField[field] = classifyBlockerField(field, conflictSet);
+    requiredEvidenceCategoriesByField[field] = conflictSet.has(field)
+      ? ['manual_verification']
+      : requiredEvidenceForField(field);
+  }
+
+  for (const conflict of asArray(evidenceResult?.conflicts)) {
+    const field = String(conflict?.field || '').trim();
+    if (!SUPPORTED_FIELDS.includes(field)) continue;
+    conflictDiagnostics[field] = deepFreeze({
+      sourceCategories: categoriesForConflict(conflict, evidenceResult?.fieldProvenance),
+      resolutionRequirement: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+    });
+  }
+
+  const recommendedEvidenceCategories = sanitizeCategoryArray(
+    Object.values(requiredEvidenceCategoriesByField).flat()
+  );
+  const exactIdentityFeasibleFromCurrentEvidence = Boolean(
+    evidenceResult &&
+    evidenceResult.postMultimodalClassification === 'EXACT' &&
+    missingFields.length === 0 &&
+    conflictFields.length === 0
+  );
+  const feasibilityReasonCodes = unique([
+    ...(evidenceResult ? [] : ['identity_evidence_package_not_available']),
+    ...(missingFields.length ? ['missing_material_identity_fields'] : []),
+    ...(conflictFields.length ? ['unresolved_identity_conflicts'] : []),
+    ...(blockerFields.some((field) => ABSENCE_SENSITIVE_FEASIBILITY_FIELDS.includes(field))
+      ? ['absence_sensitive_fields_require_explicit_evidence']
+      : []),
+    ...(exactIdentityFeasibleFromCurrentEvidence
+      ? ['exact_identity_feasible_from_current_evidence']
+      : ['exact_identity_not_feasible_from_current_evidence'])
+  ]).sort();
+
+  return deepFreeze({
+    exactIdentityFeasibleFromCurrentEvidence,
+    exactIdentityBlockerFields: blockerFields,
+    blockerClassificationByField: deepFreeze(Object.fromEntries(Object.entries(blockerClassificationByField)
+      .sort(([left], [right]) => left.localeCompare(right)))),
+    requiredEvidenceCategoriesByField: deepFreeze(Object.fromEntries(Object.entries(requiredEvidenceCategoriesByField)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([field, categories]) => [field, sanitizeCategoryArray(categories)]))),
+    conflictDiagnostics: deepFreeze(Object.fromEntries(Object.entries(conflictDiagnostics)
+      .sort(([left], [right]) => left.localeCompare(right)))),
+    additionalEvidenceRequired: !exactIdentityFeasibleFromCurrentEvidence,
+    recommendedEvidenceCategories,
+    feasibilityReasonCodes
+  });
+}
+
 function buildSanitizedOpenAIPilotReport(input = {}) {
   const evidenceResult = input.evidenceResult || null;
   const baseReport = buildSanitizedMultimodalPilotReport({
@@ -669,6 +846,7 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
   const preMissing = asArray(evidenceResult?.preMultimodalMissingMaterialFields || input.preResolution?.missingMaterialFields);
   const postMissing = asArray(evidenceResult?.postMultimodalMissingMaterialFields);
   const fieldRecoveryDiagnostics = buildFieldRecoveryDiagnostics(evidenceResult, input.preResolution);
+  const feasibilityAudit = buildExactIdentityFeasibilityAudit(evidenceResult, fieldRecoveryDiagnostics);
   const report = {
     phase: 'A5.7',
     source: SOURCE,
@@ -690,6 +868,7 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
     missingMaterialFieldCountBefore: preMissing.length,
     missingMaterialFieldCountAfter: postMissing.length,
     ...fieldRecoveryDiagnostics,
+    ...feasibilityAudit,
     conflictCount: baseReport.conflictsCount,
     classificationImproved: Boolean(input.classificationImproved),
     exactReached: evidenceResult?.postMultimodalClassification === 'EXACT',
@@ -919,6 +1098,7 @@ module.exports = {
   MAX_IMAGES,
   MAX_MODEL_REQUESTS,
   MAX_OBSERVATIONS,
+  FEASIBILITY_CLASSIFICATIONS,
   LIVE_STATUS,
   buildOpenAIObservationJsonSchema,
   buildOpenAIResponsesRequestBody,
