@@ -490,6 +490,155 @@ test('model observations cannot directly set EXACT and canonical resolution rema
   assert.equal(result.report.classificationImproved, true);
 });
 
+test('A5.8 report exposes sanitized recovered material field diagnostics only', async () => {
+  const calls = [];
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('subjectName', 'Shohei Ohtani'),
+        obs('cardNumber', '17'),
+        obs('parallel', 'Gold'),
+        obs('autographState', true),
+        obs('memorabiliaState', true),
+        obs('printRun', 99),
+        obs('gradeCompany', 'PSA'),
+        obs('grade', '10')
+      ]));
+    }
+  });
+  const report = result.report;
+
+  assert.deepEqual(report.missingMaterialFieldsBefore, [
+    'autographState',
+    'cardNumber',
+    'memorabiliaState',
+    'parallel',
+    'rawOrGraded',
+    'serialNumbered',
+    'subjectName'
+  ]);
+  assert.deepEqual(report.missingMaterialFieldsAfter, []);
+  assert.deepEqual(report.recoveredMaterialFields, [
+    'autographState',
+    'cardNumber',
+    'memorabiliaState',
+    'parallel',
+    'subjectName'
+  ]);
+  assert.deepEqual(report.admittedObservationFields, [
+    'autographState',
+    'cardNumber',
+    'grade',
+    'gradeCompany',
+    'memorabiliaState',
+    'parallel',
+    'printRun',
+    'subjectName'
+  ]);
+  assert.deepEqual(report.rejectedObservationFields, []);
+  assert.deepEqual(report.rejectedObservationReasonsByField, {});
+  assert.deepEqual(report.conflictFields, []);
+  assert.equal(report.materialFieldRecoveryCount, 5);
+  assert.equal(report.materialFieldRecoveryRate, 0.7143);
+  assert.equal(report.missingMaterialFieldCountBefore, 7);
+  assert.equal(report.missingMaterialFieldCountAfter, 0);
+  assert.equal(report.modelRequestsAttempted, 1);
+  assert.equal(report.modelRequestsCompleted, 1);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.8 recovered fields require admitted evidence and exclude rejected unknown and conflicting observations', async () => {
+  const calls = [];
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('subjectName', 'Shohei Ohtani'),
+        obs('parallel', 'Gold', { evidenceType: 'inferred_visual_evidence', explicitOrInferred: 'inferred' }),
+        obs('cardNumber', 'unknown', {
+          evidenceType: 'unknown_not_observable',
+          explicitOrInferred: 'unknown',
+          deterministicVerificationPossible: false
+        }),
+        obs('autographState', false),
+        obs('year', 2023)
+      ]));
+    }
+  });
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.deepEqual(report.recoveredMaterialFields, ['subjectName']);
+  assert.equal(report.materialFieldRecoveryCount, 1);
+  assert.equal(report.materialFieldRecoveryRate, 0.1429);
+  assert.equal(report.missingMaterialFieldsAfter.includes('parallel'), true);
+  assert.equal(report.missingMaterialFieldsAfter.includes('cardNumber'), true);
+  assert.equal(report.missingMaterialFieldsAfter.includes('autographState'), true);
+  assert.deepEqual(report.admittedObservationFields, ['subjectName']);
+  assert.deepEqual(report.rejectedObservationFields, ['autographState', 'cardNumber', 'parallel']);
+  assert.deepEqual(report.conflictFields, ['year']);
+  assert.deepEqual(report.rejectedObservationReasonsByField, {
+    autographState: { absence_is_not_negative_evidence: 1 },
+    cardNumber: { unknown_not_observable: 1 },
+    parallel: { inferred_visual_evidence_requires_review: 1 }
+  });
+  assert.deepEqual(report.missingMaterialFieldsBefore, [...report.missingMaterialFieldsBefore].sort());
+  assert.deepEqual(report.admittedObservationFields, [...new Set(report.admittedObservationFields)].sort());
+  assert.equal(report.missingMaterialFieldsBefore.length <= 16, true);
+  assert.equal(report.admittedObservationFields.length <= 16, true);
+  assert.equal(report.rejectedObservationFields.length <= 16, true);
+  assert.equal(report.conflictFields.length <= 16, true);
+  assert.equal(serialized.includes('Shohei Ohtani'), false);
+  assert.equal(serialized.includes('Gold'), false);
+  assert.equal(serialized.includes('2024 Topps Chrome'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(serialized.includes('sale-secret-id-001'), false);
+  assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(serialized.includes('tca_test_secret_not_printed'), false);
+  assert.equal(serialized.includes('output_text'), false);
+  assert.equal(calls.filter((call) => String(call.url).includes('thecardapi.com')).length, 1);
+  assert.equal(calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL).length, 1);
+});
+
+test('A5.8 resolver-derived fields do not count as recovered without same-field admitted evidence', async () => {
+  const result = await runOpenAIMultimodalCompatibilityPilot({
+    env: env(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sale({ title: '2024 Topps Chrome Baseball' })] });
+      }
+      return jsonResponse(responsePayload(undefined, [
+        obs('printRun', 99),
+        obs('gradeCompany', 'PSA'),
+        obs('grade', '10')
+      ]));
+    }
+  });
+  const report = result.report;
+
+  assert.deepEqual(report.admittedObservationFields, ['grade', 'gradeCompany', 'printRun']);
+  assert.equal(report.missingMaterialFieldsBefore.includes('rawOrGraded'), true);
+  assert.equal(report.missingMaterialFieldsBefore.includes('serialNumbered'), true);
+  assert.equal(report.missingMaterialFieldsAfter.includes('rawOrGraded'), false);
+  assert.equal(report.missingMaterialFieldsAfter.includes('serialNumbered'), false);
+  assert.equal(report.recoveredMaterialFields.includes('rawOrGraded'), false);
+  assert.equal(report.recoveredMaterialFields.includes('serialNumbered'), false);
+  assert.deepEqual(report.recoveredMaterialFields, []);
+  assert.equal(report.materialFieldRecoveryCount, 0);
+  assert.equal(report.materialFieldRecoveryRate, 0);
+});
+
 test('sanitized reports contain no credentials, raw provider payloads, raw model output, full image URLs, or identifiers', async () => {
   const result = await runOpenAIMultimodalCompatibilityPilot({
     env: env(),

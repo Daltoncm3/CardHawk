@@ -20,9 +20,11 @@ const {
 } = require('./multimodalModelAdapterContract');
 const {
   EVIDENCE_MODALITIES,
+  SUPPORTED_FIELDS,
   resolveMultimodalSoldIdentityEvidence
 } = require('./multimodalSoldIdentityEvidencePilot');
 const {
+  MATERIAL_FIELDS,
   resolveCardApiTransactionIdentity
 } = require('./cardApiIdentityResolutionPilot');
 const {
@@ -51,6 +53,7 @@ const MAX_TRANSACTIONS = 1;
 const MAX_IMAGES = 1;
 const MAX_MODEL_REQUESTS = 1;
 const MAX_OBSERVATIONS = 12;
+const MAX_DIAGNOSTIC_FIELDS = 16;
 
 const LIVE_STATUS = Object.freeze({
   DISABLED: 'LIVE_NOT_RUN_DISABLED',
@@ -66,6 +69,22 @@ const LIVE_STATUS = Object.freeze({
   MODEL_REQUEST_FAILED: 'LIVE_COMPLETED_MODEL_REQUEST_FAILED',
   COMPLETED: 'LIVE_COMPLETED'
 });
+
+const REJECTION_REASON_CODES = Object.freeze([
+  'absence_is_not_negative_evidence',
+  'ambiguous_or_warning_bearing_observation',
+  'authority_boundary_violation',
+  'confidence_below_admission_threshold',
+  'deterministic_verification_required',
+  'inferred_visual_evidence_requires_review',
+  'invalid_confidence',
+  'invalid_observation',
+  'multiple_cards_visible',
+  'unknown_not_observable',
+  'unsupported_identity_field',
+  'unsupported_observation_type',
+  'unsupported_schema_version'
+]);
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -563,6 +582,80 @@ function countReasons(entries = []) {
   }, {});
 }
 
+function sanitizeFieldArray(values = [], allowlist = SUPPORTED_FIELDS) {
+  const allowed = new Set(allowlist);
+  return unique(asArray(values)
+    .map((value) => String(value || '').trim())
+    .filter((value) => allowed.has(value)))
+    .sort()
+    .slice(0, MAX_DIAGNOSTIC_FIELDS);
+}
+
+function sanitizeObservationFields(entries = []) {
+  return sanitizeFieldArray(asArray(entries).map((entry) => entry && entry.field), SUPPORTED_FIELDS);
+}
+
+function sanitizeRejectionReason(value) {
+  const reason = String(value || '').trim();
+  return REJECTION_REASON_CODES.includes(reason) ? reason : 'invalid_observation';
+}
+
+function buildRejectedObservationReasonsByField(entries = []) {
+  const allowedFields = new Set(SUPPORTED_FIELDS);
+  const grouped = {};
+  for (const entry of asArray(entries)) {
+    const field = String(entry?.field || '').trim();
+    if (!allowedFields.has(field)) continue;
+    const reason = sanitizeRejectionReason(entry?.reason);
+    if (!grouped[field]) grouped[field] = {};
+    grouped[field][reason] = (grouped[field][reason] || 0) + 1;
+  }
+
+  return Object.freeze(Object.fromEntries(Object.entries(grouped)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, reasons]) => [
+      field,
+      Object.freeze(Object.fromEntries(Object.entries(reasons)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([reason, count]) => [reason, Math.min(Number(count) || 0, MAX_OBSERVATIONS)])))
+    ])));
+}
+
+function buildFieldRecoveryDiagnostics(evidenceResult = {}, preResolution = {}) {
+  const preMissing = sanitizeFieldArray(
+    asArray(evidenceResult?.preMultimodalMissingMaterialFields || preResolution?.missingMaterialFields),
+    MATERIAL_FIELDS
+  );
+  const postMissing = sanitizeFieldArray(evidenceResult?.postMultimodalMissingMaterialFields, MATERIAL_FIELDS);
+  const admittedFields = sanitizeObservationFields(evidenceResult?.admittedMultimodalFields);
+  const rejectedFields = sanitizeObservationFields(evidenceResult?.rejectedMultimodalFields);
+  const conflictFields = sanitizeObservationFields(evidenceResult?.conflicts);
+  const admittedSet = new Set(admittedFields);
+  const postMissingSet = new Set(postMissing);
+  const conflictSet = new Set(conflictFields);
+  const recovered = preMissing
+    .filter((field) => !postMissingSet.has(field))
+    .filter((field) => admittedSet.has(field))
+    .filter((field) => !conflictSet.has(field))
+    .sort()
+    .slice(0, MAX_DIAGNOSTIC_FIELDS);
+  const recoveryRate = preMissing.length
+    ? Number((recovered.length / preMissing.length).toFixed(4))
+    : 0;
+
+  return deepFreeze({
+    missingMaterialFieldsBefore: preMissing,
+    missingMaterialFieldsAfter: postMissing,
+    recoveredMaterialFields: recovered,
+    admittedObservationFields: admittedFields,
+    rejectedObservationFields: rejectedFields,
+    rejectedObservationReasonsByField: buildRejectedObservationReasonsByField(evidenceResult?.rejectedMultimodalFields),
+    conflictFields,
+    materialFieldRecoveryCount: recovered.length,
+    materialFieldRecoveryRate: recoveryRate
+  });
+}
+
 function buildSanitizedOpenAIPilotReport(input = {}) {
   const evidenceResult = input.evidenceResult || null;
   const baseReport = buildSanitizedMultimodalPilotReport({
@@ -575,6 +668,7 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
   });
   const preMissing = asArray(evidenceResult?.preMultimodalMissingMaterialFields || input.preResolution?.missingMaterialFields);
   const postMissing = asArray(evidenceResult?.postMultimodalMissingMaterialFields);
+  const fieldRecoveryDiagnostics = buildFieldRecoveryDiagnostics(evidenceResult, input.preResolution);
   const report = {
     phase: 'A5.7',
     source: SOURCE,
@@ -595,6 +689,7 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
     rejectionReasonCounts: countReasons(evidenceResult?.rejectedMultimodalFields),
     missingMaterialFieldCountBefore: preMissing.length,
     missingMaterialFieldCountAfter: postMissing.length,
+    ...fieldRecoveryDiagnostics,
     conflictCount: baseReport.conflictsCount,
     classificationImproved: Boolean(input.classificationImproved),
     exactReached: evidenceResult?.postMultimodalClassification === 'EXACT',
