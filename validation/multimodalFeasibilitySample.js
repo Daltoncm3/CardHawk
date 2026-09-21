@@ -129,6 +129,23 @@ function addMapCounts(target, source = {}, allowlist = null) {
   }
 }
 
+function addBlockerClassificationCounts(target, source = {}) {
+  const allowlist = Object.values(FEASIBILITY_CLASSIFICATIONS);
+  const seen = new Set();
+  for (const [field, classifications] of Object.entries(asObject(source))) {
+    const safeField = String(field || '').trim();
+    if (!safeField) continue;
+    const values = Array.isArray(classifications) ? classifications : [classifications];
+    for (const classification of unique(values.map((value) => String(value || '').trim())).sort()) {
+      if (!allowlist.includes(classification)) continue;
+      const dedupeKey = `${safeField}:${classification}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      incrementCount(target, classification, 1, allowlist);
+    }
+  }
+}
+
 function sortedCountMap(map = {}, allowlist = null) {
   const allowed = allowlist ? new Set(allowlist) : null;
   return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
@@ -312,7 +329,7 @@ function buildFeasibilitySampleReport(input = {}) {
     for (const field of asArray(report.missingMaterialFieldsAfter)) incrementCount(totals.missingFieldFrequencyAfter, field, 1, MATERIAL_FIELDS);
     for (const field of asArray(report.recoveredMaterialFields)) incrementCount(totals.recoveredFieldFrequency, field, 1, MATERIAL_FIELDS);
     for (const field of asArray(report.conflictFields)) incrementCount(totals.conflictFieldFrequency, field, 1, SUPPORTED_FIELDS);
-    addMapCounts(totals.blockerClassificationFrequency, report.blockerClassificationByField);
+    addBlockerClassificationCounts(totals.blockerClassificationFrequency, report.blockerClassificationByField);
     for (const categories of Object.values(asObject(report.requiredEvidenceCategoriesByField))) {
       for (const category of asArray(categories)) incrementCount(totals.requiredEvidenceCategoryFrequency, category, 1, EVIDENCE_CATEGORY_CODES);
     }
