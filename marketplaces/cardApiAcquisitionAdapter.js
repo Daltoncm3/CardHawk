@@ -47,7 +47,8 @@ const REQUIRED_PROVIDER_FIELDS = Object.freeze([
   'price',
   'sold_at',
   'currency',
-  'listing_type'
+  'listing_type',
+  'price_confirmed'
 ]);
 
 function asObject(value) {
@@ -255,6 +256,19 @@ function isCompletedSale(sale = {}) {
   return Boolean(sale.id && sale.title && price > 0 && soldAt);
 }
 
+function isConfirmedSoldPrice(sale = {}) {
+  return sale.price_confirmed === true;
+}
+
+function priceConfirmationReasonCode(sale = {}) {
+  if (sale.price_confirmed === true) return null;
+  if (sale.price_confirmed === false) return 'provider_price_unconfirmed';
+  if (sale.price_confirmed === undefined || sale.price_confirmed === null || sale.price_confirmed === '') {
+    return 'provider_price_confirmation_missing';
+  }
+  return 'provider_price_confirmation_malformed';
+}
+
 function firstPresent(source = {}, keys = []) {
   for (const key of keys) {
     if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
@@ -324,6 +338,7 @@ function missingRequiredProviderFields(sale = {}) {
   return REQUIRED_PROVIDER_FIELDS.filter((field) => {
     if (field === 'price') return toNumber(sale.price, 0) <= 0;
     if (field === 'sold_at') return !normalizeDate(sale.sold_at || sale.sale_date);
+    if (field === 'price_confirmed') return !isConfirmedSoldPrice(sale);
     return sale[field] === undefined || sale[field] === null || sale[field] === '';
   });
 }
@@ -332,13 +347,17 @@ function translateCardApiSaleToRawCanonical(sale = {}, context = {}) {
   const missingProviderFields = missingRequiredProviderFields(sale);
   const parsedIdentity = buildParsedIdentityFromSale(sale);
   const saleType = listingTypeToSaleType(sale.listing_type);
+  const completedSaleEvent = isCompletedSale(sale);
+  const confirmedSoldPrice = isConfirmedSoldPrice(sale);
+  const canonicalReadySoldPrice = completedSaleEvent && confirmedSoldPrice;
+  const confirmationReasonCode = priceConfirmationReasonCode(sale);
   const shipping = sale.shipping_price === null || sale.shipping_price === undefined ? null : toNumber(sale.shipping_price, 0);
   const price = toNumber(sale.price, 0);
   const totalPaid = shipping === null ? price : Math.round((price + shipping) * 100) / 100;
   const warnings = [];
 
   if (missingProviderFields.length) warnings.push(`missing_provider_fields:${missingProviderFields.join(',')}`);
-  if (sale.price_confirmed === false) warnings.push('provider_price_not_confirmed');
+  if (confirmationReasonCode) warnings.push(confirmationReasonCode);
   if (!sale.listing_url) warnings.push('missing_source_url');
 
   return {
@@ -362,14 +381,16 @@ function translateCardApiSaleToRawCanonical(sale = {}, context = {}) {
     grade: sale.grade || 'unknown',
     certificationNumber: sale.slab_serial || null,
     parsedIdentity,
-    evidenceType: isCompletedSale(sale) ? EVIDENCE_TYPES.TRUE_SOLD : EVIDENCE_TYPES.ACTIVE_CONTEXT,
-    status: isCompletedSale(sale) ? 'active_evidence' : 'context_only',
+    evidenceType: canonicalReadySoldPrice ? EVIDENCE_TYPES.TRUE_SOLD : EVIDENCE_TYPES.ACTIVE_CONTEXT,
+    status: canonicalReadySoldPrice
+      ? 'active_evidence'
+      : (completedSaleEvent ? 'provisional_price_context' : 'context_only'),
     source: {
       adapter: DEFAULT_ADAPTER_NAME,
       marketplace: 'the_card_api',
       sourceName: 'The Card API',
       retrievalMethod: 'card_api_compatibility_pilot',
-      sourceReliability: sale.price_confirmed === false ? 'provider_reported_unconfirmed_price' : 'provider_reported_verified_market_sale',
+      sourceReliability: confirmedSoldPrice ? 'provider_reported_verified_market_sale' : 'provider_reported_unconfirmed_price',
       acquiredAt: normalizeDate(context.acquiredAt) || '2026-09-18T00:00:00.000Z',
       transformation: 'card_api_sale_to_canonical_compatibility_candidate'
     },
@@ -387,7 +408,11 @@ function translateCardApiSaleToRawCanonical(sale = {}, context = {}) {
       compatibilityPilot: true,
       nonPersistent: true,
       missingProviderFields,
-      priceConfirmed: sale.price_confirmed !== false,
+      completedSaleEvent,
+      canonicalReadySoldPrice,
+      priceConfirmed: confirmedSoldPrice,
+      priceConfirmationStatus: confirmedSoldPrice ? 'confirmed' : 'unconfirmed',
+      priceConfirmationReasonCode: confirmationReasonCode,
       originalPriceAvailable: sale.original_price !== undefined && sale.original_price !== null,
       shippingAvailable: sale.shipping_price !== undefined && sale.shipping_price !== null,
       sourceUrlAvailable: Boolean(sale.listing_url),
@@ -606,7 +631,7 @@ function countBy(records = [], getKey) {
 function buildFieldAvailability(records = []) {
   return {
     bestOfferRecordsPresent: records.some((record) => record.saleType === 'best_offer'),
-    acceptedPriceFieldAvailable: records.some((record) => record.bestOfferAccepted && record.soldPrice > 0),
+    acceptedPriceFieldAvailable: records.some((record) => record.bestOfferAccepted && record.soldPrice > 0 && record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD),
     shippingAvailable: records.some((record) => record.shipping !== null && record.shipping !== undefined),
     totalPaidAvailable: records.some((record) => record.totalPaid !== null && record.totalPaid !== undefined),
     stableTransactionIdAvailable: records.some((record) => Boolean(record.marketplaceSaleId)),
@@ -653,6 +678,8 @@ function summarizeCardApiCompatibility(acquisitionResult = {}) {
   const minimumCompatible = records.filter((record) => {
     const missingProviderFields = missingProviderFieldsFromRecord(record);
     return !missingProviderFields.length
+      && record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD
+      && record.status === 'active_evidence'
       && Boolean(record.marketplaceSaleId)
       && Boolean(record.rawTitle)
       && toNumber(record.soldPrice, 0) > 0
@@ -660,7 +687,9 @@ function summarizeCardApiCompatibility(acquisitionResult = {}) {
       && Boolean(record.currency)
       && Boolean(record.saleType);
   });
-  const canonicalizable = records.filter((record) => !validations[records.indexOf(record)]?.reasons?.length);
+  const canonicalizable = records.filter((record) => record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD
+    && record.status === 'active_evidence'
+    && !validations[records.indexOf(record)]?.reasons?.length);
   const exactControlMatches = records.filter((record) => buildLocalCanonicalCardKey(record.parsedIdentity || {}) === CONTROL_CANONICAL_CARD_KEY);
   const missingReasons = validations.flatMap((validation) => asArray(validation.reasons));
   const providerMissing = records.flatMap((record) => missingProviderFieldsFromRecord(record));

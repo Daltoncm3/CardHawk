@@ -128,6 +128,89 @@ test('valid provider transaction maps to CardHawk-compatible true sold candidate
   assert.equal(mapped.priceDisclosure, 'best_offer_reported_price');
   assert.equal(mapped.source.retrievalMethod, 'card_api_compatibility_pilot');
   assert.equal(mapped.retention.status, 'prohibited');
+  assert.equal(mapped.providerCompatibility.completedSaleEvent, true);
+  assert.equal(mapped.providerCompatibility.canonicalReadySoldPrice, true);
+  assert.equal(mapped.providerCompatibility.priceConfirmed, true);
+  assert.equal(mapped.providerCompatibility.priceConfirmationStatus, 'confirmed');
+  assert.equal(mapped.providerCompatibility.priceConfirmationReasonCode, null);
+});
+
+test('unconfirmed Card API prices fail closed as provisional context, not canonical true sold evidence', () => {
+  const cases = [
+    {
+      label: 'false',
+      price_confirmed: false,
+      reason: 'provider_price_unconfirmed'
+    },
+    {
+      label: 'missing',
+      removePriceConfirmed: true,
+      reason: 'provider_price_confirmation_missing'
+    },
+    {
+      label: 'malformed_object',
+      price_confirmed: { confirmed: true },
+      reason: 'provider_price_confirmation_malformed'
+    },
+    {
+      label: 'string_true',
+      price_confirmed: 'true',
+      reason: 'provider_price_confirmation_malformed'
+    }
+  ];
+
+  for (const input of cases) {
+    const sale = providerSale({
+      id: `ebay-${input.label}`,
+      price_confirmed: input.price_confirmed
+    });
+    if (input.removePriceConfirmed) delete sale.price_confirmed;
+    const mapped = translateCardApiSaleToRawCanonical(sale, {
+      acquiredAt: '2026-09-18T00:00:00.000Z'
+    });
+
+    assert.equal(isCompletedSale(sale), true);
+    assert.equal(mapped.evidenceType, 'active_context');
+    assert.equal(mapped.status, 'provisional_price_context');
+    assert.equal(mapped.providerCompatibility.completedSaleEvent, true);
+    assert.equal(mapped.providerCompatibility.canonicalReadySoldPrice, false);
+    assert.equal(mapped.providerCompatibility.priceConfirmed, false);
+    assert.equal(mapped.providerCompatibility.priceConfirmationStatus, 'unconfirmed');
+    assert.equal(mapped.providerCompatibility.priceConfirmationReasonCode, input.reason);
+    assert.equal(mapped.providerCompatibility.missingProviderFields.includes('price_confirmed'), true);
+    assert.equal(mapped.warnings.includes(input.reason), true);
+    assert.equal(mapped.source.sourceReliability, 'provider_reported_unconfirmed_price');
+    assert.equal(mapped.marketplaceSaleId, sale.id);
+    assert.equal(mapped.url, sale.listing_url);
+    assert.equal(JSON.stringify(mapped).includes('tca_'), false);
+  }
+});
+
+test('unconfirmed Card API prices are excluded from canonical compatibility counts', () => {
+  const confirmed = translateCardApiSaleToRawCanonical(providerSale({ id: 'confirmed-sale' }), {
+    acquiredAt: '2026-09-18T00:00:00.000Z'
+  });
+  const unconfirmed = translateCardApiSaleToRawCanonical(providerSale({
+    id: 'unconfirmed-sale',
+    price_confirmed: false
+  }), {
+    acquiredAt: '2026-09-18T00:00:00.000Z'
+  });
+  const report = summarizeCardApiCompatibility({
+    records: [confirmed, unconfirmed],
+    errors: [],
+    metadata: { liveExecution: true }
+  });
+
+  assert.equal(report.transactionsReturned, 2);
+  assert.equal(report.trueSoldTransactions, 1);
+  assert.equal(report.minimumFieldCompatibleRecords, 1);
+  assert.equal(report.canonicalizableRecords, 1);
+  assert.equal(report.fieldAvailability.bestOfferRecordsPresent, true);
+  assert.equal(report.fieldAvailability.acceptedPriceFieldAvailable, true);
+  assert.equal(report.missingCardHawkRequiredFields.includes('price_confirmed'), true);
+  assert.equal(report.technicalCompatibility, 'COMPATIBLE');
+  assert.equal(JSON.stringify(report).includes('unconfirmed-sale'), false);
 });
 
 test('missing required provider fields are reported deterministically', () => {
