@@ -23,6 +23,9 @@ const {
 const { MATERIAL_FIELDS } = require('./cardApiIdentityResolutionPilot');
 const { SUPPORTED_FIELDS } = require('./multimodalSoldIdentityEvidencePilot');
 const {
+  DEFAULT_REQUESTED_FIELDS
+} = require('./multimodalModelAdapterContract');
+const {
   asArray,
   asObject,
   fingerprint,
@@ -37,6 +40,11 @@ const FEASIBILITY_SAMPLE_LIVE_FLAG_ENV = 'CARDHAWK_MULTIMODAL_FEASIBILITY_SAMPLE
 const MAX_FEASIBILITY_SAMPLE_TRANSACTIONS = 3;
 const MAX_FEASIBILITY_SAMPLE_IMAGES = 3;
 const MAX_FEASIBILITY_SAMPLE_MODEL_REQUESTS = 3;
+const FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS = 2400;
+const FEASIBILITY_SAMPLE_REQUESTED_FIELDS = Object.freeze(
+  MATERIAL_FIELDS.filter((field) => DEFAULT_REQUESTED_FIELDS.includes(field)).sort()
+);
+const FEASIBILITY_SAMPLE_MAX_OBSERVATIONS = FEASIBILITY_SAMPLE_REQUESTED_FIELDS.length;
 const MAX_DIAGNOSTIC_FIELDS = 16;
 
 const SAMPLE_EXECUTION_STATUS = Object.freeze({
@@ -505,6 +513,9 @@ async function runOpenAIMultimodalFeasibilitySample(options = {}) {
       fetchImpl,
       adapter,
       timeoutMs: options.timeoutMs,
+      maxOutputTokens: FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS,
+      maxObservations: FEASIBILITY_SAMPLE_MAX_OBSERVATIONS,
+      requestedFields: FEASIBILITY_SAMPLE_REQUESTED_FIELDS,
       requestId: `a5-10-openai-multimodal-request-${modelRequestsAttempted}`,
       transactionsRequested: 1
     });
@@ -559,6 +570,9 @@ module.exports = {
   MAX_FEASIBILITY_SAMPLE_TRANSACTIONS,
   MAX_FEASIBILITY_SAMPLE_IMAGES,
   MAX_FEASIBILITY_SAMPLE_MODEL_REQUESTS,
+  FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS,
+  FEASIBILITY_SAMPLE_MAX_OBSERVATIONS,
+  FEASIBILITY_SAMPLE_REQUESTED_FIELDS,
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
   DEFAULT_MAX_OUTPUT_TOKENS,

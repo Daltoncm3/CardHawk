@@ -11,6 +11,7 @@ const {
   EXECUTION_STATUS,
   EVIDENCE_TYPES,
   EXPLICIT_OR_INFERRED,
+  DEFAULT_REQUESTED_FIELDS,
   buildMultimodalModelPromptContract,
   buildSanitizedMultimodalPilotReport,
   createMultimodalModelRequest,
@@ -204,7 +205,24 @@ function normalizeOpenAIMaxOutputTokens(value = DEFAULT_MAX_OUTPUT_TOKENS) {
   return Math.min(Math.floor(numeric), MAX_OUTPUT_TOKENS);
 }
 
-function buildOpenAIObservationJsonSchema() {
+function normalizeOpenAIMaxObservations(value = MAX_OBSERVATIONS) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return MAX_OBSERVATIONS;
+  return Math.min(Math.floor(numeric), MAX_OBSERVATIONS);
+}
+
+function normalizeSchemaRequestedFields(fields = DEFAULT_REQUESTED_FIELDS) {
+  const allowed = new Set(DEFAULT_REQUESTED_FIELDS);
+  const normalized = unique(asArray(fields).length ? fields : DEFAULT_REQUESTED_FIELDS)
+    .map((field) => String(field || '').trim())
+    .filter((field) => allowed.has(field))
+    .sort();
+  return normalized.length ? normalized : [...DEFAULT_REQUESTED_FIELDS];
+}
+
+function buildOpenAIObservationJsonSchema(options = {}) {
+  const requestedFields = normalizeSchemaRequestedFields(options.requestedFields);
+  const maxObservations = normalizeOpenAIMaxObservations(options.maxObservations);
   return {
     type: 'object',
     additionalProperties: false,
@@ -232,7 +250,7 @@ function buildOpenAIObservationJsonSchema() {
       executionStatus: { type: 'string', enum: [EXECUTION_STATUS.SUCCESS] },
       observations: {
         type: 'array',
-        maxItems: MAX_OBSERVATIONS,
+        maxItems: maxObservations,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -251,23 +269,7 @@ function buildOpenAIObservationJsonSchema() {
           properties: {
             field: {
               type: 'string',
-              enum: [
-                'subjectName',
-                'cardNumber',
-                'year',
-                'manufacturer',
-                'product',
-                'setName',
-                'parallel',
-                'rookieDesignation',
-                'autographState',
-                'memorabiliaState',
-                'serialNumbered',
-                'printRun',
-                'rawOrGraded',
-                'gradeCompany',
-                'grade'
-              ]
+              enum: requestedFields
             },
             proposedValue: {
               anyOf: [
@@ -348,11 +350,13 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
   const request = createMultimodalModelRequest(requestInput);
   const prompt = buildMultimodalModelPromptContract(request);
   const model = safeModelName(options.model || DEFAULT_OPENAI_MODEL);
+  const schemaRequestedFields = normalizeSchemaRequestedFields(request.requestedFields);
   const instructionText = [
     ...prompt.instructions,
     'Return only a single JSON object matching the strict schema.',
     'Do not include prose, Markdown, explanations, or provider-specific metadata.',
     'If a field is not visibly explicit, return unknown_not_observable or proposedValue "unknown".',
+    `Requested identity fields: ${schemaRequestedFields.join(', ')}`,
     `Request ID: ${request.requestId}`,
     `Title context, untrusted and non-authoritative: ${request.titleContext || 'unknown'}`
   ].join('\n');
@@ -381,7 +385,10 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
         name: 'cardhawk_multimodal_observations',
         description: 'Strict CardHawk visual identity observations only.',
         strict: true,
-        schema: buildOpenAIObservationJsonSchema()
+        schema: buildOpenAIObservationJsonSchema({
+          requestedFields: schemaRequestedFields,
+          maxObservations: options.maxObservations
+        })
       }
     },
     max_output_tokens: normalizeOpenAIMaxOutputTokens(options.maxOutputTokens),
@@ -513,7 +520,11 @@ function createOpenAIMultimodalProviderAdapter(options = {}) {
         return safeAdapterResponse(request.requestId, model, EXECUTION_STATUS.NOT_CONFIGURED, ['fetch_unavailable']);
       }
 
-      const body = buildOpenAIResponsesRequestBody(request, { model, maxOutputTokens: runOptions.maxOutputTokens || options.maxOutputTokens });
+      const body = buildOpenAIResponsesRequestBody(request, {
+        model,
+        maxOutputTokens: runOptions.maxOutputTokens || options.maxOutputTokens,
+        maxObservations: runOptions.maxObservations || options.maxObservations
+      });
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
@@ -943,6 +954,7 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
     requestId: input.requestId || 'a5-7-openai-multimodal-request-1',
     titleContext: transaction.rawTitle || '',
     imageReference,
+    requestedFields: input.requestedFields,
     modelConfig: {
       provider: PROVIDER_ID,
       model,
@@ -951,7 +963,12 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
       liveCompatibilityFlag: true
     }
   });
-  const modelResponse = await adapter.analyzeImage(request, { env, fetchImpl });
+  const modelResponse = await adapter.analyzeImage(request, {
+    env,
+    fetchImpl,
+    maxOutputTokens: input.maxOutputTokens,
+    maxObservations: input.maxObservations
+  });
   const modelValidation = validateMultimodalModelResponse(modelResponse, request);
 
   if (!modelValidation.valid || modelValidation.response.executionStatus !== EXECUTION_STATUS.SUCCESS) {
@@ -1146,6 +1163,7 @@ module.exports = {
   buildOpenAIResponsesRequestBody,
   normalizeOpenAITimeoutMs,
   normalizeOpenAIMaxOutputTokens,
+  normalizeOpenAIMaxObservations,
   createOpenAIMultimodalProviderAdapter,
   validateOpenAILiveGates,
   buildSanitizedOpenAIPilotReport,

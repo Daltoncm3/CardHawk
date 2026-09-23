@@ -23,6 +23,9 @@ const {
 } = require('../validation/openaiMultimodalProviderAdapter');
 const {
   FEASIBILITY_SAMPLE_LIVE_FLAG_ENV,
+  FEASIBILITY_SAMPLE_MAX_OBSERVATIONS,
+  FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS,
+  FEASIBILITY_SAMPLE_REQUESTED_FIELDS,
   MAX_FEASIBILITY_SAMPLE_IMAGES,
   MAX_FEASIBILITY_SAMPLE_MODEL_REQUESTS,
   MAX_FEASIBILITY_SAMPLE_TRANSACTIONS,
@@ -249,6 +252,19 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(calls.filter((call) => String(call.url).includes('thecardapi.com')).length, 1);
   assert.equal(calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL).length, 3);
   assert.equal(maxActiveOpenAI, 1);
+  for (const call of calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL)) {
+    const body = JSON.parse(call.options.body);
+    assert.equal(body.max_output_tokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS);
+    assert.equal(body.text.format.strict, true);
+    assert.equal(body.store, false);
+    assert.equal(body.text.format.schema.properties.observations.maxItems, FEASIBILITY_SAMPLE_MAX_OBSERVATIONS);
+    assert.deepEqual(
+      body.text.format.schema.properties.observations.items.properties.field.enum,
+      FEASIBILITY_SAMPLE_REQUESTED_FIELDS
+    );
+    assert.equal(body.input[0].content[0].text.includes(`Requested identity fields: ${FEASIBILITY_SAMPLE_REQUESTED_FIELDS.join(', ')}`), true);
+    assert.equal(Object.hasOwn(body, 'temperature'), false);
+  }
   assert.equal(report.transactionsRequested, 3);
   assert.equal(report.transactionsReturned, 3);
   assert.equal(report.uniqueTransactionsEvaluated, 3);
@@ -334,6 +350,61 @@ test('A5.10 feasibility sample deduplicates and never retries failed model reque
   assert.equal(serialized.includes('invalid_request_error'), false);
   assert.equal(serialized.includes('bad_request'), false);
   assert.equal(serialized.includes('https://'), false);
+});
+
+test('A5.10B feasibility sample preserves 60-second cap and does not retry after provider timeouts', async () => {
+  const calls = [];
+  const result = await runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    timeoutMs: 1,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sampleSale(1), sampleSale(2), sampleSale(3)] });
+      }
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('Timed out while reading https://i.ebayimg.example/sample-secret-id-1/full-image.jpg sk-test-secret-not-printed');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    }
+  });
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+  const openAiCalls = calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL);
+
+  assert.equal(openAiCalls.length, 3);
+  for (const call of openAiCalls) {
+    const body = JSON.parse(call.options.body);
+    assert.equal(body.max_output_tokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS);
+    assert.equal(body.text.format.schema.properties.observations.maxItems, FEASIBILITY_SAMPLE_MAX_OBSERVATIONS);
+    assert.deepEqual(
+      body.text.format.schema.properties.observations.items.properties.field.enum,
+      FEASIBILITY_SAMPLE_REQUESTED_FIELDS
+    );
+  }
+  assert.equal(report.sampleExecutionStatus, SAMPLE_EXECUTION_STATUS.PARTIALLY_COMPLETED);
+  assert.equal(report.modelRequestsAttempted, 3);
+  assert.equal(report.modelRequestsCompleted, 0);
+  assert.equal(report.modelRequestFailures, 3);
+  assert.deepEqual(report.sanitizedFailureCategories, ['openai_request_timeout']);
+  assert.deepEqual(report.boundedTokenUsage, {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    modelRequests: 3,
+    inputImages: 3
+  });
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.writesProductionStore, false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
 });
 
 test('A5.10 feasibility sample skips transactions without images before model execution', async () => {

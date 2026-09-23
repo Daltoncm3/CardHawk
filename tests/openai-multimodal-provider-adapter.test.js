@@ -9,6 +9,7 @@ const {
   LIVE_FLAG_ENV: CARD_API_LIVE_FLAG_ENV
 } = require('../marketplaces/cardApiAcquisitionAdapter');
 const {
+  DEFAULT_REQUESTED_FIELDS,
   EXECUTION_STATUS,
   validateMultimodalModelResponse
 } = require('../validation/multimodalModelAdapterContract');
@@ -171,8 +172,29 @@ test('OpenAI request shape uses Responses image input and strict structured outp
   assert.equal(body.text.format.type, 'json_schema');
   assert.equal(body.text.format.strict, true);
   assert.equal(body.text.format.schema.additionalProperties, false);
+  assert.deepEqual(body.text.format.schema.properties.observations.items.properties.field.enum, [...DEFAULT_REQUESTED_FIELDS].sort());
+  assert.equal(body.text.format.schema.properties.observations.maxItems, 12);
   assert.equal(Object.hasOwn(body, 'temperature'), false);
   assert.equal(body.max_output_tokens, 4000);
+});
+
+test('OpenAI request schema can be narrowed for bounded offline sample usage', () => {
+  const body = buildOpenAIResponsesRequestBody({
+    requestId: 'req-narrow',
+    imageReference: 'https://i.ebayimg.example/card.jpg',
+    requestedFields: ['subjectName', 'cardNumber', 'notSupported', 'subjectName']
+  }, {
+    maxObservations: 2,
+    maxOutputTokens: 2400
+  });
+
+  assert.deepEqual(body.text.format.schema.properties.observations.items.properties.field.enum, ['cardNumber', 'subjectName']);
+  assert.equal(body.text.format.schema.properties.observations.maxItems, 2);
+  assert.equal(body.max_output_tokens, 2400);
+  assert.equal(body.text.format.strict, true);
+  assert.equal(body.store, false);
+  assert.equal(Object.hasOwn(body, 'temperature'), false);
+  assert.equal(body.input[0].content[0].text.includes('Requested identity fields: cardNumber, subjectName'), true);
 });
 
 test('OpenAI output budget defaults to 4000 tokens and cannot exceed 4000 tokens', () => {
