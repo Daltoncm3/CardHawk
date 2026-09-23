@@ -264,7 +264,6 @@ function addEvidenceAcquisitionPlanCounts(totals, plan = {}) {
       totals.fieldsRequiringEvidenceSource[source].add(field);
       sourceSeenInTransaction.add(source);
     }
-    if (!sources.some((source) => source !== 'manual_verification')) totals.fieldsWithNoAutomatedResolutionPath.add(field);
     if (sources.includes('manual_verification')) totals.manualVerificationFrequency += 1;
     if (sources.includes('additional_image_or_view') || sources.includes('image_ocr') || sources.includes('slab_label')) {
       totals.anotherImageCouldMateriallyHelp = true;
@@ -290,6 +289,17 @@ function sortedFieldSourcePlanMap(map = {}) {
       orderedUniqueAllowed(Array.from(sources || []), EVIDENCE_ACQUISITION_SOURCES)
     ])
     .filter(([, sources]) => sources.length)));
+}
+
+function fieldsWithNoAutomatedResolutionPathFromPlan(planByField = {}) {
+  return deepFreeze(Object.entries(asObject(planByField))
+    .filter(([, sources]) => {
+      const safeSources = orderedUniqueAllowed(sources, EVIDENCE_ACQUISITION_SOURCES);
+      return safeSources.includes('manual_verification') &&
+        !safeSources.some((source) => source !== 'manual_verification');
+    })
+    .map(([field]) => field)
+    .sort());
 }
 
 function sortedSourceCountMap(map = {}) {
@@ -467,7 +477,6 @@ function buildFeasibilitySampleReport(input = {}) {
     evidenceAcquisitionPlanByField: {},
     fieldsRequiringEvidenceSource: {},
     transactionCountsRequiringEvidenceSource: {},
-    fieldsWithNoAutomatedResolutionPath: new Set(),
     manualVerificationFrequency: 0,
     anotherImageCouldMateriallyHelp: false
   };
@@ -503,6 +512,7 @@ function buildFeasibilitySampleReport(input = {}) {
   }
 
   const evaluated = Math.max(0, Number(input.uniqueTransactionsEvaluated) || 0);
+  const evidenceAcquisitionPlanByField = sortedFieldSourcePlanMap(evidencePlanTotals.evidenceAcquisitionPlanByField);
   const report = {
     phase: 'A5.10',
     source: SOURCE,
@@ -534,10 +544,10 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: sortedCountMap(totals.conflictFieldFrequency, SUPPORTED_FIELDS),
     blockerClassificationFrequency: sortedCountMap(totals.blockerClassificationFrequency, Object.values(FEASIBILITY_CLASSIFICATIONS)),
     requiredEvidenceCategoryFrequency: sortedCountMap(totals.requiredEvidenceCategoryFrequency, EVIDENCE_CATEGORY_CODES),
-    evidenceAcquisitionPlanByField: sortedFieldSourcePlanMap(evidencePlanTotals.evidenceAcquisitionPlanByField),
+    evidenceAcquisitionPlanByField,
     fieldsRequiringEvidenceSource: sortedSourceFieldMap(evidencePlanTotals.fieldsRequiringEvidenceSource),
     transactionCountsRequiringEvidenceSource: sortedSourceCountMap(evidencePlanTotals.transactionCountsRequiringEvidenceSource),
-    fieldsWithNoAutomatedResolutionPath: Array.from(evidencePlanTotals.fieldsWithNoAutomatedResolutionPath).sort(),
+    fieldsWithNoAutomatedResolutionPath: fieldsWithNoAutomatedResolutionPathFromPlan(evidenceAcquisitionPlanByField),
     manualVerificationFrequency: evidencePlanTotals.manualVerificationFrequency,
     anotherImageCouldMateriallyHelp: evidencePlanTotals.anotherImageCouldMateriallyHelp,
     transactionsRequiringAdditionalEvidence,

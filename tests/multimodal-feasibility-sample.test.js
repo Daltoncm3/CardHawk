@@ -729,6 +729,67 @@ test('A5.11 aggregate plan reports source frequencies, manual verification, no a
   assert.equal(report.executionAuthority, 'none');
 });
 
+test('A5.11A no-automated-resolution fields are derived from the final merged acquisition plan', async () => {
+  const reports = [
+    aggregateOnlyReport({
+      missingMaterialFieldsAfter: [],
+      conflictFields: ['parallel', 'serialNumbered', 'subjectName', 'setName'],
+      blockerClassificationByField: {
+        parallel: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION,
+        serialNumbered: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION,
+        subjectName: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION,
+        setName: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+      },
+      requiredEvidenceCategoriesByField: {
+        parallel: ['manual_verification'],
+        serialNumbered: ['manual_verification'],
+        subjectName: ['manual_verification'],
+        setName: ['manual_verification']
+      }
+    }),
+    aggregateOnlyReport({
+      missingMaterialFieldsAfter: ['parallel', 'serialNumbered', 'subjectName'],
+      blockerClassificationByField: {
+        parallel: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE,
+        serialNumbered: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+        subjectName: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED
+      },
+      requiredEvidenceCategoriesByField: {
+        parallel: ['additional_image_or_view', 'manual_verification'],
+        serialNumbered: ['provider_metadata', 'image_ocr', 'manual_verification'],
+        subjectName: ['provider_metadata', 'explicit_title_evidence', 'manual_verification']
+      }
+    })
+  ];
+
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sampleSale(1), sampleSale(2)] });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.deepEqual(report.evidenceAcquisitionPlanByField.parallel, ['additional_image_or_view', 'manual_verification']);
+  assert.deepEqual(report.evidenceAcquisitionPlanByField.serialNumbered, ['provider_metadata', 'image_ocr', 'manual_verification']);
+  assert.deepEqual(report.evidenceAcquisitionPlanByField.subjectName, ['provider_metadata', 'explicit_title_evidence', 'manual_verification']);
+  assert.deepEqual(report.evidenceAcquisitionPlanByField.setName, ['manual_verification']);
+  assert.deepEqual(report.fieldsWithNoAutomatedResolutionPath, ['setName']);
+  assert.equal(report.fieldsWithNoAutomatedResolutionPath.includes('parallel'), false);
+  assert.equal(report.fieldsWithNoAutomatedResolutionPath.includes('serialNumbered'), false);
+  assert.equal(report.fieldsWithNoAutomatedResolutionPath.includes('subjectName'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
 test('A5.11 planner handles empty and malformed inputs without inventing evidence paths', () => {
   assert.deepEqual(buildEvidenceAcquisitionPlanForReport({}), {});
   const plan = buildEvidenceAcquisitionPlanForReport({
