@@ -34,6 +34,11 @@ const {
 const {
   buildTitleProviderEvidenceCandidates
 } = require('./titleProviderEvidenceCandidateLayer');
+const {
+  ELIGIBILITY_CLASSIFICATION_ORDER,
+  ELIGIBILITY_REASON_CODES,
+  reviewTitleProviderCandidateAdmissionEligibility
+} = require('./titleProviderCandidateAdmissionEligibilityReview');
 
 const SOURCE = 'multimodal_feasibility_sample';
 const VERSION = '0.1.0';
@@ -328,6 +333,19 @@ function sortedFieldArrayMap(map = {}, fieldAllowlist = MATERIAL_FIELDS, valueAl
     .filter(([, values]) => values.length)));
 }
 
+function addFieldArrayMapSets(target, source = {}, fieldAllowlist = MATERIAL_FIELDS, valueAllowlist = null) {
+  const allowedFields = new Set(fieldAllowlist);
+  const allowedValues = valueAllowlist ? new Set(valueAllowlist) : null;
+  for (const [field, values] of Object.entries(asObject(source))) {
+    if (!allowedFields.has(field)) continue;
+    if (!target[field]) target[field] = new Set();
+    for (const value of asArray(values)) {
+      const safeValue = String(value || '').trim();
+      if (safeValue && (!allowedValues || allowedValues.has(safeValue))) target[field].add(safeValue);
+    }
+  }
+}
+
 function sortedCountMap(map = {}, allowlist = null) {
   const allowed = allowlist ? new Set(allowlist) : null;
   return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
@@ -363,25 +381,57 @@ function providerMetadataForCandidateLayer(transaction = {}) {
   };
 }
 
+function sourceReadinessForCandidateAdmission(transaction = {}) {
+  return {
+    confirmedTrueSoldPriceReady: transaction.providerCompatibility?.canonicalReadySoldPrice === true ||
+      (transaction.evidenceType === 'true_sold' && transaction.status === 'active_evidence'),
+    canonicalReadySoldPrice: transaction.providerCompatibility?.canonicalReadySoldPrice === true,
+    evidenceType: transaction.evidenceType || 'unknown',
+    status: transaction.status || 'unknown'
+  };
+}
+
 function buildCandidateDiagnosticsForTransaction(transaction = {}, report = {}) {
-  return buildTitleProviderEvidenceCandidates({
+  const candidateArtifact = buildTitleProviderEvidenceCandidates({
     normalizedListingTitle: transaction.rawTitle || transaction.title || '',
     providerMetadata: providerMetadataForCandidateLayer(transaction),
     identityDiagnostics: report
-  }).diagnostics;
+  });
+  const admissionEligibilityReview = reviewTitleProviderCandidateAdmissionEligibility({
+    candidateArtifact,
+    sourceReadiness: sourceReadinessForCandidateAdmission(transaction),
+    identityDiagnostics: report
+  });
+
+  return {
+    candidateDiagnostics: candidateArtifact.diagnostics,
+    admissionEligibilityDiagnostics: admissionEligibilityReview.diagnostics
+  };
 }
 
 function mergeCandidateDiagnosticsIntoReport(report = {}, transaction = {}) {
-  const diagnostics = buildCandidateDiagnosticsForTransaction(transaction, report);
+  const {
+    candidateDiagnostics,
+    admissionEligibilityDiagnostics
+  } = buildCandidateDiagnosticsForTransaction(transaction, report);
   return deepFreeze({
     ...report,
-    candidateFields: diagnostics.candidateFields,
-    candidateCountByField: diagnostics.candidateCountByField,
-    candidateProvenanceCategoriesByField: diagnostics.candidateProvenanceCategoriesByField,
-    candidateReasonCodesByField: diagnostics.candidateReasonCodesByField,
-    candidateConflictFields: diagnostics.candidateConflictFields,
-    fieldsStillRequiringAdditionalEvidence: diagnostics.fieldsStillRequiringAdditionalEvidence,
-    titleOrMetadataCouldMateriallyHelp: diagnostics.titleOrMetadataCouldMateriallyHelp
+    candidateFields: candidateDiagnostics.candidateFields,
+    candidateCountByField: candidateDiagnostics.candidateCountByField,
+    candidateProvenanceCategoriesByField: candidateDiagnostics.candidateProvenanceCategoriesByField,
+    candidateReasonCodesByField: candidateDiagnostics.candidateReasonCodesByField,
+    candidateConflictFields: candidateDiagnostics.candidateConflictFields,
+    fieldsStillRequiringAdditionalEvidence: candidateDiagnostics.fieldsStillRequiringAdditionalEvidence,
+    titleOrMetadataCouldMateriallyHelp: candidateDiagnostics.titleOrMetadataCouldMateriallyHelp,
+    admissionEligibilityClassificationFrequency: admissionEligibilityDiagnostics.admissionEligibilityClassificationFrequency,
+    eligibleCandidateFields: admissionEligibilityDiagnostics.eligibleCandidateFields,
+    eligibleCandidateCountByField: admissionEligibilityDiagnostics.eligibleCandidateCountByField,
+    ineligibleCandidateFields: admissionEligibilityDiagnostics.ineligibleCandidateFields,
+    ineligibilityReasonCodesByField: admissionEligibilityDiagnostics.ineligibilityReasonCodesByField,
+    unresolvedAdmissionConflictFields: admissionEligibilityDiagnostics.unresolvedAdmissionConflictFields,
+    manualReviewCandidateFields: admissionEligibilityDiagnostics.manualReviewCandidateFields,
+    transactionsWithFutureAdmissionEligibleCandidates: admissionEligibilityDiagnostics.transactionsWithFutureAdmissionEligibleCandidates,
+    futureDeterministicAdmissionCouldMateriallyHelp: admissionEligibilityDiagnostics.futureDeterministicAdmissionCouldMateriallyHelp
   });
 }
 
@@ -503,6 +553,15 @@ function buildEmptyFeasibilitySampleReport(input = {}) {
     candidateConflictFields: [],
     fieldsStillRequiringAdditionalEvidence: [],
     titleOrMetadataCouldMateriallyHelp: false,
+    admissionEligibilityClassificationFrequency: {},
+    eligibleCandidateFields: [],
+    eligibleCandidateCountByField: {},
+    ineligibleCandidateFields: [],
+    ineligibilityReasonCodesByField: {},
+    unresolvedAdmissionConflictFields: [],
+    manualReviewCandidateFields: [],
+    transactionsWithFutureAdmissionEligibleCandidates: 0,
+    futureDeterministicAdmissionCouldMateriallyHelp: false,
     evidenceAcquisitionPlanByField: {},
     transactionsRequiringAdditionalEvidence: 0,
     averageMaterialFieldRecoveryRate: 0,
@@ -541,6 +600,12 @@ function buildFeasibilitySampleReport(input = {}) {
     candidateReasonCodesByField: {},
     candidateConflictFields: {},
     fieldsStillRequiringAdditionalEvidence: {},
+    admissionEligibilityClassificationFrequency: {},
+    eligibleCandidateCountByField: {},
+    ineligibleCandidateFields: {},
+    ineligibilityReasonCodesByField: {},
+    unresolvedAdmissionConflictFields: {},
+    manualReviewCandidateFields: {},
     fieldsRequiringEvidenceSource: {},
     transactionCountsRequiringEvidenceSource: {},
     boundedTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, modelRequests: 0, inputImages: 0 }
@@ -558,6 +623,7 @@ function buildFeasibilitySampleReport(input = {}) {
   let admittedObservationCount = 0;
   let rejectedObservationCount = 0;
   let transactionsRequiringAdditionalEvidence = 0;
+  let transactionsWithFutureAdmissionEligibleCandidates = 0;
   let recoveryRateSum = 0;
 
   for (const report of reports) {
@@ -583,10 +649,31 @@ function buildFeasibilitySampleReport(input = {}) {
       if (!totals.candidateProvenanceCategoriesByField[field]) totals.candidateProvenanceCategoriesByField[field] = new Set();
       for (const category of asArray(categories)) totals.candidateProvenanceCategoriesByField[field].add(category);
     }
-    for (const [field, reasons] of Object.entries(asObject(report.candidateReasonCodesByField))) {
-      if (!totals.candidateReasonCodesByField[field]) totals.candidateReasonCodesByField[field] = new Set();
-      for (const reason of asArray(reasons)) totals.candidateReasonCodesByField[field].add(reason);
+    addFieldArrayMapSets(totals.candidateReasonCodesByField, report.candidateReasonCodesByField, MATERIAL_FIELDS, [
+      'candidate_only_not_admitted',
+      'explicit_title_candidate',
+      'provider_metadata_candidate',
+      'title_provider_metadata_agreement',
+      'title_provider_metadata_conflict'
+    ]);
+    addMapCounts(
+      totals.admissionEligibilityClassificationFrequency,
+      report.admissionEligibilityClassificationFrequency,
+      ELIGIBILITY_CLASSIFICATION_ORDER
+    );
+    addMapCounts(totals.eligibleCandidateCountByField, report.eligibleCandidateCountByField, MATERIAL_FIELDS);
+    for (const field of asArray(report.ineligibleCandidateFields)) incrementCount(totals.ineligibleCandidateFields, field, 1, MATERIAL_FIELDS);
+    addFieldArrayMapSets(
+      totals.ineligibilityReasonCodesByField,
+      report.ineligibilityReasonCodesByField,
+      MATERIAL_FIELDS,
+      ELIGIBILITY_REASON_CODES
+    );
+    for (const field of asArray(report.unresolvedAdmissionConflictFields)) {
+      incrementCount(totals.unresolvedAdmissionConflictFields, field, 1, MATERIAL_FIELDS);
     }
+    for (const field of asArray(report.manualReviewCandidateFields)) incrementCount(totals.manualReviewCandidateFields, field, 1, MATERIAL_FIELDS);
+    transactionsWithFutureAdmissionEligibleCandidates += Math.max(0, Number(report.transactionsWithFutureAdmissionEligibleCandidates) || 0);
     for (const categories of Object.values(asObject(report.requiredEvidenceCategoriesByField))) {
       for (const category of asArray(categories)) incrementCount(totals.requiredEvidenceCategoryFrequency, category, 1, EVIDENCE_CATEGORY_CODES);
     }
@@ -645,6 +732,22 @@ function buildFeasibilitySampleReport(input = {}) {
     candidateConflictFields: Object.keys(sortedCountMap(totals.candidateConflictFields, MATERIAL_FIELDS)),
     fieldsStillRequiringAdditionalEvidence: Object.keys(sortedCountMap(totals.fieldsStillRequiringAdditionalEvidence, MATERIAL_FIELDS)),
     titleOrMetadataCouldMateriallyHelp: reports.some((report) => report.titleOrMetadataCouldMateriallyHelp === true),
+    admissionEligibilityClassificationFrequency: sortedCountMap(
+      totals.admissionEligibilityClassificationFrequency,
+      ELIGIBILITY_CLASSIFICATION_ORDER
+    ),
+    eligibleCandidateFields: Object.keys(sortedCountMap(totals.eligibleCandidateCountByField, MATERIAL_FIELDS)),
+    eligibleCandidateCountByField: sortedCountMap(totals.eligibleCandidateCountByField, MATERIAL_FIELDS),
+    ineligibleCandidateFields: Object.keys(sortedCountMap(totals.ineligibleCandidateFields, MATERIAL_FIELDS)),
+    ineligibilityReasonCodesByField: sortedFieldArrayMap(
+      totals.ineligibilityReasonCodesByField,
+      MATERIAL_FIELDS,
+      ELIGIBILITY_REASON_CODES
+    ),
+    unresolvedAdmissionConflictFields: Object.keys(sortedCountMap(totals.unresolvedAdmissionConflictFields, MATERIAL_FIELDS)),
+    manualReviewCandidateFields: Object.keys(sortedCountMap(totals.manualReviewCandidateFields, MATERIAL_FIELDS)),
+    transactionsWithFutureAdmissionEligibleCandidates,
+    futureDeterministicAdmissionCouldMateriallyHelp: transactionsWithFutureAdmissionEligibleCandidates > 0,
     evidenceAcquisitionPlanByField,
     fieldsRequiringEvidenceSource: sortedSourceFieldMap(evidencePlanTotals.fieldsRequiringEvidenceSource),
     transactionCountsRequiringEvidenceSource: sortedSourceCountMap(evidencePlanTotals.transactionCountsRequiringEvidenceSource),

@@ -37,6 +37,9 @@ const {
   runOpenAIMultimodalFeasibilitySample,
   validateOpenAIFeasibilitySampleGates
 } = require('../validation/multimodalFeasibilitySample');
+const {
+  ELIGIBILITY_CLASSIFICATIONS
+} = require('../validation/titleProviderCandidateAdmissionEligibilityReview');
 
 function env(overrides = {}) {
   return {
@@ -295,6 +298,17 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(report.candidateReasonCodesByField.cardNumber.includes('candidate_only_not_admitted'), true);
   assert.deepEqual(report.candidateConflictFields, []);
   assert.equal(report.titleOrMetadataCouldMateriallyHelp, true);
+  assert.equal(report.futureDeterministicAdmissionCouldMateriallyHelp, true);
+  assert.equal(report.transactionsWithFutureAdmissionEligibleCandidates, 3);
+  assert.equal(report.eligibleCandidateFields.includes('cardNumber'), true);
+  assert.equal(report.eligibleCandidateCountByField.cardNumber, 3);
+  assert.equal(
+    report.admissionEligibilityClassificationFrequency[
+      ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION
+    ] >= 3,
+    true
+  );
+  assert.deepEqual(report.unresolvedAdmissionConflictFields, []);
   assert.equal(report.transactionsRequiringAdditionalEvidence, 3);
   assert.equal(report.exactReachedCount, 0);
   assert.equal(report.exactReachedRate, 0);
@@ -318,6 +332,114 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
   assert.equal(serialized.includes('tca_test_secret_not_printed'), false);
   assert.equal(serialized.includes('output_text'), false);
+});
+
+test('A5.14 aggregate eligibility diagnostics fail closed for provisional sale candidates', async () => {
+  const reports = [
+    aggregateOnlyReport(),
+    aggregateOnlyReport()
+  ];
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [
+            sampleSale(1, { price_confirmed: false }),
+            sampleSale(2, { price_confirmed: 'true' })
+          ]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.deepEqual(report.eligibleCandidateFields, []);
+  assert.deepEqual(report.eligibleCandidateCountByField, {});
+  assert.equal(report.transactionsWithFutureAdmissionEligibleCandidates, 0);
+  assert.equal(report.futureDeterministicAdmissionCouldMateriallyHelp, false);
+  assert.equal(report.ineligibleCandidateFields.includes('cardNumber'), true);
+  assert.equal(report.ineligibleCandidateFields.includes('parallel'), true);
+  assert.equal(
+    report.admissionEligibilityClassificationFrequency[
+      ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_PROVISIONAL_SALE
+    ] > 0,
+    true
+  );
+  assert.equal(
+    report.ineligibilityReasonCodesByField.cardNumber.includes('provisional_sale_not_canonical_ready'),
+    true
+  );
+  assert.equal(report.canonicalSoldEvidenceStructurallyReadyCount, 0);
+  assert.equal(serialized.includes('Sample Secret Player'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.14 aggregate eligibility preserves unresolved conflicts and manual-review classifications', async () => {
+  const reports = [
+    aggregateOnlyReport(),
+    aggregateOnlyReport()
+  ];
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [
+            sampleSale(1, {
+              title: '2024 Topps Chrome Shohei Ohtani #17 Gold Auto /99 PSA 10',
+              player: 'Shohei Ohtani',
+              card_number: '99',
+              parallel: 'Blue',
+              print_run: 99
+            }),
+            sampleSale(2, {
+              title: '2024 Topps Chrome Shohei Ohtani #22 Auto /99 PSA 10',
+              player: 'Shohei Ohtani',
+              card_number: '22',
+              print_run: 99
+            })
+          ]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.unresolvedAdmissionConflictFields.includes('cardNumber'), true);
+  assert.equal(report.unresolvedAdmissionConflictFields.includes('parallel'), true);
+  assert.equal(report.manualReviewCandidateFields.includes('rawOrGraded'), true);
+  assert.equal(
+    report.admissionEligibilityClassificationFrequency[
+      ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_CONFLICT_UNRESOLVED
+    ] > 0,
+    true
+  );
+  assert.equal(
+    report.admissionEligibilityClassificationFrequency[
+      ELIGIBILITY_CLASSIFICATIONS.MANUAL_REVIEW_REQUIRED
+    ] > 0,
+    true
+  );
+  assert.equal(report.ineligibilityReasonCodesByField.cardNumber.includes('unresolved_candidate_conflict'), true);
+  assert.equal(serialized.includes('Shohei'), false);
+  assert.equal(serialized.includes('Ohtani'), false);
+  assert.equal(serialized.includes('Gold'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.writesProductionStore, false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
 });
 
 test('A5.10 feasibility sample deduplicates and never retries failed model requests', async () => {
