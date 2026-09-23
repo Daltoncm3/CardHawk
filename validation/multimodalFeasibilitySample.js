@@ -31,6 +31,9 @@ const {
   fingerprint,
   unique
 } = require('./canonicalValidationCore');
+const {
+  buildTitleProviderEvidenceCandidates
+} = require('./titleProviderEvidenceCandidateLayer');
 
 const SOURCE = 'multimodal_feasibility_sample';
 const VERSION = '0.1.0';
@@ -308,6 +311,23 @@ function sortedSourceCountMap(map = {}) {
     .filter(([, count]) => count > 0)));
 }
 
+function sortedFieldArrayMap(map = {}, fieldAllowlist = MATERIAL_FIELDS, valueAllowlist = null) {
+  const allowedFields = new Set(fieldAllowlist);
+  const allowedValues = valueAllowlist ? new Set(valueAllowlist) : null;
+  return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
+    .filter(([field]) => allowedFields.has(field))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, values]) => [
+      field,
+      unique((values instanceof Set ? Array.from(values) : asArray(values))
+        .map((value) => String(value || '').trim())
+        .filter((value) => value && (!allowedValues || allowedValues.has(value))))
+        .sort()
+        .slice(0, MAX_DIAGNOSTIC_FIELDS)
+    ])
+    .filter(([, values]) => values.length)));
+}
+
 function sortedCountMap(map = {}, allowlist = null) {
   const allowed = allowlist ? new Set(allowlist) : null;
   return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
@@ -323,6 +343,46 @@ function sumBoundedUsage(total = {}, usage = {}) {
     const value = Number(input[field]);
     if (Number.isFinite(value) && value > 0) total[field] = (total[field] || 0) + Math.floor(value);
   }
+}
+
+function providerMetadataForCandidateLayer(transaction = {}) {
+  const parsed = asObject(transaction.parsedIdentity);
+  return {
+    sport: parsed.sport || parsed.league,
+    subjectName: parsed.player || parsed.subject,
+    year: parsed.year,
+    manufacturer: parsed.brand || parsed.manufacturer,
+    product: parsed.product,
+    setName: parsed.setName || parsed.product,
+    cardNumber: parsed.cardNumber,
+    parallel: parsed.parallel || parsed.variation,
+    printRun: parsed.printRun,
+    rawOrGraded: transaction.condition,
+    gradeCompany: transaction.gradeCompany,
+    grade: transaction.grade
+  };
+}
+
+function buildCandidateDiagnosticsForTransaction(transaction = {}, report = {}) {
+  return buildTitleProviderEvidenceCandidates({
+    normalizedListingTitle: transaction.rawTitle || transaction.title || '',
+    providerMetadata: providerMetadataForCandidateLayer(transaction),
+    identityDiagnostics: report
+  }).diagnostics;
+}
+
+function mergeCandidateDiagnosticsIntoReport(report = {}, transaction = {}) {
+  const diagnostics = buildCandidateDiagnosticsForTransaction(transaction, report);
+  return deepFreeze({
+    ...report,
+    candidateFields: diagnostics.candidateFields,
+    candidateCountByField: diagnostics.candidateCountByField,
+    candidateProvenanceCategoriesByField: diagnostics.candidateProvenanceCategoriesByField,
+    candidateReasonCodesByField: diagnostics.candidateReasonCodesByField,
+    candidateConflictFields: diagnostics.candidateConflictFields,
+    fieldsStillRequiringAdditionalEvidence: diagnostics.fieldsStillRequiringAdditionalEvidence,
+    titleOrMetadataCouldMateriallyHelp: diagnostics.titleOrMetadataCouldMateriallyHelp
+  });
 }
 
 function duplicateKeyForTransaction(transaction = {}) {
@@ -436,6 +496,13 @@ function buildEmptyFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    candidateFields: [],
+    candidateCountByField: {},
+    candidateProvenanceCategoriesByField: {},
+    candidateReasonCodesByField: {},
+    candidateConflictFields: [],
+    fieldsStillRequiringAdditionalEvidence: [],
+    titleOrMetadataCouldMateriallyHelp: false,
     evidenceAcquisitionPlanByField: {},
     transactionsRequiringAdditionalEvidence: 0,
     averageMaterialFieldRecoveryRate: 0,
@@ -469,6 +536,11 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    candidateCountByField: {},
+    candidateProvenanceCategoriesByField: {},
+    candidateReasonCodesByField: {},
+    candidateConflictFields: {},
+    fieldsStillRequiringAdditionalEvidence: {},
     fieldsRequiringEvidenceSource: {},
     transactionCountsRequiringEvidenceSource: {},
     boundedTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, modelRequests: 0, inputImages: 0 }
@@ -502,6 +574,19 @@ function buildFeasibilitySampleReport(input = {}) {
     for (const field of asArray(report.recoveredMaterialFields)) incrementCount(totals.recoveredFieldFrequency, field, 1, MATERIAL_FIELDS);
     for (const field of asArray(report.conflictFields)) incrementCount(totals.conflictFieldFrequency, field, 1, SUPPORTED_FIELDS);
     addBlockerClassificationCounts(totals.blockerClassificationFrequency, report.blockerClassificationByField);
+    addMapCounts(totals.candidateCountByField, report.candidateCountByField, MATERIAL_FIELDS);
+    for (const field of asArray(report.candidateConflictFields)) incrementCount(totals.candidateConflictFields, field, 1, MATERIAL_FIELDS);
+    for (const field of asArray(report.fieldsStillRequiringAdditionalEvidence)) {
+      incrementCount(totals.fieldsStillRequiringAdditionalEvidence, field, 1, MATERIAL_FIELDS);
+    }
+    for (const [field, categories] of Object.entries(asObject(report.candidateProvenanceCategoriesByField))) {
+      if (!totals.candidateProvenanceCategoriesByField[field]) totals.candidateProvenanceCategoriesByField[field] = new Set();
+      for (const category of asArray(categories)) totals.candidateProvenanceCategoriesByField[field].add(category);
+    }
+    for (const [field, reasons] of Object.entries(asObject(report.candidateReasonCodesByField))) {
+      if (!totals.candidateReasonCodesByField[field]) totals.candidateReasonCodesByField[field] = new Set();
+      for (const reason of asArray(reasons)) totals.candidateReasonCodesByField[field].add(reason);
+    }
     for (const categories of Object.values(asObject(report.requiredEvidenceCategoriesByField))) {
       for (const category of asArray(categories)) incrementCount(totals.requiredEvidenceCategoryFrequency, category, 1, EVIDENCE_CATEGORY_CODES);
     }
@@ -544,6 +629,22 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: sortedCountMap(totals.conflictFieldFrequency, SUPPORTED_FIELDS),
     blockerClassificationFrequency: sortedCountMap(totals.blockerClassificationFrequency, Object.values(FEASIBILITY_CLASSIFICATIONS)),
     requiredEvidenceCategoryFrequency: sortedCountMap(totals.requiredEvidenceCategoryFrequency, EVIDENCE_CATEGORY_CODES),
+    candidateFields: Object.keys(sortedCountMap(totals.candidateCountByField, MATERIAL_FIELDS)),
+    candidateCountByField: sortedCountMap(totals.candidateCountByField, MATERIAL_FIELDS),
+    candidateProvenanceCategoriesByField: sortedFieldArrayMap(totals.candidateProvenanceCategoriesByField, MATERIAL_FIELDS, [
+      'explicit_title_evidence',
+      'provider_metadata'
+    ]),
+    candidateReasonCodesByField: sortedFieldArrayMap(totals.candidateReasonCodesByField, MATERIAL_FIELDS, [
+      'candidate_only_not_admitted',
+      'explicit_title_candidate',
+      'provider_metadata_candidate',
+      'title_provider_metadata_agreement',
+      'title_provider_metadata_conflict'
+    ]),
+    candidateConflictFields: Object.keys(sortedCountMap(totals.candidateConflictFields, MATERIAL_FIELDS)),
+    fieldsStillRequiringAdditionalEvidence: Object.keys(sortedCountMap(totals.fieldsStillRequiringAdditionalEvidence, MATERIAL_FIELDS)),
+    titleOrMetadataCouldMateriallyHelp: reports.some((report) => report.titleOrMetadataCouldMateriallyHelp === true),
     evidenceAcquisitionPlanByField,
     fieldsRequiringEvidenceSource: sortedSourceFieldMap(evidencePlanTotals.fieldsRequiringEvidenceSource),
     transactionCountsRequiringEvidenceSource: sortedSourceCountMap(evidencePlanTotals.transactionCountsRequiringEvidenceSource),
@@ -693,7 +794,7 @@ async function runOpenAIMultimodalFeasibilitySample(options = {}) {
       requestId: `a5-10-openai-multimodal-request-${modelRequestsAttempted}`,
       transactionsRequested: 1
     });
-    reports.push(analysis.report);
+    reports.push(mergeCandidateDiagnosticsIntoReport(analysis.report, transaction));
 
     if (analysis.report.modelRequestsCompleted === 1) {
       modelRequestsCompleted += 1;

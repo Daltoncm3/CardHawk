@@ -286,6 +286,15 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(report.missingFieldFrequencyAfter.sport, 3);
   assert.equal(report.conflictFieldFrequency.subjectName, 3);
   assert.equal(report.requiredEvidenceCategoryFrequency.manual_verification >= 3, true);
+  assert.equal(report.candidateFields.includes('cardNumber'), true);
+  assert.equal(report.candidateFields.includes('parallel'), true);
+  assert.equal(report.candidateCountByField.cardNumber, 3);
+  assert.deepEqual(report.candidateProvenanceCategoriesByField.cardNumber, [
+    'explicit_title_evidence'
+  ]);
+  assert.equal(report.candidateReasonCodesByField.cardNumber.includes('candidate_only_not_admitted'), true);
+  assert.deepEqual(report.candidateConflictFields, []);
+  assert.equal(report.titleOrMetadataCouldMateriallyHelp, true);
   assert.equal(report.transactionsRequiringAdditionalEvidence, 3);
   assert.equal(report.exactReachedCount, 0);
   assert.equal(report.exactReachedRate, 0);
