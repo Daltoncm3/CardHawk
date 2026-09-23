@@ -50,6 +50,8 @@ const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_TIMEOUT_MS = 60000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4000;
 const MAX_OUTPUT_TOKENS = 4000;
+const OPENAI_REASONING_EFFORTS = Object.freeze(['minimal', 'low', 'medium', 'high', 'xhigh']);
+const OPENAI_TEXT_VERBOSITY_LEVELS = Object.freeze(['low', 'medium', 'high']);
 const MAX_TRANSACTIONS = 1;
 const MAX_IMAGES = 1;
 const MAX_MODEL_REQUESTS = 1;
@@ -205,6 +207,16 @@ function normalizeOpenAIMaxOutputTokens(value = DEFAULT_MAX_OUTPUT_TOKENS) {
   return Math.min(Math.floor(numeric), MAX_OUTPUT_TOKENS);
 }
 
+function normalizeOpenAIReasoningEffort(value = null) {
+  const effort = String(value || '').trim();
+  return OPENAI_REASONING_EFFORTS.includes(effort) ? effort : null;
+}
+
+function normalizeOpenAITextVerbosity(value = null) {
+  const verbosity = String(value || '').trim();
+  return OPENAI_TEXT_VERBOSITY_LEVELS.includes(verbosity) ? verbosity : null;
+}
+
 function normalizeOpenAIMaxObservations(value = MAX_OBSERVATIONS) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return MAX_OBSERVATIONS;
@@ -351,6 +363,8 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
   const prompt = buildMultimodalModelPromptContract(request);
   const model = safeModelName(options.model || DEFAULT_OPENAI_MODEL);
   const schemaRequestedFields = normalizeSchemaRequestedFields(request.requestedFields);
+  const reasoningEffort = normalizeOpenAIReasoningEffort(options.reasoningEffort);
+  const textVerbosity = normalizeOpenAITextVerbosity(options.textVerbosity);
   const instructionText = [
     ...prompt.instructions,
     'Return only a single JSON object matching the strict schema.',
@@ -361,7 +375,7 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
     `Title context, untrusted and non-authoritative: ${request.titleContext || 'unknown'}`
   ].join('\n');
 
-  return deepFreeze({
+  const body = {
     model,
     input: [
       {
@@ -380,6 +394,7 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
       }
     ],
     text: {
+      ...(textVerbosity ? { verbosity: textVerbosity } : {}),
       format: {
         type: 'json_schema',
         name: 'cardhawk_multimodal_observations',
@@ -393,7 +408,9 @@ function buildOpenAIResponsesRequestBody(requestInput = {}, options = {}) {
     },
     max_output_tokens: normalizeOpenAIMaxOutputTokens(options.maxOutputTokens),
     store: false
-  });
+  };
+  if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
+  return deepFreeze(body);
 }
 
 function extractOpenAIOutputText(payload = {}) {
@@ -411,10 +428,12 @@ function extractOpenAIOutputText(payload = {}) {
 
 function sanitizeOpenAIUsage(payload = {}) {
   const usage = asObject(payload.usage);
+  const outputDetails = asObject(usage.output_tokens_details);
   return {
     inputTokens: Number.isFinite(Number(usage.input_tokens)) ? Number(usage.input_tokens) : null,
     outputTokens: Number.isFinite(Number(usage.output_tokens)) ? Number(usage.output_tokens) : null,
-    totalTokens: Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : null
+    totalTokens: Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : null,
+    reasoningTokens: Number.isFinite(Number(outputDetails.reasoning_tokens)) ? Number(outputDetails.reasoning_tokens) : null
   };
 }
 
@@ -523,7 +542,9 @@ function createOpenAIMultimodalProviderAdapter(options = {}) {
       const body = buildOpenAIResponsesRequestBody(request, {
         model,
         maxOutputTokens: runOptions.maxOutputTokens || options.maxOutputTokens,
-        maxObservations: runOptions.maxObservations || options.maxObservations
+        maxObservations: runOptions.maxObservations || options.maxObservations,
+        reasoningEffort: runOptions.reasoningEffort || options.reasoningEffort,
+        textVerbosity: runOptions.textVerbosity || options.textVerbosity
       });
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
@@ -967,7 +988,9 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
     env,
     fetchImpl,
     maxOutputTokens: input.maxOutputTokens,
-    maxObservations: input.maxObservations
+    maxObservations: input.maxObservations,
+    reasoningEffort: input.reasoningEffort,
+    textVerbosity: input.textVerbosity
   });
   const modelValidation = validateMultimodalModelResponse(modelResponse, request);
 
@@ -1153,6 +1176,8 @@ module.exports = {
   MAX_TIMEOUT_MS,
   DEFAULT_MAX_OUTPUT_TOKENS,
   MAX_OUTPUT_TOKENS,
+  OPENAI_REASONING_EFFORTS,
+  OPENAI_TEXT_VERBOSITY_LEVELS,
   MAX_TRANSACTIONS,
   MAX_IMAGES,
   MAX_MODEL_REQUESTS,
@@ -1163,6 +1188,8 @@ module.exports = {
   buildOpenAIResponsesRequestBody,
   normalizeOpenAITimeoutMs,
   normalizeOpenAIMaxOutputTokens,
+  normalizeOpenAIReasoningEffort,
+  normalizeOpenAITextVerbosity,
   normalizeOpenAIMaxObservations,
   createOpenAIMultimodalProviderAdapter,
   validateOpenAILiveGates,

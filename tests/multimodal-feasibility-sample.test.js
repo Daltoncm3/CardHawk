@@ -25,7 +25,9 @@ const {
   FEASIBILITY_SAMPLE_LIVE_FLAG_ENV,
   FEASIBILITY_SAMPLE_MAX_OBSERVATIONS,
   FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS,
+  FEASIBILITY_SAMPLE_REASONING_EFFORT,
   FEASIBILITY_SAMPLE_REQUESTED_FIELDS,
+  FEASIBILITY_SAMPLE_TEXT_VERBOSITY,
   MAX_FEASIBILITY_SAMPLE_IMAGES,
   MAX_FEASIBILITY_SAMPLE_MODEL_REQUESTS,
   MAX_FEASIBILITY_SAMPLE_TRANSACTIONS,
@@ -255,6 +257,8 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   for (const call of calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL)) {
     const body = JSON.parse(call.options.body);
     assert.equal(body.max_output_tokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS);
+    assert.deepEqual(body.reasoning, { effort: FEASIBILITY_SAMPLE_REASONING_EFFORT });
+    assert.equal(body.text.verbosity, FEASIBILITY_SAMPLE_TEXT_VERBOSITY);
     assert.equal(body.text.format.strict, true);
     assert.equal(body.store, false);
     assert.equal(body.text.format.schema.properties.observations.maxItems, FEASIBILITY_SAMPLE_MAX_OBSERVATIONS);
@@ -379,6 +383,8 @@ test('A5.10B feasibility sample preserves 60-second cap and does not retry after
   for (const call of openAiCalls) {
     const body = JSON.parse(call.options.body);
     assert.equal(body.max_output_tokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS);
+    assert.deepEqual(body.reasoning, { effort: FEASIBILITY_SAMPLE_REASONING_EFFORT });
+    assert.equal(body.text.verbosity, FEASIBILITY_SAMPLE_TEXT_VERBOSITY);
     assert.equal(body.text.format.schema.properties.observations.maxItems, FEASIBILITY_SAMPLE_MAX_OBSERVATIONS);
     assert.deepEqual(
       body.text.format.schema.properties.observations.items.properties.field.enum,
@@ -400,6 +406,61 @@ test('A5.10B feasibility sample preserves 60-second cap and does not retry after
   assert.equal(serialized.includes('https://'), false);
   assert.equal(serialized.includes('sample-secret-id'), false);
   assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.writesProductionStore, false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.10C incomplete responses preserve sanitized max-output diagnostics without raw output', async () => {
+  const calls = [];
+  const result = await runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sampleSale(1), sampleSale(2), sampleSale(3)] });
+      }
+      return jsonResponse({
+        status: 'incomplete',
+        incomplete_details: { reason: 'max_output_tokens' },
+        output_text: '{"raw":"do not retain sample-secret-id-1 https://i.ebayimg.example/full-image.jpg"}',
+        usage: {
+          input_tokens: 800,
+          output_tokens: FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS,
+          total_tokens: 4800,
+          output_tokens_details: {
+            reasoning_tokens: 3100
+          }
+        }
+      });
+    }
+  });
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+  const openAiCalls = calls.filter((call) => String(call.url) === OPENAI_RESPONSES_URL);
+
+  assert.equal(openAiCalls.length, 3);
+  for (const call of openAiCalls) {
+    const body = JSON.parse(call.options.body);
+    assert.equal(body.max_output_tokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS);
+    assert.deepEqual(body.reasoning, { effort: FEASIBILITY_SAMPLE_REASONING_EFFORT });
+    assert.equal(body.text.verbosity, FEASIBILITY_SAMPLE_TEXT_VERBOSITY);
+    assert.equal(body.store, false);
+    assert.equal(body.text.format.strict, true);
+  }
+  assert.equal(report.sampleExecutionStatus, SAMPLE_EXECUTION_STATUS.PARTIALLY_COMPLETED);
+  assert.equal(report.modelRequestsAttempted, 3);
+  assert.equal(report.modelRequestsCompleted, 0);
+  assert.equal(report.modelRequestFailures, 3);
+  assert.deepEqual(report.sanitizedFailureCategories, ['openai_response_incomplete']);
+  assert.equal(report.boundedTokenUsage.inputTokens, 2400);
+  assert.equal(report.boundedTokenUsage.outputTokens, FEASIBILITY_SAMPLE_MAX_OUTPUT_TOKENS * 3);
+  assert.equal(report.boundedTokenUsage.totalTokens, 14400);
+  assert.equal(serialized.includes('do not retain'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
   assert.equal(report.nonPersistent, true);
   assert.equal(report.writesProductionStore, false);
   assert.equal(report.productionImpact, 'none');

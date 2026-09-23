@@ -25,11 +25,15 @@ const {
   OPENAI_API_KEY_ENV,
   OPENAI_LIVE_FLAG_ENV,
   OPENAI_MODEL_ENV,
+  OPENAI_REASONING_EFFORTS,
   OPENAI_RESPONSES_URL,
+  OPENAI_TEXT_VERBOSITY_LEVELS,
   PROVIDER_ID,
   buildOpenAIResponsesRequestBody,
   createOpenAIMultimodalProviderAdapter,
   normalizeOpenAIMaxOutputTokens,
+  normalizeOpenAIReasoningEffort,
+  normalizeOpenAITextVerbosity,
   normalizeOpenAITimeoutMs,
   runOpenAIMultimodalCompatibilityPilot,
   validateOpenAILiveGates
@@ -175,26 +179,43 @@ test('OpenAI request shape uses Responses image input and strict structured outp
   assert.deepEqual(body.text.format.schema.properties.observations.items.properties.field.enum, [...DEFAULT_REQUESTED_FIELDS].sort());
   assert.equal(body.text.format.schema.properties.observations.maxItems, 12);
   assert.equal(Object.hasOwn(body, 'temperature'), false);
+  assert.equal(Object.hasOwn(body, 'reasoning'), false);
+  assert.equal(Object.hasOwn(body.text, 'verbosity'), false);
   assert.equal(body.max_output_tokens, 4000);
 });
 
-test('OpenAI request schema can be narrowed for bounded offline sample usage', () => {
+test('OpenAI request schema and reasoning settings can be narrowed for bounded offline sample usage', () => {
   const body = buildOpenAIResponsesRequestBody({
     requestId: 'req-narrow',
     imageReference: 'https://i.ebayimg.example/card.jpg',
     requestedFields: ['subjectName', 'cardNumber', 'notSupported', 'subjectName']
   }, {
     maxObservations: 2,
-    maxOutputTokens: 2400
+    maxOutputTokens: 4000,
+    reasoningEffort: 'low',
+    textVerbosity: 'low'
   });
 
   assert.deepEqual(body.text.format.schema.properties.observations.items.properties.field.enum, ['cardNumber', 'subjectName']);
   assert.equal(body.text.format.schema.properties.observations.maxItems, 2);
-  assert.equal(body.max_output_tokens, 2400);
+  assert.equal(body.max_output_tokens, 4000);
+  assert.deepEqual(body.reasoning, { effort: 'low' });
+  assert.equal(body.text.verbosity, 'low');
   assert.equal(body.text.format.strict, true);
   assert.equal(body.store, false);
   assert.equal(Object.hasOwn(body, 'temperature'), false);
   assert.equal(body.input[0].content[0].text.includes('Requested identity fields: cardNumber, subjectName'), true);
+});
+
+test('OpenAI reasoning effort and text verbosity are allowlisted and optional', () => {
+  assert.deepEqual(OPENAI_REASONING_EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh']);
+  assert.deepEqual(OPENAI_TEXT_VERBOSITY_LEVELS, ['low', 'medium', 'high']);
+  assert.equal(normalizeOpenAIReasoningEffort('low'), 'low');
+  assert.equal(normalizeOpenAIReasoningEffort('none'), null);
+  assert.equal(normalizeOpenAIReasoningEffort('unexpected'), null);
+  assert.equal(normalizeOpenAITextVerbosity('low'), 'low');
+  assert.equal(normalizeOpenAITextVerbosity('minimal'), null);
+  assert.equal(normalizeOpenAITextVerbosity('unexpected'), null);
 });
 
 test('OpenAI output budget defaults to 4000 tokens and cannot exceed 4000 tokens', () => {
@@ -381,7 +402,10 @@ test('incomplete OpenAI responses fail safely with sanitized bounded reason and 
     usage: {
       input_tokens: 2526,
       output_tokens: 4000,
-      total_tokens: 6526
+      total_tokens: 6526,
+      output_tokens_details: {
+        reasoning_tokens: 3275
+      }
     }
   };
   const result = await runOpenAIMultimodalCompatibilityPilot({
@@ -398,6 +422,7 @@ test('incomplete OpenAI responses fail safely with sanitized bounded reason and 
   assert.equal(result.report.boundedUsage.openAiIncompleteReason, 'max_output_tokens');
   assert.equal(result.report.boundedUsage.inputTokens, 2526);
   assert.equal(result.report.boundedUsage.outputTokens, 4000);
+  assert.equal(result.report.boundedUsage.reasoningTokens, 3275);
   assert.equal(serialized.includes('do not retain this partial model output'), false);
   assert.equal(serialized.includes('https://i.ebayimg.example'), false);
   assert.equal(serialized.includes('sale-secret-id-001'), false);
