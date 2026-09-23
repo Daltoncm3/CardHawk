@@ -32,6 +32,8 @@ const {
   MAX_FEASIBILITY_SAMPLE_MODEL_REQUESTS,
   MAX_FEASIBILITY_SAMPLE_TRANSACTIONS,
   SAMPLE_EXECUTION_STATUS,
+  EVIDENCE_ACQUISITION_SOURCES,
+  buildEvidenceAcquisitionPlanForReport,
   runOpenAIMultimodalFeasibilitySample,
   validateOpenAIFeasibilitySampleGates
 } = require('../validation/multimodalFeasibilitySample');
@@ -215,6 +217,7 @@ test('A5.10 feasibility sample is disabled by default and requires every live ga
   assert.equal(calls, 0);
   assert.equal(disabled.report.sampleExecutionStatus, SAMPLE_EXECUTION_STATUS.MISSING_SAMPLE_FLAG);
   assert.equal(disabled.report.sanitizedFailureCategories.includes('feasibility_sample_live_flag_missing'), true);
+  assert.deepEqual(disabled.report.evidenceAcquisitionPlanByField, {});
   assert.equal(missingOpenAI.report.sampleExecutionStatus, SAMPLE_EXECUTION_STATUS.MISSING_OPENAI_CREDENTIAL);
   assert.equal(missingCardApi.report.sampleExecutionStatus, SAMPLE_EXECUTION_STATUS.MISSING_CARD_API_CREDENTIAL);
   assert.equal(invalidLimits.valid, false);
@@ -602,6 +605,155 @@ test('A5.10A aggregates blocker classification values without field-name keys or
   assert.equal(serialized.includes('https://'), false);
   assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
   assert.equal(serialized.includes('tca_test_secret_not_printed'), false);
+});
+
+test('A5.11 builds deterministic evidence acquisition plans from sanitized blocker diagnostics', () => {
+  const plan = buildEvidenceAcquisitionPlanForReport(aggregateOnlyReport({
+    missingMaterialFieldsAfter: ['sport', 'autographState', 'cardNumber'],
+    conflictFields: ['setName'],
+    blockerClassificationByField: {
+      sport: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+      autographState: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+      cardNumber: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE,
+      setName: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+    },
+    requiredEvidenceCategoriesByField: {
+      sport: ['explicit_visual_evidence', 'provider_metadata', 'explicit_title_evidence', 'manual_verification'],
+      autographState: ['explicit_visual_evidence', 'provider_metadata', 'manual_verification'],
+      cardNumber: ['image_ocr', 'explicit_visual_evidence', 'manual_verification'],
+      setName: ['manual_verification']
+    }
+  }));
+
+  assert.deepEqual(Object.keys(plan), ['autographState', 'cardNumber', 'setName', 'sport']);
+  assert.deepEqual(plan.sport.nextEvidenceSources, ['provider_metadata', 'explicit_title_evidence', 'manual_verification']);
+  assert.equal(plan.sport.nextEvidenceSources.includes('additional_image_or_view'), false);
+  assert.equal(plan.sport.reasonCodes.includes('non_visual_field_not_routed_to_multimodal_vision'), true);
+  assert.deepEqual(plan.setName.nextEvidenceSources, ['manual_verification']);
+  assert.equal(plan.setName.reasonCodes.includes('conflict_requires_deterministic_resolution'), true);
+  assert.equal(plan.setName.reasonCodes.includes('model_confidence_cannot_resolve_conflict'), true);
+  assert.equal(plan.setName.reasonCodes.includes('no_automated_resolution_path'), true);
+  assert.equal(plan.autographState.reasonCodes.includes('absence_sensitive_requires_explicit_evidence'), true);
+  assert.equal(plan.autographState.reasonCodes.includes('nonappearance_is_not_resolution_evidence'), true);
+  assert.equal(plan.cardNumber.nextEvidenceSources.includes('additional_image_or_view'), true);
+  assert.equal(plan.cardNumber.nextEvidenceSources.includes('image_ocr'), true);
+  assert.equal(JSON.stringify(plan).includes('Sample Secret Player'), false);
+  assert.equal(JSON.stringify(plan).includes('https://'), false);
+});
+
+test('A5.11 aggregate plan reports source frequencies, manual verification, no automated path, and image help', async () => {
+  const reports = [
+    aggregateOnlyReport({
+      missingMaterialFieldsAfter: ['sport', 'autographState', 'cardNumber'],
+      blockerClassificationByField: {
+        sport: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_TEXT_OR_PROVIDER_METADATA_REQUIRED,
+        autographState: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+        cardNumber: FEASIBILITY_CLASSIFICATIONS.EXPLICIT_VISUAL_EVIDENCE_POSSIBLE
+      },
+      requiredEvidenceCategoriesByField: {
+        sport: ['provider_metadata', 'explicit_title_evidence', 'manual_verification', 'explicit_visual_evidence'],
+        autographState: ['additional_image_or_view', 'manual_verification'],
+        cardNumber: ['image_ocr', 'additional_image_or_view', 'manual_verification']
+      }
+    }),
+    aggregateOnlyReport({
+      missingMaterialFieldsAfter: [],
+      conflictFields: ['setName'],
+      blockerClassificationByField: {
+        setName: FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+      },
+      requiredEvidenceCategoriesByField: {
+        setName: ['manual_verification']
+      }
+    }),
+    aggregateOnlyReport({
+      missingMaterialFieldsAfter: ['serialNumbered'],
+      blockerClassificationByField: {
+        serialNumbered: FEASIBILITY_CLASSIFICATIONS.ABSENCE_SENSITIVE_NOT_PROVABLE_FROM_NONAPPEARANCE,
+        leakedField: 'MALFORMED_CLASSIFICATION'
+      },
+      requiredEvidenceCategoriesByField: {
+        serialNumbered: ['image_ocr', 'provider_metadata', 'manual_verification', 'raw_provider_payload'],
+        leakedField: ['raw_provider_payload']
+      }
+    })
+  ];
+
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({ sales: [sampleSale(1), sampleSale(2), sampleSale(3)] });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.deepEqual(Object.keys(report.fieldsRequiringEvidenceSource), [
+    'provider_metadata',
+    'explicit_title_evidence',
+    'additional_image_or_view',
+    'image_ocr',
+    'manual_verification'
+  ]);
+  assert.deepEqual(report.fieldsRequiringEvidenceSource.provider_metadata, ['serialNumbered', 'sport']);
+  assert.deepEqual(report.fieldsRequiringEvidenceSource.explicit_title_evidence, ['sport']);
+  assert.deepEqual(report.fieldsRequiringEvidenceSource.additional_image_or_view, ['autographState', 'cardNumber']);
+  assert.deepEqual(report.fieldsRequiringEvidenceSource.image_ocr, ['cardNumber', 'serialNumbered']);
+  assert.deepEqual(report.fieldsRequiringEvidenceSource.manual_verification, ['autographState', 'cardNumber', 'serialNumbered', 'setName', 'sport']);
+  assert.deepEqual(report.evidenceAcquisitionPlanByField, {
+    autographState: ['additional_image_or_view', 'manual_verification'],
+    cardNumber: ['additional_image_or_view', 'image_ocr', 'manual_verification'],
+    serialNumbered: ['provider_metadata', 'image_ocr', 'manual_verification'],
+    setName: ['manual_verification'],
+    sport: ['provider_metadata', 'explicit_title_evidence', 'manual_verification']
+  });
+  assert.deepEqual(report.transactionCountsRequiringEvidenceSource, {
+    provider_metadata: 2,
+    explicit_title_evidence: 1,
+    additional_image_or_view: 1,
+    image_ocr: 2,
+    manual_verification: 3
+  });
+  assert.deepEqual(report.fieldsWithNoAutomatedResolutionPath, ['setName']);
+  assert.equal(report.manualVerificationFrequency, 5);
+  assert.equal(report.anotherImageCouldMateriallyHelp, true);
+  assert.equal(serialized.includes('raw_provider_payload'), false);
+  assert.equal(serialized.includes('leakedField'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.11 planner handles empty and malformed inputs without inventing evidence paths', () => {
+  assert.deepEqual(buildEvidenceAcquisitionPlanForReport({}), {});
+  const plan = buildEvidenceAcquisitionPlanForReport({
+    missingMaterialFieldsAfter: ['unknownField', 'sport'],
+    conflictFields: ['badConflict'],
+    blockerClassificationByField: {
+      sport: 'MALFORMED_CLASSIFICATION'
+    },
+    requiredEvidenceCategoriesByField: {
+      sport: ['raw_provider_payload']
+    }
+  });
+
+  assert.deepEqual(Object.keys(plan), ['sport']);
+  assert.deepEqual(plan.sport.nextEvidenceSources, ['provider_metadata', 'explicit_title_evidence', 'manual_verification']);
+  assert.equal(plan.sport.blockerClassification, FEASIBILITY_CLASSIFICATIONS.UNKNOWN_RESOLUTION_PATH);
+  assert.equal(plan.sport.reasonCodes.includes('non_visual_field_not_routed_to_multimodal_vision'), true);
+  assert.deepEqual(EVIDENCE_ACQUISITION_SOURCES, [
+    'provider_metadata',
+    'explicit_title_evidence',
+    'additional_image_or_view',
+    'slab_label',
+    'image_ocr',
+    'manual_verification'
+  ]);
 });
 
 test('sample module imports no runtime, persistence, notification, scanner, purchase, or server code', () => {

@@ -93,6 +93,29 @@ const EVIDENCE_CATEGORY_CODES = Object.freeze([
   'unknown'
 ]);
 
+const EVIDENCE_ACQUISITION_SOURCES = Object.freeze([
+  'provider_metadata',
+  'explicit_title_evidence',
+  'additional_image_or_view',
+  'slab_label',
+  'image_ocr',
+  'manual_verification'
+]);
+
+const NON_VISUAL_MATERIAL_FIELDS = Object.freeze([
+  'sport',
+  'year',
+  'manufacturer',
+  'setName'
+]);
+
+const ABSENCE_SENSITIVE_MATERIAL_FIELDS = Object.freeze([
+  'autographState',
+  'memorabiliaState',
+  'serialNumbered',
+  'rawOrGraded'
+]);
+
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.freeze(value);
@@ -154,6 +177,125 @@ function addBlockerClassificationCounts(target, source = {}) {
       incrementCount(target, classification, 1, allowlist);
     }
   }
+}
+
+function orderedUniqueAllowed(values = [], allowlist = []) {
+  const allowed = new Set(allowlist);
+  return unique(asArray(values)
+    .map((value) => String(value || '').trim())
+    .filter((value) => allowed.has(value)))
+    .sort((left, right) => allowlist.indexOf(left) - allowlist.indexOf(right));
+}
+
+function sourcePlanFromRequiredCategories(field, categories = []) {
+  const mapped = [];
+  for (const category of asArray(categories)) {
+    if (category === 'provider_metadata') mapped.push('provider_metadata');
+    if (category === 'explicit_title_evidence') mapped.push('explicit_title_evidence');
+    if (category === 'additional_image_or_view' || category === 'explicit_visual_evidence') mapped.push('additional_image_or_view');
+    if (category === 'slab_label') mapped.push('slab_label');
+    if (category === 'image_ocr') mapped.push('image_ocr');
+    if (category === 'manual_verification') mapped.push('manual_verification');
+  }
+
+  if (NON_VISUAL_MATERIAL_FIELDS.includes(field)) {
+    return orderedUniqueAllowed(
+      mapped.filter((source) => source !== 'additional_image_or_view' && source !== 'slab_label' && source !== 'image_ocr')
+        .concat(['provider_metadata', 'explicit_title_evidence', 'manual_verification']),
+      EVIDENCE_ACQUISITION_SOURCES
+    );
+  }
+
+  return orderedUniqueAllowed(mapped.length ? mapped : ['manual_verification'], EVIDENCE_ACQUISITION_SOURCES);
+}
+
+function reasonCodesForEvidencePlan(field, classification, sources = []) {
+  const reasonCodes = [];
+  if (classification === FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION) {
+    reasonCodes.push('conflict_requires_deterministic_resolution');
+    reasonCodes.push('model_confidence_cannot_resolve_conflict');
+  }
+  if (ABSENCE_SENSITIVE_MATERIAL_FIELDS.includes(field)) {
+    reasonCodes.push('absence_sensitive_requires_explicit_evidence');
+    reasonCodes.push('nonappearance_is_not_resolution_evidence');
+  }
+  if (NON_VISUAL_MATERIAL_FIELDS.includes(field)) {
+    reasonCodes.push('non_visual_field_not_routed_to_multimodal_vision');
+  }
+  if (sources.includes('manual_verification')) reasonCodes.push('manual_verification_available');
+  if (!sources.some((source) => source !== 'manual_verification')) reasonCodes.push('no_automated_resolution_path');
+  return unique(reasonCodes).sort();
+}
+
+function buildEvidenceAcquisitionPlanForReport(report = {}) {
+  const missingFields = asArray(report.missingMaterialFieldsAfter);
+  const conflictFields = asArray(report.conflictFields);
+  const unresolvedFields = orderedUniqueAllowed([...missingFields, ...conflictFields], MATERIAL_FIELDS);
+  const classifications = asObject(report.blockerClassificationByField);
+  const requiredByField = asObject(report.requiredEvidenceCategoriesByField);
+  const plan = {};
+
+  for (const field of unresolvedFields) {
+    const classification = String(classifications[field] || '').trim();
+    const sources = classification === FEASIBILITY_CLASSIFICATIONS.CONFLICT_REQUIRES_RESOLUTION
+      ? ['manual_verification']
+      : sourcePlanFromRequiredCategories(field, requiredByField[field]);
+    const safeSources = orderedUniqueAllowed(sources, EVIDENCE_ACQUISITION_SOURCES);
+    plan[field] = deepFreeze({
+      blockerClassification: Object.values(FEASIBILITY_CLASSIFICATIONS).includes(classification)
+        ? classification
+        : FEASIBILITY_CLASSIFICATIONS.UNKNOWN_RESOLUTION_PATH,
+      nextEvidenceSources: safeSources,
+      reasonCodes: reasonCodesForEvidencePlan(field, classification, safeSources)
+    });
+  }
+
+  return deepFreeze(Object.fromEntries(Object.entries(plan).sort(([left], [right]) => left.localeCompare(right))));
+}
+
+function addEvidenceAcquisitionPlanCounts(totals, plan = {}) {
+  const sourceSeenInTransaction = new Set();
+  for (const [field, entry] of Object.entries(asObject(plan))) {
+    const sources = orderedUniqueAllowed(entry.nextEvidenceSources, EVIDENCE_ACQUISITION_SOURCES);
+    if (!totals.evidenceAcquisitionPlanByField[field]) totals.evidenceAcquisitionPlanByField[field] = new Set();
+    for (const source of sources) {
+      totals.evidenceAcquisitionPlanByField[field].add(source);
+      if (!totals.fieldsRequiringEvidenceSource[source]) totals.fieldsRequiringEvidenceSource[source] = new Set();
+      totals.fieldsRequiringEvidenceSource[source].add(field);
+      sourceSeenInTransaction.add(source);
+    }
+    if (!sources.some((source) => source !== 'manual_verification')) totals.fieldsWithNoAutomatedResolutionPath.add(field);
+    if (sources.includes('manual_verification')) totals.manualVerificationFrequency += 1;
+    if (sources.includes('additional_image_or_view') || sources.includes('image_ocr') || sources.includes('slab_label')) {
+      totals.anotherImageCouldMateriallyHelp = true;
+    }
+  }
+  for (const source of sourceSeenInTransaction) {
+    incrementCount(totals.transactionCountsRequiringEvidenceSource, source, 1, EVIDENCE_ACQUISITION_SOURCES);
+  }
+}
+
+function sortedSourceFieldMap(map = {}) {
+  return deepFreeze(Object.fromEntries(EVIDENCE_ACQUISITION_SOURCES
+    .map((source) => [source, Array.from(map[source] || []).sort()])
+    .filter(([, fields]) => fields.length)));
+}
+
+function sortedFieldSourcePlanMap(map = {}) {
+  return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
+    .filter(([field]) => MATERIAL_FIELDS.includes(field))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, sources]) => [
+      field,
+      orderedUniqueAllowed(Array.from(sources || []), EVIDENCE_ACQUISITION_SOURCES)
+    ])
+    .filter(([, sources]) => sources.length)));
+}
+
+function sortedSourceCountMap(map = {}) {
+  return deepFreeze(Object.fromEntries(EVIDENCE_ACQUISITION_SOURCES
+    .map((source) => [source, Math.max(0, Math.floor(Number(asObject(map)[source]) || 0))])
+    .filter(([, count]) => count > 0)));
 }
 
 function sortedCountMap(map = {}, allowlist = null) {
@@ -284,6 +426,7 @@ function buildEmptyFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    evidenceAcquisitionPlanByField: {},
     transactionsRequiringAdditionalEvidence: 0,
     averageMaterialFieldRecoveryRate: 0,
     boundedTokenUsage: {
@@ -316,7 +459,17 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    fieldsRequiringEvidenceSource: {},
+    transactionCountsRequiringEvidenceSource: {},
     boundedTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, modelRequests: 0, inputImages: 0 }
+  };
+  const evidencePlanTotals = {
+    evidenceAcquisitionPlanByField: {},
+    fieldsRequiringEvidenceSource: {},
+    transactionCountsRequiringEvidenceSource: {},
+    fieldsWithNoAutomatedResolutionPath: new Set(),
+    manualVerificationFrequency: 0,
+    anotherImageCouldMateriallyHelp: false
   };
   let classificationImprovementCount = 0;
   let exactReachedCount = 0;
@@ -343,6 +496,7 @@ function buildFeasibilitySampleReport(input = {}) {
     for (const categories of Object.values(asObject(report.requiredEvidenceCategoriesByField))) {
       for (const category of asArray(categories)) incrementCount(totals.requiredEvidenceCategoryFrequency, category, 1, EVIDENCE_CATEGORY_CODES);
     }
+    addEvidenceAcquisitionPlanCounts(evidencePlanTotals, buildEvidenceAcquisitionPlanForReport(report));
     if (report.additionalEvidenceRequired) transactionsRequiringAdditionalEvidence += 1;
     recoveryRateSum += Math.max(0, Number(report.materialFieldRecoveryRate) || 0);
     sumBoundedUsage(totals.boundedTokenUsage, report.boundedUsage);
@@ -380,6 +534,12 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: sortedCountMap(totals.conflictFieldFrequency, SUPPORTED_FIELDS),
     blockerClassificationFrequency: sortedCountMap(totals.blockerClassificationFrequency, Object.values(FEASIBILITY_CLASSIFICATIONS)),
     requiredEvidenceCategoryFrequency: sortedCountMap(totals.requiredEvidenceCategoryFrequency, EVIDENCE_CATEGORY_CODES),
+    evidenceAcquisitionPlanByField: sortedFieldSourcePlanMap(evidencePlanTotals.evidenceAcquisitionPlanByField),
+    fieldsRequiringEvidenceSource: sortedSourceFieldMap(evidencePlanTotals.fieldsRequiringEvidenceSource),
+    transactionCountsRequiringEvidenceSource: sortedSourceCountMap(evidencePlanTotals.transactionCountsRequiringEvidenceSource),
+    fieldsWithNoAutomatedResolutionPath: Array.from(evidencePlanTotals.fieldsWithNoAutomatedResolutionPath).sort(),
+    manualVerificationFrequency: evidencePlanTotals.manualVerificationFrequency,
+    anotherImageCouldMateriallyHelp: evidencePlanTotals.anotherImageCouldMateriallyHelp,
     transactionsRequiringAdditionalEvidence,
     averageMaterialFieldRecoveryRate: evaluated ? Number((recoveryRateSum / evaluated).toFixed(4)) : 0,
     boundedTokenUsage: deepFreeze(totals.boundedTokenUsage),
@@ -584,6 +744,8 @@ module.exports = {
   DEFAULT_MAX_OUTPUT_TOKENS,
   MAX_OUTPUT_TOKENS,
   SAMPLE_EXECUTION_STATUS,
+  EVIDENCE_ACQUISITION_SOURCES,
   validateOpenAIFeasibilitySampleGates,
+  buildEvidenceAcquisitionPlanForReport,
   runOpenAIMultimodalFeasibilitySample
 };
