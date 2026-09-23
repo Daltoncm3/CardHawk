@@ -192,6 +192,9 @@ test('unconfirmed Card API prices are excluded from canonical compatibility coun
   });
   const unconfirmed = translateCardApiSaleToRawCanonical(providerSale({
     id: 'unconfirmed-sale',
+    price: 999,
+    sold_at: '2026-01-01T00:00:00.000Z',
+    sale_date: '2026-01-01',
     price_confirmed: false
   }), {
     acquiredAt: '2026-09-18T00:00:00.000Z'
@@ -206,6 +209,12 @@ test('unconfirmed Card API prices are excluded from canonical compatibility coun
   assert.equal(report.trueSoldTransactions, 1);
   assert.equal(report.minimumFieldCompatibleRecords, 1);
   assert.equal(report.canonicalizableRecords, 1);
+  assert.deepEqual(report.soldPriceRange, { min: 9.75, max: 9.75 });
+  assert.deepEqual(report.soldDateRange, {
+    from: '2026-09-16T00:00:00.000Z',
+    to: '2026-09-16T00:00:00.000Z'
+  });
+  assert.equal(report.anthonyHernandezControlMatches, 1);
   assert.equal(report.fieldAvailability.bestOfferRecordsPresent, true);
   assert.equal(report.fieldAvailability.acceptedPriceFieldAvailable, true);
   assert.equal(report.missingCardHawkRequiredFields.includes('price_confirmed'), true);

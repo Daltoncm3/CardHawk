@@ -427,6 +427,8 @@ function classifyResolution(canonicalIdentity = {}, conflicts = [], missingField
 }
 
 function evaluateCanonicalSoldEvidenceReadiness(record = {}, canonicalIdentity = {}) {
+  const confirmedSoldPriceReady = record.providerCompatibility?.canonicalReadySoldPrice === true ||
+    (record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD && record.status === 'active_evidence');
   const candidate = {
     ...record,
     parsedIdentity: legacyParsedIdentityFromCanonical(canonicalIdentity),
@@ -444,8 +446,11 @@ function evaluateCanonicalSoldEvidenceReadiness(record = {}, canonicalIdentity =
   });
 
   return {
-    ready: validation.valid,
-    reasons: asArray(validation.reasons).sort()
+    ready: validation.valid && confirmedSoldPriceReady,
+    reasons: unique([
+      ...asArray(validation.reasons),
+      ...(confirmedSoldPriceReady ? [] : ['confirmed_true_sold_price_required'])
+    ]).sort()
   };
 }
 

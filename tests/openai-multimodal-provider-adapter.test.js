@@ -504,9 +504,11 @@ test('absence, low confidence, inferred, ambiguous, unverifiable, and conflictin
     ]), calls)
   });
 
-  assert.equal(result.evidenceResult.admittedMultimodalFields.length, 0);
-  assert.equal(result.evidenceResult.rejectedMultimodalFields.length >= 5, true);
-  assert.equal(result.evidenceResult.conflicts.length, 1);
+  assert.equal(Object.hasOwn(result, 'modelValidation'), false);
+  assert.equal(Object.hasOwn(result, 'evidenceResult'), false);
+  assert.equal(result.report.admittedObservationCount, 0);
+  assert.equal(result.report.rejectedObservationCount >= 5, true);
+  assert.equal(result.report.conflictCount, 1);
   assert.equal(result.report.exactReached, false);
 });
 
@@ -532,10 +534,55 @@ test('model observations cannot directly set EXACT and canonical resolution rema
     }
   });
 
-  assert.equal(result.modelValidation.response.postMultimodalClassification, undefined);
-  assert.equal(result.evidenceResult.postMultimodalClassification, 'EXACT');
+  assert.equal(Object.hasOwn(result, 'modelValidation'), false);
+  assert.equal(Object.hasOwn(result, 'evidenceResult'), false);
+  assert.equal(result.report.postVisionClassification, 'EXACT');
   assert.equal(result.report.exactReached, true);
   assert.equal(result.report.classificationImproved, true);
+  assert.equal(result.report.canonicalSoldEvidenceStructurallyReady, true);
+});
+
+test('provisional Card API prices cannot become canonical-ready through multimodal identity resolution', async () => {
+  const cases = [
+    { label: 'false', price_confirmed: false },
+    { label: 'missing', removePriceConfirmed: true },
+    { label: 'malformed', price_confirmed: { confirmed: true } },
+    { label: 'string', price_confirmed: 'true' }
+  ];
+
+  for (const input of cases) {
+    const providerSale = sale({
+      id: `sale-secret-${input.label}`,
+      title: '2024 Topps Chrome Baseball',
+      price_confirmed: input.price_confirmed
+    });
+    if (input.removePriceConfirmed) delete providerSale.price_confirmed;
+
+    const result = await runOpenAIMultimodalCompatibilityPilot({
+      env: env(),
+      fetchImpl: async (url) => {
+        if (String(url).includes('thecardapi.com')) {
+          return jsonResponse({ sales: [providerSale] });
+        }
+        return jsonResponse(responsePayload(undefined, [
+          obs('subjectName', 'Shohei Ohtani'),
+          obs('cardNumber', '17'),
+          obs('parallel', 'Gold'),
+          obs('autographState', true),
+          obs('memorabiliaState', true),
+          obs('printRun', 99),
+          obs('gradeCompany', 'PSA'),
+          obs('grade', '10')
+        ]));
+      }
+    });
+
+    assert.equal(result.report.postVisionClassification, 'EXACT');
+    assert.equal(result.report.exactReached, true);
+    assert.equal(result.report.canonicalSoldEvidenceStructurallyReady, false);
+    assert.equal(Object.hasOwn(result, 'modelValidation'), false);
+    assert.equal(Object.hasOwn(result, 'evidenceResult'), false);
+  }
 });
 
 test('A5.8 report exposes sanitized recovered material field diagnostics only', async () => {
@@ -821,7 +868,7 @@ test('sanitized reports contain no credentials, raw provider payloads, raw model
     env: env(),
     fetchImpl: combinedFetch(responsePayload(undefined, [obs('subjectName', 'Shohei Ohtani')]))
   });
-  const serialized = JSON.stringify(result.report);
+  const serialized = JSON.stringify(result);
 
   assert.equal(serialized.includes('sk-test-secret-not-printed'), false);
   assert.equal(serialized.includes('tca_test_secret_not_printed'), false);
@@ -829,7 +876,18 @@ test('sanitized reports contain no credentials, raw provider payloads, raw model
   assert.equal(serialized.includes('https://i.ebayimg.example'), false);
   assert.equal(serialized.includes('sale-secret-id-001'), false);
   assert.equal(serialized.includes('2024 Topps Chrome Shohei'), false);
+  assert.equal(serialized.includes('Shohei Ohtani'), false);
+  assert.equal(serialized.includes('Gold'), false);
+  assert.equal(serialized.includes('proposedValue'), false);
   assert.equal(serialized.includes('output_text'), false);
+  assert.equal(serialized.includes('providerName'), false);
+  assert.equal(serialized.includes('configuredModel'), false);
+  assert.equal(serialized.includes('modelValidation'), false);
+  assert.equal(serialized.includes('evidenceResult'), false);
+  assert.equal(Object.hasOwn(result, 'modelValidation'), false);
+  assert.equal(Object.hasOwn(result, 'evidenceResult'), false);
+  assert.equal(Object.hasOwn(result.report, 'providerName'), false);
+  assert.equal(Object.hasOwn(result.report, 'configuredModel'), false);
   assert.equal(result.report.writesProductionStore, false);
 });
 

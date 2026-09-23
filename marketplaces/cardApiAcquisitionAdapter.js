@@ -690,7 +690,7 @@ function summarizeCardApiCompatibility(acquisitionResult = {}) {
   const canonicalizable = records.filter((record) => record.evidenceType === EVIDENCE_TYPES.TRUE_SOLD
     && record.status === 'active_evidence'
     && !validations[records.indexOf(record)]?.reasons?.length);
-  const exactControlMatches = records.filter((record) => buildLocalCanonicalCardKey(record.parsedIdentity || {}) === CONTROL_CANONICAL_CARD_KEY);
+  const exactControlMatches = trueSoldRecords.filter((record) => buildLocalCanonicalCardKey(record.parsedIdentity || {}) === CONTROL_CANONICAL_CARD_KEY);
   const missingReasons = validations.flatMap((validation) => asArray(validation.reasons));
   const providerMissing = records.flatMap((record) => missingProviderFieldsFromRecord(record));
 
@@ -706,8 +706,8 @@ function summarizeCardApiCompatibility(acquisitionResult = {}) {
     minimumFieldCompatibleRecords: minimumCompatible.length,
     canonicalizableRecords: canonicalizable.length,
     anthonyHernandezControlMatches: exactControlMatches.length,
-    soldPriceRange: priceRange(records),
-    soldDateRange: dateRange(records),
+    soldPriceRange: priceRange(trueSoldRecords),
+    soldDateRange: dateRange(trueSoldRecords),
     marketplaceSourceDistribution: countBy(records, (record) => record.marketplaceLabel || record.marketplace),
     listingTypeDistribution: countBy(records, (record) => record.saleType),
     fieldAvailability: buildFieldAvailability(records),

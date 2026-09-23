@@ -47,6 +47,30 @@ test('deterministic exact resolution uses title parsing without provider metadat
   assert.equal(result.retentionAuthority.persistenceAllowed, false);
 });
 
+test('unconfirmed Card API prices cannot become structurally ready through exact identity resolution', () => {
+  const cases = [
+    { label: 'false', price_confirmed: false },
+    { label: 'missing', removePriceConfirmed: true },
+    { label: 'malformed', price_confirmed: { confirmed: true } },
+    { label: 'string', price_confirmed: 'true' }
+  ];
+
+  for (const input of cases) {
+    const sale = providerSale({
+      id: `ebay-unconfirmed-${input.label}`,
+      price_confirmed: input.price_confirmed
+    });
+    if (input.removePriceConfirmed) delete sale.price_confirmed;
+
+    const result = resolveCardApiTransactionIdentity(sale);
+
+    assert.equal(result.classification, RESOLUTION_CLASSIFICATIONS.EXACT);
+    assert.equal(result.identityExact, true);
+    assert.equal(result.canonicalSoldEvidenceStructurallyReady, false);
+    assert.equal(result.canonicalSoldEvidenceReadinessReasons.includes('confirmed_true_sold_price_required'), true);
+  }
+});
+
 test('graded card handling preserves grade context without changing underlying card fields', () => {
   const result = resolveCardApiTransactionIdentity(providerSale({
     id: 'ebay-graded',

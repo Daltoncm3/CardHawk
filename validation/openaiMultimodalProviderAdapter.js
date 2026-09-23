@@ -879,13 +879,13 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
   const postMissing = asArray(evidenceResult?.postMultimodalMissingMaterialFields);
   const fieldRecoveryDiagnostics = buildFieldRecoveryDiagnostics(evidenceResult, input.preResolution);
   const feasibilityAudit = buildExactIdentityFeasibilityAudit(evidenceResult, fieldRecoveryDiagnostics);
+  const canonicalReady = input.confirmedTrueSoldPriceReady === true &&
+    evidenceResult?.canonicalSoldEvidenceStructurallyReady === true;
   const report = {
     phase: 'A5.7',
     source: SOURCE,
     version: VERSION,
     schemaVersion: SCHEMA_VERSION,
-    providerName: PROVIDER_ID,
-    configuredModel: safeModelName(input.model),
     liveExecutionStatus: input.liveExecutionStatus || LIVE_STATUS.DISABLED,
     transactionsRequested: input.transactionsRequested || 0,
     transactionsEvaluated: input.transactionsEvaluated || 0,
@@ -904,7 +904,7 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
     conflictCount: baseReport.conflictsCount,
     classificationImproved: Boolean(input.classificationImproved),
     exactReached: evidenceResult?.postMultimodalClassification === 'EXACT',
-    canonicalSoldEvidenceStructurallyReady: evidenceResult?.canonicalSoldEvidenceStructurallyReady === true,
+    canonicalSoldEvidenceStructurallyReady: canonicalReady,
     boundedUsage: input.boundedUsage || null,
     sanitizedFailureCategory: input.sanitizedFailureCategory || null,
     nonPersistent: true,
@@ -920,6 +920,11 @@ function buildSanitizedOpenAIPilotReport(input = {}) {
 function classificationImproved(pre, post) {
   const score = { UNRESOLVED: 0, AMBIGUOUS: 1, EXACT: 2 };
   return (score[post] || 0) > (score[pre] || 0);
+}
+
+function confirmedTrueSoldPriceReady(transaction = {}) {
+  return transaction.providerCompatibility?.canonicalReadySoldPrice === true ||
+    (transaction.evidenceType === EVIDENCE_TYPES.TRUE_SOLD && transaction.status === 'active_evidence');
 }
 
 // Non-authoritative helper for bounded owner-operated pilots. It consumes one in-memory
@@ -953,6 +958,7 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
   }
 
   const preResolution = input.preResolution || resolveCardApiTransactionIdentity(transaction);
+  const confirmedReady = confirmedTrueSoldPriceReady(transaction);
   const imageReference = transaction.image || null;
   if (!imageReference) {
     return {
@@ -964,6 +970,7 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
         transactionsEvaluated,
         imagesEvaluated: 0,
         preResolution,
+        confirmedTrueSoldPriceReady: confirmedReady,
         sanitizedFailureCategory: 'image_not_available'
       }),
       modelValidation: null,
@@ -1011,6 +1018,7 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
         modelRequestsCompleted: modelResponse.executionStatus === EXECUTION_STATUS.SUCCESS ? 1 : 0,
         preResolution,
         modelValidation,
+        confirmedTrueSoldPriceReady: confirmedReady,
         boundedUsage: modelResponse.usage || null,
         sanitizedFailureCategory
       }),
@@ -1042,6 +1050,7 @@ async function runOpenAIMultimodalTransactionAnalysis(input = {}) {
       preResolution,
       modelValidation,
       evidenceResult,
+      confirmedTrueSoldPriceReady: confirmedReady,
       classificationImproved: improved,
       boundedUsage: modelValidation.response.usage || null
     })
@@ -1146,7 +1155,7 @@ async function runOpenAIMultimodalCompatibilityPilot(options = {}) {
     transactionsRequested: 1
   });
 
-  const result = {
+  return deepFreeze({
     source: SOURCE,
     version: VERSION,
     schemaVersion: SCHEMA_VERSION,
@@ -1155,10 +1164,7 @@ async function runOpenAIMultimodalCompatibilityPilot(options = {}) {
     productionImpact: 'none',
     decisionImpact: 'none',
     executionAuthority: 'none'
-  };
-  if (analysis.modelValidation) result.modelValidation = analysis.modelValidation;
-  if (analysis.evidenceResult) result.evidenceResult = analysis.evidenceResult;
-  return deepFreeze(result);
+  });
 }
 
 module.exports = {
