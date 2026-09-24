@@ -187,6 +187,22 @@ async function withMockedSampleAnalysis(reports, fn) {
   }
 }
 
+async function withMockedAdmissionEligibilityReview(mockReview, fn) {
+  const samplePath = require.resolve('../validation/multimodalFeasibilitySample');
+  const reviewPath = require.resolve('../validation/titleProviderCandidateAdmissionEligibilityReview');
+  const reviewModule = require(reviewPath);
+  const original = reviewModule.reviewTitleProviderCandidateAdmissionEligibility;
+  reviewModule.reviewTitleProviderCandidateAdmissionEligibility = mockReview;
+  delete require.cache[samplePath];
+
+  try {
+    return await fn(require(samplePath));
+  } finally {
+    reviewModule.reviewTitleProviderCandidateAdmissionEligibility = original;
+    delete require.cache[samplePath];
+  }
+}
+
 test('A5.10 feasibility sample is disabled by default and requires every live gate', async () => {
   let calls = 0;
   const disabled = await runOpenAIMultimodalFeasibilitySample({
@@ -308,6 +324,9 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
     ] >= 3,
     true
   );
+  assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
+  assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
+  assert.equal(Object.hasOwn(report, 'configuredModel'), false);
   assert.deepEqual(report.unresolvedAdmissionConflictFields, []);
   assert.equal(report.transactionsRequiringAdditionalEvidence, 3);
   assert.equal(report.exactReachedCount, 0);
@@ -326,6 +345,7 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(report.decisionImpact, 'none');
   assert.equal(report.executionAuthority, 'none');
   assert.equal(serialized.includes('CARDHAWK_SAMPLE_LEAK'), false);
+  assert.equal(serialized.includes(DEFAULT_OPENAI_MODEL), false);
   assert.equal(serialized.includes('Sample Secret Player'), false);
   assert.equal(serialized.includes('sample-secret-id'), false);
   assert.equal(serialized.includes('https://'), false);
@@ -362,6 +382,8 @@ test('A5.14 aggregate eligibility diagnostics fail closed for provisional sale c
   assert.equal(report.futureDeterministicAdmissionCouldMateriallyHelp, false);
   assert.equal(report.ineligibleCandidateFields.includes('cardNumber'), true);
   assert.equal(report.ineligibleCandidateFields.includes('parallel'), true);
+  assert.equal(report.ineligibleCandidateCountByField.cardNumber > 0, true);
+  assert.deepEqual(report.manualReviewReasonCodesByField, {});
   assert.equal(
     report.admissionEligibilityClassificationFrequency[
       ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_PROVISIONAL_SALE
@@ -373,6 +395,9 @@ test('A5.14 aggregate eligibility diagnostics fail closed for provisional sale c
     true
   );
   assert.equal(report.canonicalSoldEvidenceStructurallyReadyCount, 0);
+  assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
+  assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
+  assert.equal(Object.hasOwn(report, 'configuredModel'), false);
   assert.equal(serialized.includes('Sample Secret Player'), false);
   assert.equal(serialized.includes('sample-secret-id'), false);
   assert.equal(serialized.includes('https://'), false);
@@ -417,6 +442,8 @@ test('A5.14 aggregate eligibility preserves unresolved conflicts and manual-revi
   assert.equal(report.unresolvedAdmissionConflictFields.includes('cardNumber'), true);
   assert.equal(report.unresolvedAdmissionConflictFields.includes('parallel'), true);
   assert.equal(report.manualReviewCandidateFields.includes('rawOrGraded'), true);
+  assert.equal(report.manualReviewReasonCodesByField.rawOrGraded.includes('manual_review_required'), true);
+  assert.equal(Object.hasOwn(report.ineligibilityReasonCodesByField, 'rawOrGraded'), false);
   assert.equal(
     report.admissionEligibilityClassificationFrequency[
       ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_CONFLICT_UNRESOLVED
@@ -437,6 +464,129 @@ test('A5.14 aggregate eligibility preserves unresolved conflicts and manual-revi
   assert.equal(serialized.includes('https://'), false);
   assert.equal(report.nonPersistent, true);
   assert.equal(report.writesProductionStore, false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.14A aggregate eligibility counts reconcile for the observed 23-candidate scenario', async () => {
+  const reports = [
+    aggregateOnlyReport(),
+    aggregateOnlyReport(),
+    aggregateOnlyReport()
+  ];
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [
+            sampleSale(1, {
+              title: '/99 PSA 10',
+              print_run: 99,
+              grader: 'PSA',
+              grade: '10'
+            }),
+            sampleSale(2, {
+              title: '#33 PSA 10',
+              card_number: '33',
+              grader: 'PSA',
+              grade: '10'
+            }),
+            sampleSale(3, {
+              title: 'Topps /99',
+              print_run: 99
+            })
+          ]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const candidateTotal = Object.values(report.candidateCountByField).reduce((sum, count) => sum + count, 0);
+  const eligibleTotal = Object.values(report.eligibleCandidateCountByField).reduce((sum, count) => sum + count, 0);
+  const manualTotal = Object.values(report.manualReviewCandidateCountByField).reduce((sum, count) => sum + count, 0);
+  const ineligibleTotal = Object.values(report.ineligibleCandidateCountByField).reduce((sum, count) => sum + count, 0);
+  const classificationTotal = Object.values(report.admissionEligibilityClassificationFrequency).reduce((sum, count) => sum + count, 0);
+  const serialized = JSON.stringify(report);
+
+  assert.equal(candidateTotal, 23);
+  assert.equal(eligibleTotal, 17);
+  assert.equal(manualTotal, 6);
+  assert.equal(ineligibleTotal, 0);
+  assert.equal(classificationTotal, 23);
+  assert.deepEqual(report.admissionEligibilityClassificationFrequency, {
+    [ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION]: 17,
+    [ELIGIBILITY_CLASSIFICATIONS.MANUAL_REVIEW_REQUIRED]: 6
+  });
+  assert.deepEqual(report.manualReviewCandidateCountByField, {
+    rawOrGraded: 4,
+    serialNumbered: 2
+  });
+  assert.deepEqual(report.ineligibleCandidateFields, []);
+  assert.deepEqual(report.ineligibleCandidateCountByField, {});
+  assert.deepEqual(report.ineligibilityReasonCodesByField, {});
+  assert.equal(report.manualReviewReasonCodesByField.rawOrGraded.includes('manual_review_required'), true);
+  assert.equal(report.manualReviewReasonCodesByField.serialNumbered.includes('manual_review_required'), true);
+  assert.equal(report.eligibilityReviewedCandidateCount, 23);
+  assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
+  assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
+  assert.equal(Object.hasOwn(report, 'configuredModel'), false);
+  assert.equal(serialized.includes(DEFAULT_OPENAI_MODEL), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.writesProductionStore, false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.14A aggregate eligibility fails closed instead of publishing contradictory totals', async () => {
+  const reports = [aggregateOnlyReport()];
+  const result = await withMockedAdmissionEligibilityReview(() => ({
+    diagnostics: {
+      admissionEligibilityClassificationFrequency: {
+        [ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION]: 30
+      },
+      eligibleCandidateFields: ['cardNumber'],
+      eligibleCandidateCountByField: { cardNumber: 30 },
+      ineligibleCandidateFields: [],
+      ineligibleCandidateCountByField: {},
+      ineligibilityReasonCodesByField: {},
+      unresolvedAdmissionConflictFields: [],
+      manualReviewCandidateFields: [],
+      manualReviewCandidateCountByField: {},
+      manualReviewReasonCodesByField: {},
+      transactionsWithFutureAdmissionEligibleCandidates: 1,
+      futureDeterministicAdmissionCouldMateriallyHelp: true
+    }
+  }), async (sample) => withMockedSampleAnalysis(reports, async () => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [
+            sampleSale(1, {
+              title: '#33',
+              card_number: '33'
+            })
+          ]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  })));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.eligibilityAggregateConsistencyStatus, 'invalid');
+  assert.equal(report.eligibilityAggregateConsistencyReasonCodes.includes('eligibility_classification_count_mismatch'), true);
+  assert.equal(report.transactionsWithFutureAdmissionEligibleCandidates, 0);
+  assert.equal(report.futureDeterministicAdmissionCouldMateriallyHelp, false);
+  assert.equal(Object.hasOwn(report, 'configuredModel'), false);
+  assert.equal(serialized.includes(DEFAULT_OPENAI_MODEL), false);
   assert.equal(report.productionImpact, 'none');
   assert.equal(report.decisionImpact, 'none');
   assert.equal(report.executionAuthority, 'none');

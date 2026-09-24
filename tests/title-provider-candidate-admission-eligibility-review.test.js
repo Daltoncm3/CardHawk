@@ -217,6 +217,9 @@ test('A5.14 refuses negative or absence-sensitive conclusions as deterministic a
   );
   assert.deepEqual(review.diagnostics.eligibleCandidateFields, []);
   assert.deepEqual(review.diagnostics.manualReviewCandidateFields, ['serialNumbered']);
+  assert.deepEqual(review.diagnostics.manualReviewCandidateCountByField, { serialNumbered: 1 });
+  assert.equal(review.diagnostics.manualReviewReasonCodesByField.serialNumbered.includes('manual_review_required'), true);
+  assert.equal(Object.hasOwn(review.diagnostics.ineligibilityReasonCodesByField, 'serialNumbered'), false);
   assert.equal(
     review.diagnostics.ineligibilityReasonCodesByField.autographState.includes(
       'absence_sensitive_candidate_requires_manual_admission_review'
@@ -276,6 +279,8 @@ test('A5.14 is deterministic, immutable, bounded, and preserves sorted allowlist
   assert.equal(first.admissionEligibilityReviewFingerprint, second.admissionEligibilityReviewFingerprint);
   assert.equal(first.reviews.length, MAX_REVIEW_CANDIDATES);
   assert.equal(Object.isFrozen(first), true);
+  assert.equal(first.diagnostics.eligibilityAggregateConsistencyStatus, 'consistent');
+  assert.deepEqual(first.diagnostics.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
   assert.deepEqual(Object.keys(first.diagnostics.admissionEligibilityClassificationFrequency), [
     ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION
   ]);

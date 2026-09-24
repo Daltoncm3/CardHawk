@@ -35,9 +35,12 @@ const ELIGIBILITY_CLASSIFICATIONS = Object.freeze({
 const ELIGIBILITY_CLASSIFICATION_ORDER = Object.freeze(Object.values(ELIGIBILITY_CLASSIFICATIONS));
 
 const ELIGIBILITY_REASON_CODES = Object.freeze([
+  'aggregate_consistency_ok',
   'absence_sensitive_candidate_requires_manual_admission_review',
   'candidate_agreement_is_not_admission',
   'candidate_only_not_admitted',
+  'eligibility_classification_count_mismatch',
+  'eligibility_disposition_count_mismatch',
   'field_allowlisted',
   'future_deterministic_admission_candidate',
   'malformed_candidate_artifact',
@@ -214,6 +217,41 @@ function groupedReasonCodes(reviews = []) {
     .map(([field, reasons]) => [field, Array.from(reasons).sort()])));
 }
 
+function countByField(reviews = []) {
+  const counts = {};
+  for (const review of reviews) {
+    if (SUPPORTED_FIELDS.includes(review.field)) increment(counts, review.field, SUPPORTED_FIELDS);
+  }
+  return sortedCountMap(counts, SUPPORTED_FIELDS);
+}
+
+function sumCounts(map = {}) {
+  return Object.values(asObject(map))
+    .reduce((sum, value) => sum + Math.max(0, Math.floor(Number(value) || 0)), 0);
+}
+
+function buildAggregateConsistency(diagnostics = {}, candidateCountReviewed = 0) {
+  const classificationTotal = sumCounts(diagnostics.admissionEligibilityClassificationFrequency);
+  const eligibleTotal = sumCounts(diagnostics.eligibleCandidateCountByField);
+  const manualReviewTotal = sumCounts(diagnostics.manualReviewCandidateCountByField);
+  const ineligibleTotal = sumCounts(diagnostics.ineligibleCandidateCountByField);
+  const reviewedTotal = Math.max(0, Math.floor(Number(candidateCountReviewed) || 0));
+  const reasonCodes = [];
+
+  if (classificationTotal !== reviewedTotal) reasonCodes.push('eligibility_classification_count_mismatch');
+  if ((eligibleTotal + manualReviewTotal + ineligibleTotal) !== reviewedTotal) {
+    reasonCodes.push('eligibility_disposition_count_mismatch');
+  }
+  if (!reasonCodes.length) reasonCodes.push('aggregate_consistency_ok');
+
+  return deepFreeze({
+    eligibilityAggregateConsistencyStatus: reasonCodes.length === 1 && reasonCodes[0] === 'aggregate_consistency_ok'
+      ? 'consistent'
+      : 'invalid',
+    eligibilityAggregateConsistencyReasonCodes: reasonCodes
+  });
+}
+
 function fieldsForClassifications(reviews = [], classifications = []) {
   const allowed = new Set(classifications);
   return unique(reviews
@@ -226,6 +264,17 @@ function fieldsForClassifications(reviews = [], classifications = []) {
 function buildDiagnostics(reviews = []) {
   const frequency = {};
   const eligibleCounts = {};
+  const manualReviewReviews = reviews.filter((review) => (
+    review.eligibilityClassification === ELIGIBILITY_CLASSIFICATIONS.MANUAL_REVIEW_REQUIRED
+  ));
+  const ineligibleReviews = reviews.filter((review) => [
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_CONFLICT_UNRESOLVED,
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_ABSENCE_SENSITIVE,
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_UNSUPPORTED_PROVENANCE,
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_MALFORMED_OR_UNVERIFIABLE,
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_FIELD_NOT_ALLOWLISTED,
+    ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_PROVISIONAL_SALE
+  ].includes(review.eligibilityClassification));
   const eligible = fieldsForClassifications(reviews, [
     ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION
   ]);
@@ -248,18 +297,25 @@ function buildDiagnostics(reviews = []) {
     }
   }
 
-  return deepFreeze({
+  const diagnostics = {
     admissionEligibilityClassificationFrequency: sortedCountMap(frequency, ELIGIBILITY_CLASSIFICATION_ORDER),
     eligibleCandidateFields: eligible,
     eligibleCandidateCountByField: sortedCountMap(eligibleCounts, SUPPORTED_FIELDS),
     ineligibleCandidateFields: ineligible,
-    ineligibilityReasonCodesByField: groupedReasonCodes(reviews.filter((review) => review.eligibilityClassification !== ELIGIBILITY_CLASSIFICATIONS.ELIGIBLE_FOR_FUTURE_DETERMINISTIC_ADMISSION)),
+    ineligibleCandidateCountByField: countByField(ineligibleReviews),
+    ineligibilityReasonCodesByField: groupedReasonCodes(ineligibleReviews),
     unresolvedAdmissionConflictFields: fieldsForClassifications(reviews, [
       ELIGIBILITY_CLASSIFICATIONS.INELIGIBLE_CONFLICT_UNRESOLVED
     ]),
     manualReviewCandidateFields: manualReview,
+    manualReviewCandidateCountByField: countByField(manualReviewReviews),
+    manualReviewReasonCodesByField: groupedReasonCodes(manualReviewReviews),
     transactionsWithFutureAdmissionEligibleCandidates: eligible.length ? 1 : 0,
     futureDeterministicAdmissionCouldMateriallyHelp: eligible.length > 0
+  };
+  return deepFreeze({
+    ...diagnostics,
+    ...buildAggregateConsistency(diagnostics, reviews.length)
   });
 }
 
