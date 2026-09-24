@@ -380,6 +380,72 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   assert.equal(serialized.includes('output_text'), false);
 });
 
+test('A5.16A feasibility report exposes only sanitized provider metadata preservation diagnostics', async () => {
+  const result = await runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [sale({
+            id: 'provider-secret-sale-id',
+            title: '2024 Topps Chrome Sanitized Player',
+            card_number: '17',
+            cert: 'PSA-SECRET-CERT-321',
+            condition: 'graded',
+            grade: '10',
+            grader: 'PSA',
+            grading_company: 'Professional Sports Authenticator',
+            has_autograph_grade: true,
+            has_grade_qualifier: true,
+            label: '2024 Topps Chrome Sanitized Player #17 Gold PSA 10',
+            grade_qualifier: 'OC',
+            autograph_grade: '10',
+            team: 'Secret Team Name',
+            features: ['Auto', 'Rookie', 'Patch', 'Serial Numbered', 'Unsupported Secret Feature']
+          })]
+        });
+      }
+      return jsonResponse(responsePayload('a5-10-openai-multimodal-request-1', []));
+    }
+  });
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.providerMetadataFieldsAvailable.includes('cert'), true);
+  assert.equal(report.providerMetadataFieldsAvailable.includes('grading_company'), true);
+  assert.equal(report.providerMetadataFieldsAvailable.includes('features'), true);
+  assert.equal(report.providerMetadataFieldAvailabilityCount.cert, 1);
+  assert.equal(report.providerMetadataFieldsForwarded.includes('grading_company'), true);
+  assert.equal(report.providerMetadataFieldsForwarded.includes('team'), false);
+  assert.equal(report.providerMetadataFieldsManualReviewOnly.includes('cert'), true);
+  assert.equal(report.providerMetadataFieldsManualReviewOnly.includes('has_autograph_grade'), true);
+  assert.equal(report.providerMetadataFieldsUnused.includes('cert'), true);
+  assert.equal(report.providerMetadataFieldsUnused.includes('team'), true);
+  assert.equal(report.providerMetadataReasonCodesByField.cert.includes('preserved_internal_manual_verification_only'), true);
+  assert.equal(report.providerMetadataReasonCodesByField.label.includes('preserved_candidate_only_from_deterministic_parse'), true);
+  assert.deepEqual(report.providerMetadataFeatureCategoryFrequency, {
+    autograph: 1,
+    memorabilia: 1,
+    rookie: 1,
+    serial_numbered: 1
+  });
+  assert.equal(report.candidateProvenanceCategoriesByField.gradeCompany.includes('provider_metadata'), true);
+  assert.equal(report.manualReviewCandidateFields.includes('autographState'), true);
+  assert.equal(report.manualReviewCandidateFields.includes('memorabiliaState'), true);
+  assert.equal(report.manualReviewCandidateFields.includes('rookieDesignation'), true);
+  assert.equal(report.manualReviewCandidateFields.includes('rawOrGraded'), true);
+  assert.equal(serialized.includes('PSA-SECRET-CERT-321'), false);
+  assert.equal(serialized.includes('Professional Sports Authenticator'), false);
+  assert.equal(serialized.includes('Sanitized Player'), false);
+  assert.equal(serialized.includes('Secret Team Name'), false);
+  assert.equal(serialized.includes('Unsupported Secret Feature'), false);
+  assert.equal(serialized.includes('provider-secret-sale-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.nonPersistent, true);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+});
+
 test('A5.14 aggregate eligibility diagnostics fail closed for provisional sale candidates', async () => {
   const reports = [
     aggregateOnlyReport(),

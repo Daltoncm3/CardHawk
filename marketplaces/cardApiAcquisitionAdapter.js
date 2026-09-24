@@ -20,6 +20,39 @@ const SALES_PATH = '/sales';
 const DEFAULT_LIMIT = 3;
 const MAX_COMPATIBILITY_LIMIT = 5;
 const OHTANI_CONTROL_QUERY = '2024 Topps Shohei Ohtani';
+const MAX_PRESERVED_METADATA_STRING_LENGTH = 120;
+const MAX_PRESERVED_FEATURES = 12;
+
+const PRESERVED_PROVIDER_METADATA_FIELDS = Object.freeze([
+  'card_number',
+  'card_set',
+  'cert',
+  'condition',
+  'features',
+  'grade',
+  'grade_qualifier',
+  'grader',
+  'grading_company',
+  'has_autograph_grade',
+  'has_grade_qualifier',
+  'label',
+  'league',
+  'manufacturer',
+  'player',
+  'print_run',
+  'season',
+  'sport',
+  'team',
+  'year',
+  'autograph_grade'
+]);
+
+const PROVIDER_METADATA_FEATURE_CATEGORIES = Object.freeze([
+  'autograph',
+  'memorabilia',
+  'rookie',
+  'serial_numbered'
+]);
 
 const CONTROL_IDENTITY = Object.freeze({
   category: 'sports_card',
@@ -65,6 +98,46 @@ function normalizeText(value) {
     .replace(/[^a-z0-9\s/.-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeProviderMetadataText(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const text = String(value)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text ? text.slice(0, MAX_PRESERVED_METADATA_STRING_LENGTH) : null;
+}
+
+function normalizeProviderMetadataBoolean(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function normalizeProviderMetadataNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return number;
+}
+
+function featureCategoryFromText(value = '') {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  if (/\b(auto|autograph)\b/.test(normalized)) return 'autograph';
+  if (/\b(patch|relic|memorabilia|jersey)\b/.test(normalized)) return 'memorabilia';
+  if (/\b(rc|rookie)\b/.test(normalized)) return 'rookie';
+  if (/\b(serial|numbered|numbered\s+to)\b/.test(normalized) || /\/\d+/.test(normalized)) return 'serial_numbered';
+  return null;
+}
+
+function normalizeProviderFeatures(features = []) {
+  const categories = [];
+  const rawFeatures = asArray(features).slice(0, MAX_PRESERVED_FEATURES);
+  for (const feature of rawFeatures) {
+    if (typeof feature !== 'string') continue;
+    const category = featureCategoryFromText(feature);
+    if (category && PROVIDER_METADATA_FEATURE_CATEGORIES.includes(category)) categories.push(category);
+  }
+  return [...new Set(categories)].sort();
 }
 
 function stableToken(value, fallback = 'unknown') {
@@ -277,7 +350,10 @@ function firstPresent(source = {}, keys = []) {
 }
 
 function parseFeatureFlags(sale = {}) {
-  const features = asArray(sale.features).map(normalizeText);
+  const features = [
+    ...asArray(sale.features).map(normalizeText),
+    ...normalizeProviderFeatures(sale.features)
+  ];
   const title = normalizeText(sale.title);
   const haystack = `${title} ${features.join(' ')}`;
 
@@ -287,6 +363,102 @@ function parseFeatureFlags(sale = {}) {
     memorabilia: /patch|relic|memorabilia|jersey/.test(haystack),
     serialNumbered: Boolean(sale.print_run) || /\/\d+/.test(haystack)
   };
+}
+
+function buildPreservedProviderIdentityMetadata(sale = {}) {
+  const values = {};
+  const reasonCodesByField = {};
+
+  function preserve(field, value, reasonCodes = []) {
+    if (value === null || value === undefined || value === '') return;
+    values[field] = value;
+    reasonCodesByField[field] = [...new Set(reasonCodes)].sort();
+  }
+
+  preserve('cert', normalizeProviderMetadataText(sale.cert || sale.slab_serial), [
+    'preserved_internal_manual_verification_only'
+  ]);
+  preserve('condition', normalizeProviderMetadataText(sale.condition), [
+    'preserved_manual_review_only'
+  ]);
+  preserve('grading_company', normalizeProviderMetadataText(sale.grading_company), [
+    'preserved_candidate_only'
+  ]);
+  preserve('has_autograph_grade', normalizeProviderMetadataBoolean(sale.has_autograph_grade), [
+    'preserved_manual_review_only'
+  ]);
+  preserve('has_grade_qualifier', normalizeProviderMetadataBoolean(sale.has_grade_qualifier), [
+    'preserved_manual_review_only'
+  ]);
+  preserve('label', normalizeProviderMetadataText(sale.label), [
+    'preserved_candidate_only_from_deterministic_parse'
+  ]);
+  preserve('grade_qualifier', normalizeProviderMetadataText(sale.grade_qualifier), [
+    'preserved_manual_review_only'
+  ]);
+  preserve('autograph_grade', normalizeProviderMetadataText(sale.autograph_grade), [
+    'preserved_manual_review_only'
+  ]);
+  preserve('team', normalizeProviderMetadataText(sale.team), [
+    'preserved_manual_context_only'
+  ]);
+
+  const featureCategories = normalizeProviderFeatures(sale.features);
+  if (featureCategories.length) {
+    preserve('features', featureCategories, ['preserved_feature_categories_only']);
+  }
+
+  preserve('grade', normalizeProviderMetadataText(sale.grade), ['preserved_candidate_only']);
+  preserve('grader', normalizeProviderMetadataText(sale.grader), ['preserved_candidate_only']);
+  preserve('player', normalizeProviderMetadataText(firstPresent(sale, ['player', 'subject', 'athlete', 'name'])), [
+    'preserved_candidate_only'
+  ]);
+  preserve('manufacturer', normalizeProviderMetadataText(firstPresent(sale, ['manufacturer', 'brand'])), [
+    'preserved_candidate_only'
+  ]);
+  preserve('card_set', normalizeProviderMetadataText(firstPresent(sale, ['card_set', 'set', 'set_name'])), [
+    'preserved_candidate_only'
+  ]);
+  preserve('card_number', normalizeProviderMetadataText(sale.card_number), ['preserved_candidate_only']);
+  preserve('year', normalizeProviderMetadataText(sale.year), ['preserved_candidate_only']);
+  preserve('season', normalizeProviderMetadataText(sale.season), ['preserved_candidate_only']);
+  preserve('league', normalizeProviderMetadataText(sale.league), ['preserved_candidate_only']);
+  preserve('sport', normalizeProviderMetadataText(sale.sport), ['preserved_candidate_only']);
+  preserve('print_run', normalizeProviderMetadataNumber(sale.print_run), ['preserved_manual_review_only']);
+
+  const availableFields = Object.keys(values)
+    .filter((field) => PRESERVED_PROVIDER_METADATA_FIELDS.includes(field))
+    .sort();
+  const manualReviewOnlyFields = availableFields
+    .filter((field) => [
+      'autograph_grade',
+      'cert',
+      'condition',
+      'grade_qualifier',
+      'has_autograph_grade',
+      'has_grade_qualifier',
+      'print_run',
+      'team'
+    ].includes(field))
+    .sort();
+  const forwardedFields = availableFields
+    .filter((field) => !['cert', 'team', 'grade_qualifier', 'has_grade_qualifier'].includes(field))
+    .sort();
+  const unusedFields = availableFields
+    .filter((field) => ['cert', 'team', 'grade_qualifier', 'has_grade_qualifier'].includes(field))
+    .sort();
+
+  return Object.freeze({
+    values: Object.freeze(values),
+    availableFields: Object.freeze(availableFields),
+    forwardedFields: Object.freeze(forwardedFields),
+    manualReviewOnlyFields: Object.freeze(manualReviewOnlyFields),
+    unusedFields: Object.freeze(unusedFields),
+    reasonCodesByField: Object.freeze(Object.fromEntries(Object.entries(reasonCodesByField)
+      .filter(([field]) => PRESERVED_PROVIDER_METADATA_FIELDS.includes(field))
+      .sort(([left], [right]) => left.localeCompare(right)))),
+    featureCategories: Object.freeze(featureCategories)
+  });
 }
 
 function buildParsedIdentityFromSale(sale = {}) {
@@ -346,6 +518,7 @@ function missingRequiredProviderFields(sale = {}) {
 function translateCardApiSaleToRawCanonical(sale = {}, context = {}) {
   const missingProviderFields = missingRequiredProviderFields(sale);
   const parsedIdentity = buildParsedIdentityFromSale(sale);
+  const preservedProviderMetadata = buildPreservedProviderIdentityMetadata(sale);
   const saleType = listingTypeToSaleType(sale.listing_type);
   const completedSaleEvent = isCompletedSale(sale);
   const confirmedSoldPrice = isConfirmedSoldPrice(sale);
@@ -417,7 +590,8 @@ function translateCardApiSaleToRawCanonical(sale = {}, context = {}) {
       shippingAvailable: sale.shipping_price !== undefined && sale.shipping_price !== null,
       sourceUrlAvailable: Boolean(sale.listing_url),
       stableTransactionIdAvailable: Boolean(sale.id),
-      identityMetadataFields: Object.keys(parsedIdentity).filter((key) => parsedIdentity[key] !== null && parsedIdentity[key] !== undefined && parsedIdentity[key] !== '')
+      identityMetadataFields: Object.keys(parsedIdentity).filter((key) => parsedIdentity[key] !== null && parsedIdentity[key] !== undefined && parsedIdentity[key] !== ''),
+      providerIdentityMetadata: preservedProviderMetadata
     }
   };
 }
@@ -797,12 +971,17 @@ module.exports = {
   DEFAULT_SOURCE_ID,
   LIVE_FLAG_ENV,
   MAX_COMPATIBILITY_LIMIT,
+  MAX_PRESERVED_FEATURES,
+  MAX_PRESERVED_METADATA_STRING_LENGTH,
   OHTANI_CONTROL_QUERY,
+  PRESERVED_PROVIDER_METADATA_FIELDS,
+  PROVIDER_METADATA_FEATURE_CATEGORIES,
   REQUIRED_PROVIDER_FIELDS,
   SOURCE,
   boundedLimit,
   buildCardApiCapabilities,
   buildCardApiSalesUrl,
+  buildPreservedProviderIdentityMetadata,
   buildLocalCanonicalCardKey,
   createCardApiAcquisitionAdapter,
   executeCardApiSalesRequest,

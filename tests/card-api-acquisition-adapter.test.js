@@ -12,7 +12,9 @@ const {
   DEFAULT_ADAPTER_NAME,
   LIVE_FLAG_ENV,
   MAX_COMPATIBILITY_LIMIT,
+  PROVIDER_METADATA_FEATURE_CATEGORIES,
   OHTANI_CONTROL_QUERY,
+  buildPreservedProviderIdentityMetadata,
   boundedLimit,
   buildCardApiSalesUrl,
   buildLocalCanonicalCardKey,
@@ -133,6 +135,64 @@ test('valid provider transaction maps to CardHawk-compatible true sold candidate
   assert.equal(mapped.providerCompatibility.priceConfirmed, true);
   assert.equal(mapped.providerCompatibility.priceConfirmationStatus, 'confirmed');
   assert.equal(mapped.providerCompatibility.priceConfirmationReasonCode, null);
+});
+
+test('A5.16A preserves documented provider identity metadata internally with bounded feature categories only', () => {
+  const metadata = buildPreservedProviderIdentityMetadata(providerSale({
+    cert: 'PSA-SECRET-CERT-123',
+    condition: 'graded',
+    grading_company: 'Professional Sports Authenticator',
+    has_autograph_grade: true,
+    has_grade_qualifier: true,
+    label: '2023 Panini Prizm UFC Anthony Hernandez Silver Prizm #181 PSA 10',
+    grade_qualifier: 'OC',
+    autograph_grade: '10',
+    team: 'Factory Team Value',
+    features: [
+      'Auto',
+      'Rookie',
+      'Patch',
+      'Serial Numbered',
+      'mystery provider-only value',
+      { unsafe: true },
+      'Auto'
+    ]
+  }));
+
+  assert.equal(metadata.values.cert, 'PSA-SECRET-CERT-123');
+  assert.equal(metadata.values.grading_company, 'Professional Sports Authenticator');
+  assert.equal(metadata.availableFields.includes('cert'), true);
+  assert.equal(metadata.manualReviewOnlyFields.includes('cert'), true);
+  assert.equal(metadata.unusedFields.includes('cert'), true);
+  assert.equal(metadata.forwardedFields.includes('grading_company'), true);
+  assert.equal(metadata.forwardedFields.includes('team'), false);
+  assert.deepEqual(metadata.featureCategories, [
+    'autograph',
+    'memorabilia',
+    'rookie',
+    'serial_numbered'
+  ]);
+  assert.deepEqual(
+    metadata.featureCategories.filter((category) => PROVIDER_METADATA_FEATURE_CATEGORIES.includes(category)),
+    metadata.featureCategories
+  );
+  assert.equal(JSON.stringify(metadata).includes('mystery provider-only value'), false);
+});
+
+test('A5.16A preserved metadata never changes provisional confirmed-price boundaries', () => {
+  const mapped = translateCardApiSaleToRawCanonical(providerSale({
+    price_confirmed: false,
+    cert: 'PSA-SECRET-CERT-999',
+    grading_company: 'PSA',
+    features: ['Auto', 'Rookie']
+  }));
+
+  assert.equal(mapped.evidenceType, 'active_context');
+  assert.equal(mapped.status, 'provisional_price_context');
+  assert.equal(mapped.certificationNumber, null);
+  assert.equal(mapped.providerCompatibility.canonicalReadySoldPrice, false);
+  assert.equal(mapped.providerCompatibility.providerIdentityMetadata.availableFields.includes('cert'), true);
+  assert.equal(mapped.providerCompatibility.providerIdentityMetadata.featureCategories.includes('autograph'), true);
 });
 
 test('unconfirmed Card API prices fail closed as provisional context, not canonical true sold evidence', () => {

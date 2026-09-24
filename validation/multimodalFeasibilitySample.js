@@ -4,6 +4,8 @@ const {
   API_KEY_ENV: CARD_API_KEY_ENV,
   CONTROL_IDENTITY,
   CONTROL_QUERY,
+  PRESERVED_PROVIDER_METADATA_FIELDS,
+  PROVIDER_METADATA_FEATURE_CATEGORIES,
   LIVE_FLAG_ENV: CARD_API_LIVE_FLAG_ENV,
   executeCardApiSalesRequest
 } = require('../marketplaces/cardApiAcquisitionAdapter');
@@ -22,6 +24,7 @@ const {
 } = require('./openaiMultimodalProviderAdapter');
 const {
   MATERIAL_FIELDS,
+  parseTitleIdentity,
   resolveCardApiTransactionIdentity
 } = require('./cardApiIdentityResolutionPilot');
 const { SUPPORTED_FIELDS } = require('./multimodalSoldIdentityEvidencePilot');
@@ -131,6 +134,15 @@ const ABSENCE_SENSITIVE_MATERIAL_FIELDS = Object.freeze([
   'memorabiliaState',
   'serialNumbered',
   'rawOrGraded'
+]);
+
+const PROVIDER_METADATA_REASON_CODES = Object.freeze([
+  'preserved_candidate_only',
+  'preserved_candidate_only_from_deterministic_parse',
+  'preserved_feature_categories_only',
+  'preserved_internal_manual_verification_only',
+  'preserved_manual_context_only',
+  'preserved_manual_review_only'
 ]);
 
 function deepFreeze(value) {
@@ -325,6 +337,31 @@ function sortedSourceCountMap(map = {}) {
     .filter(([, count]) => count > 0)));
 }
 
+function sortedProviderMetadataFieldArray(values = []) {
+  const allowed = new Set(PRESERVED_PROVIDER_METADATA_FIELDS);
+  return deepFreeze(unique(asArray(values)
+    .map((value) => String(value || '').trim())
+    .filter((value) => allowed.has(value)))
+    .sort()
+    .slice(0, MAX_DIAGNOSTIC_FIELDS));
+}
+
+function sortedProviderMetadataReasonMap(map = {}) {
+  const allowedFields = new Set(PRESERVED_PROVIDER_METADATA_FIELDS);
+  const allowedReasons = new Set(PROVIDER_METADATA_REASON_CODES);
+  return deepFreeze(Object.fromEntries(Object.entries(asObject(map))
+    .filter(([field]) => allowedFields.has(field))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, reasonCodes]) => [
+      field,
+      unique((reasonCodes instanceof Set ? Array.from(reasonCodes) : asArray(reasonCodes))
+        .map((reason) => String(reason || '').trim())
+        .filter((reason) => allowedReasons.has(reason)))
+        .sort()
+    ])
+    .filter(([, reasonCodes]) => reasonCodes.length)));
+}
+
 function sortedFieldArrayMap(map = {}, fieldAllowlist = MATERIAL_FIELDS, valueAllowlist = null) {
   const allowedFields = new Set(fieldAllowlist);
   const allowedValues = valueAllowlist ? new Set(valueAllowlist) : null;
@@ -351,6 +388,19 @@ function addFieldArrayMapSets(target, source = {}, fieldAllowlist = MATERIAL_FIE
     for (const value of asArray(values)) {
       const safeValue = String(value || '').trim();
       if (safeValue && (!allowedValues || allowedValues.has(safeValue))) target[field].add(safeValue);
+    }
+  }
+}
+
+function addProviderMetadataReasonMapSets(target, source = {}) {
+  const allowedFields = new Set(PRESERVED_PROVIDER_METADATA_FIELDS);
+  const allowedReasons = new Set(PROVIDER_METADATA_REASON_CODES);
+  for (const [field, reasonCodes] of Object.entries(asObject(source))) {
+    if (!allowedFields.has(field)) continue;
+    if (!target[field]) target[field] = new Set();
+    for (const reason of asArray(reasonCodes)) {
+      const safeReason = String(reason || '').trim();
+      if (allowedReasons.has(safeReason)) target[field].add(safeReason);
     }
   }
 }
@@ -426,21 +476,70 @@ function sumBoundedUsage(total = {}, usage = {}) {
   }
 }
 
+function existingKnown(value) {
+  return value !== undefined && value !== null && value !== '' && value !== 'unknown';
+}
+
+function normalizeSampleText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s/#.'-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function providerMetadataDiagnosticsForTransaction(transaction = {}) {
+  const metadata = asObject(transaction.providerCompatibility?.providerIdentityMetadata);
+  return deepFreeze({
+    providerMetadataFieldsAvailable: sortedProviderMetadataFieldArray(metadata.availableFields),
+    providerMetadataFieldAvailabilityCount: sortedCountMap(Object.fromEntries(
+      sortedProviderMetadataFieldArray(metadata.availableFields).map((field) => [field, 1])
+    ), PRESERVED_PROVIDER_METADATA_FIELDS),
+    providerMetadataFieldsForwarded: sortedProviderMetadataFieldArray(metadata.forwardedFields),
+    providerMetadataFieldForwardCount: sortedCountMap(Object.fromEntries(
+      sortedProviderMetadataFieldArray(metadata.forwardedFields).map((field) => [field, 1])
+    ), PRESERVED_PROVIDER_METADATA_FIELDS),
+    providerMetadataFieldsManualReviewOnly: sortedProviderMetadataFieldArray(metadata.manualReviewOnlyFields),
+    providerMetadataFieldsUnused: sortedProviderMetadataFieldArray(metadata.unusedFields),
+    providerMetadataReasonCodesByField: sortedProviderMetadataReasonMap(metadata.reasonCodesByField),
+    providerMetadataFeatureCategoryFrequency: sortedCountMap(Object.fromEntries(
+      unique(asArray(metadata.featureCategories)
+        .filter((category) => PROVIDER_METADATA_FEATURE_CATEGORIES.includes(category)))
+        .sort()
+        .map((category) => [category, 1])
+    ), PROVIDER_METADATA_FEATURE_CATEGORIES)
+  });
+}
+
 function providerMetadataForCandidateLayer(transaction = {}) {
   const parsed = asObject(transaction.parsedIdentity);
+  const metadata = asObject(transaction.providerCompatibility?.providerIdentityMetadata?.values);
+  const labelParsed = metadata.label ? parseTitleIdentity(metadata.label) : {};
+  const features = asArray(metadata.features).filter((category) => PROVIDER_METADATA_FEATURE_CATEGORIES.includes(category));
+  const condition = normalizeSampleText(metadata.condition);
+  const rawOrGraded = condition === 'graded'
+    ? 'graded'
+    : transaction.condition;
+  const autographFromMetadata = features.includes('autograph') ||
+    metadata.has_autograph_grade === true ||
+    existingKnown(metadata.autograph_grade);
   return {
-    sport: parsed.sport || parsed.league,
-    subjectName: parsed.player || parsed.subject,
-    year: parsed.year,
-    manufacturer: parsed.brand || parsed.manufacturer,
-    product: parsed.product,
-    setName: parsed.setName || parsed.product,
-    cardNumber: parsed.cardNumber,
-    parallel: parsed.parallel || parsed.variation,
-    printRun: parsed.printRun,
-    rawOrGraded: transaction.condition,
-    gradeCompany: transaction.gradeCompany,
-    grade: transaction.grade
+    sport: parsed.sport || metadata.sport || metadata.league || parsed.league || labelParsed.sport,
+    subjectName: parsed.player || metadata.player || parsed.subject || labelParsed.subjectName,
+    year: parsed.year || metadata.year || metadata.season || labelParsed.year,
+    manufacturer: parsed.brand || metadata.manufacturer || parsed.manufacturer || labelParsed.manufacturer,
+    product: parsed.product || labelParsed.product,
+    setName: parsed.setName || metadata.card_set || parsed.product || labelParsed.setName,
+    cardNumber: parsed.cardNumber || metadata.card_number || labelParsed.cardNumber,
+    parallel: parsed.parallel || parsed.variation || labelParsed.parallel,
+    rookieDesignation: features.includes('rookie') || labelParsed.rookieDesignation,
+    autographState: autographFromMetadata || labelParsed.autographState,
+    memorabiliaState: features.includes('memorabilia') || labelParsed.memorabiliaState,
+    serialNumbered: features.includes('serial_numbered') || labelParsed.serialNumbered,
+    printRun: parsed.printRun || metadata.print_run || labelParsed.printRun,
+    rawOrGraded,
+    gradeCompany: metadata.grading_company || transaction.gradeCompany,
+    grade: transaction.grade || metadata.grade
   };
 }
 
@@ -480,7 +579,8 @@ function buildCandidateDiagnosticsForTransaction(transaction = {}, report = {}) 
   return {
     candidateDiagnostics: candidateArtifact.diagnostics,
     admissionEligibilityDiagnostics: admissionEligibilityReview.diagnostics,
-    shadowAdmissionDiagnostics: shadowAdmissionSimulation.diagnostics
+    shadowAdmissionDiagnostics: shadowAdmissionSimulation.diagnostics,
+    providerMetadataDiagnostics: providerMetadataDiagnosticsForTransaction(transaction)
   };
 }
 
@@ -488,10 +588,19 @@ function mergeCandidateDiagnosticsIntoReport(report = {}, transaction = {}) {
   const {
     candidateDiagnostics,
     admissionEligibilityDiagnostics,
-    shadowAdmissionDiagnostics
+    shadowAdmissionDiagnostics,
+    providerMetadataDiagnostics
   } = buildCandidateDiagnosticsForTransaction(transaction, report);
   return deepFreeze({
     ...report,
+    providerMetadataFieldsAvailable: providerMetadataDiagnostics.providerMetadataFieldsAvailable,
+    providerMetadataFieldAvailabilityCount: providerMetadataDiagnostics.providerMetadataFieldAvailabilityCount,
+    providerMetadataFieldsForwarded: providerMetadataDiagnostics.providerMetadataFieldsForwarded,
+    providerMetadataFieldForwardCount: providerMetadataDiagnostics.providerMetadataFieldForwardCount,
+    providerMetadataFieldsManualReviewOnly: providerMetadataDiagnostics.providerMetadataFieldsManualReviewOnly,
+    providerMetadataFieldsUnused: providerMetadataDiagnostics.providerMetadataFieldsUnused,
+    providerMetadataReasonCodesByField: providerMetadataDiagnostics.providerMetadataReasonCodesByField,
+    providerMetadataFeatureCategoryFrequency: providerMetadataDiagnostics.providerMetadataFeatureCategoryFrequency,
     candidateFields: candidateDiagnostics.candidateFields,
     candidateCountByField: candidateDiagnostics.candidateCountByField,
     candidateProvenanceCategoriesByField: candidateDiagnostics.candidateProvenanceCategoriesByField,
@@ -648,6 +757,14 @@ function buildEmptyFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    providerMetadataFieldsAvailable: [],
+    providerMetadataFieldAvailabilityCount: {},
+    providerMetadataFieldsForwarded: [],
+    providerMetadataFieldForwardCount: {},
+    providerMetadataFieldsManualReviewOnly: [],
+    providerMetadataFieldsUnused: [],
+    providerMetadataReasonCodesByField: {},
+    providerMetadataFeatureCategoryFrequency: {},
     candidateFields: [],
     candidateCountByField: {},
     candidateProvenanceCategoriesByField: {},
@@ -723,6 +840,12 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: {},
     blockerClassificationFrequency: {},
     requiredEvidenceCategoryFrequency: {},
+    providerMetadataFieldAvailabilityCount: {},
+    providerMetadataFieldForwardCount: {},
+    providerMetadataFieldsManualReviewOnly: {},
+    providerMetadataFieldsUnused: {},
+    providerMetadataReasonCodesByField: {},
+    providerMetadataFeatureCategoryFrequency: {},
     candidateCountByField: {},
     candidateProvenanceCategoriesByField: {},
     candidateReasonCodesByField: {},
@@ -789,6 +912,28 @@ function buildFeasibilitySampleReport(input = {}) {
     for (const field of asArray(report.recoveredMaterialFields)) incrementCount(totals.recoveredFieldFrequency, field, 1, MATERIAL_FIELDS);
     for (const field of asArray(report.conflictFields)) incrementCount(totals.conflictFieldFrequency, field, 1, SUPPORTED_FIELDS);
     addBlockerClassificationCounts(totals.blockerClassificationFrequency, report.blockerClassificationByField);
+    addMapCounts(
+      totals.providerMetadataFieldAvailabilityCount,
+      report.providerMetadataFieldAvailabilityCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    );
+    addMapCounts(
+      totals.providerMetadataFieldForwardCount,
+      report.providerMetadataFieldForwardCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    );
+    for (const field of asArray(report.providerMetadataFieldsManualReviewOnly)) {
+      incrementCount(totals.providerMetadataFieldsManualReviewOnly, field, 1, PRESERVED_PROVIDER_METADATA_FIELDS);
+    }
+    for (const field of asArray(report.providerMetadataFieldsUnused)) {
+      incrementCount(totals.providerMetadataFieldsUnused, field, 1, PRESERVED_PROVIDER_METADATA_FIELDS);
+    }
+    addProviderMetadataReasonMapSets(totals.providerMetadataReasonCodesByField, report.providerMetadataReasonCodesByField);
+    addMapCounts(
+      totals.providerMetadataFeatureCategoryFrequency,
+      report.providerMetadataFeatureCategoryFrequency,
+      PROVIDER_METADATA_FEATURE_CATEGORIES
+    );
     addMapCounts(totals.candidateCountByField, report.candidateCountByField, SUPPORTED_FIELDS);
     for (const field of asArray(report.candidateConflictFields)) incrementCount(totals.candidateConflictFields, field, 1, SUPPORTED_FIELDS);
     for (const field of asArray(report.fieldsStillRequiringAdditionalEvidence)) {
@@ -917,6 +1062,35 @@ function buildFeasibilitySampleReport(input = {}) {
     conflictFieldFrequency: sortedCountMap(totals.conflictFieldFrequency, SUPPORTED_FIELDS),
     blockerClassificationFrequency: sortedCountMap(totals.blockerClassificationFrequency, Object.values(FEASIBILITY_CLASSIFICATIONS)),
     requiredEvidenceCategoryFrequency: sortedCountMap(totals.requiredEvidenceCategoryFrequency, EVIDENCE_CATEGORY_CODES),
+    providerMetadataFieldsAvailable: Object.keys(sortedCountMap(
+      totals.providerMetadataFieldAvailabilityCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    )),
+    providerMetadataFieldAvailabilityCount: sortedCountMap(
+      totals.providerMetadataFieldAvailabilityCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    ),
+    providerMetadataFieldsForwarded: Object.keys(sortedCountMap(
+      totals.providerMetadataFieldForwardCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    )),
+    providerMetadataFieldForwardCount: sortedCountMap(
+      totals.providerMetadataFieldForwardCount,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    ),
+    providerMetadataFieldsManualReviewOnly: Object.keys(sortedCountMap(
+      totals.providerMetadataFieldsManualReviewOnly,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    )),
+    providerMetadataFieldsUnused: Object.keys(sortedCountMap(
+      totals.providerMetadataFieldsUnused,
+      PRESERVED_PROVIDER_METADATA_FIELDS
+    )),
+    providerMetadataReasonCodesByField: sortedProviderMetadataReasonMap(totals.providerMetadataReasonCodesByField),
+    providerMetadataFeatureCategoryFrequency: sortedCountMap(
+      totals.providerMetadataFeatureCategoryFrequency,
+      PROVIDER_METADATA_FEATURE_CATEGORIES
+    ),
     candidateFields: Object.keys(sortedCountMap(totals.candidateCountByField, SUPPORTED_FIELDS)),
     candidateCountByField: sortedCountMap(totals.candidateCountByField, SUPPORTED_FIELDS),
     candidateProvenanceCategoriesByField: sortedFieldArrayMap(totals.candidateProvenanceCategoriesByField, SUPPORTED_FIELDS, [
