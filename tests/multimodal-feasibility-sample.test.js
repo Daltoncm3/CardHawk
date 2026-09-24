@@ -326,6 +326,16 @@ test('A5.10 feasibility sample completes three unique transactions sequentially 
   );
   assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
   assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
+  assert.equal(report.shadowSimulationTransactionCount, 3);
+  assert.equal(report.shadowCandidatesConsidered >= 3, true);
+  assert.equal(
+    report.shadowCandidatesConsidered,
+    report.shadowCandidatesApplied + report.shadowCandidatesExcluded
+  );
+  assert.equal(report.shadowSimulationConsistencyStatus, 'consistent');
+  assert.deepEqual(report.shadowSimulationConsistencyReasonCodes, ['shadow_consistency_ok']);
+  assert.equal(report.shadowOnly, true);
+  assert.equal(report.admittedToProduction, false);
   assert.equal(Object.hasOwn(report, 'configuredModel'), false);
   assert.deepEqual(report.unresolvedAdmissionConflictFields, []);
   assert.equal(report.transactionsRequiringAdditionalEvidence, 3);
@@ -395,6 +405,9 @@ test('A5.14 aggregate eligibility diagnostics fail closed for provisional sale c
     true
   );
   assert.equal(report.canonicalSoldEvidenceStructurallyReadyCount, 0);
+  assert.equal(report.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount, 0);
+  assert.equal(report.shadowCandidatesApplied, 0);
+  assert.equal(report.shadowSimulationConsistencyStatus, 'consistent');
   assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
   assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
   assert.equal(Object.hasOwn(report, 'configuredModel'), false);
@@ -532,6 +545,11 @@ test('A5.14A aggregate eligibility counts reconcile for the observed 23-candidat
   assert.equal(report.eligibilityReviewedCandidateCount, 23);
   assert.equal(report.eligibilityAggregateConsistencyStatus, 'consistent');
   assert.deepEqual(report.eligibilityAggregateConsistencyReasonCodes, ['aggregate_consistency_ok']);
+  assert.equal(report.shadowSimulationTransactionCount, 3);
+  assert.equal(report.shadowCandidatesConsidered, 23);
+  assert.equal(report.shadowCandidatesApplied + report.shadowCandidatesExcluded, 23);
+  assert.equal(report.shadowCandidatesApplied <= 17, true);
+  assert.equal(report.shadowSimulationConsistencyStatus, 'consistent');
   assert.equal(Object.hasOwn(report, 'configuredModel'), false);
   assert.equal(serialized.includes(DEFAULT_OPENAI_MODEL), false);
   assert.equal(serialized.includes('sample-secret-id'), false);
@@ -585,11 +603,70 @@ test('A5.14A aggregate eligibility fails closed instead of publishing contradict
   assert.equal(report.eligibilityAggregateConsistencyReasonCodes.includes('eligibility_classification_count_mismatch'), true);
   assert.equal(report.transactionsWithFutureAdmissionEligibleCandidates, 0);
   assert.equal(report.futureDeterministicAdmissionCouldMateriallyHelp, false);
+  assert.equal(report.shadowCandidatesApplied, 0);
+  assert.equal(report.shadowSimulationConsistencyStatus, 'invalid');
   assert.equal(Object.hasOwn(report, 'configuredModel'), false);
   assert.equal(serialized.includes(DEFAULT_OPENAI_MODEL), false);
   assert.equal(report.productionImpact, 'none');
   assert.equal(report.decisionImpact, 'none');
   assert.equal(report.executionAuthority, 'none');
+});
+
+test('A5.15 shadow admission simulates eligible candidate impact without changing actual counts', async () => {
+  const reports = [
+    aggregateOnlyReport({
+      missingMaterialFieldsBefore: ['cardNumber'],
+      missingMaterialFieldsAfter: ['cardNumber'],
+      requiredEvidenceCategoriesByField: { cardNumber: ['explicit_title_evidence'] }
+    })
+  ];
+  const rawSale = sampleSale(1, {
+    title: '2024 Topps Chrome Shohei Ohtani Gold Auto Patch /99 PSA 10',
+    card_number: '33',
+    price_confirmed: true
+  });
+  const rawSaleBefore = JSON.stringify(rawSale);
+  const result = await withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [rawSale]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  }));
+  const report = result.report;
+  const serialized = JSON.stringify(report);
+
+  assert.equal(report.exactReachedCount, 0);
+  assert.equal(report.canonicalSoldEvidenceStructurallyReadyCount, 0);
+  assert.equal(report.shadowSimulationTransactionCount, 1);
+  assert.equal(report.shadowCandidatesConsidered >= 2, true);
+  assert.equal(report.shadowCandidatesConsidered, report.shadowCandidatesApplied + report.shadowCandidatesExcluded);
+  assert.equal(report.shadowCandidatesApplied, 0);
+  assert.equal(report.shadowCandidatesExcluded >= 0, true);
+  assert.equal(report.shadowAppliedFields.includes('cardNumber'), false);
+  assert.deepEqual(report.shadowMissingFieldFrequencyBefore, { cardNumber: 1 });
+  assert.deepEqual(report.shadowMissingFieldFrequencyAfter, {});
+  assert.deepEqual(report.shadowRecoveredFieldFrequency, {});
+  assert.equal(report.shadowClassificationImprovementCount >= 0, true);
+  assert.equal(report.shadowExactWouldBeReachedCount, 0);
+  assert.equal(report.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount, 0);
+  assert.equal(report.shadowTransactionsStillRequiringAdditionalEvidence, 0);
+  assert.equal(report.shadowSimulationConsistencyStatus, 'consistent');
+  assert.deepEqual(report.shadowSimulationConsistencyReasonCodes, ['shadow_consistency_ok']);
+  assert.equal(report.shadowOnly, true);
+  assert.equal(report.admittedToProduction, false);
+  assert.equal(serialized.includes('Shohei'), false);
+  assert.equal(serialized.includes('Ohtani'), false);
+  assert.equal(serialized.includes('sample-secret-id'), false);
+  assert.equal(serialized.includes('https://'), false);
+  assert.equal(report.productionImpact, 'none');
+  assert.equal(report.decisionImpact, 'none');
+  assert.equal(report.executionAuthority, 'none');
+  assert.equal(JSON.stringify(rawSale), rawSaleBefore);
 });
 
 test('A5.10 feasibility sample deduplicates and never retries failed model requests', async () => {

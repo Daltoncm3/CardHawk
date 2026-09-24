@@ -20,7 +20,10 @@ const {
   createOpenAIMultimodalProviderAdapter,
   runOpenAIMultimodalTransactionAnalysis
 } = require('./openaiMultimodalProviderAdapter');
-const { MATERIAL_FIELDS } = require('./cardApiIdentityResolutionPilot');
+const {
+  MATERIAL_FIELDS,
+  resolveCardApiTransactionIdentity
+} = require('./cardApiIdentityResolutionPilot');
 const { SUPPORTED_FIELDS } = require('./multimodalSoldIdentityEvidencePilot');
 const {
   DEFAULT_REQUESTED_FIELDS
@@ -39,6 +42,12 @@ const {
   ELIGIBILITY_REASON_CODES,
   reviewTitleProviderCandidateAdmissionEligibility
 } = require('./titleProviderCandidateAdmissionEligibilityReview');
+const {
+  SHADOW_CANDIDATE_EXCLUSION_REASON_CODES,
+  SHADOW_SIMULATION_CONSISTENCY_REASON_CODES,
+  SHADOW_SIMULATION_CONSISTENCY_STATUSES,
+  simulateTitleProviderShadowAdmission
+} = require('./titleProviderShadowAdmissionSimulation');
 
 const SOURCE = 'multimodal_feasibility_sample';
 const VERSION = '0.1.0';
@@ -446,6 +455,8 @@ function sourceReadinessForCandidateAdmission(transaction = {}) {
 }
 
 function buildCandidateDiagnosticsForTransaction(transaction = {}, report = {}) {
+  const sourceReadiness = sourceReadinessForCandidateAdmission(transaction);
+  const existingIdentityResult = resolveCardApiTransactionIdentity(transaction);
   const candidateArtifact = buildTitleProviderEvidenceCandidates({
     normalizedListingTitle: transaction.rawTitle || transaction.title || '',
     providerMetadata: providerMetadataForCandidateLayer(transaction),
@@ -453,20 +464,31 @@ function buildCandidateDiagnosticsForTransaction(transaction = {}, report = {}) 
   });
   const admissionEligibilityReview = reviewTitleProviderCandidateAdmissionEligibility({
     candidateArtifact,
-    sourceReadiness: sourceReadinessForCandidateAdmission(transaction),
+    sourceReadiness,
+    identityDiagnostics: report
+  });
+  const shadowAdmissionSimulation = simulateTitleProviderShadowAdmission({
+    transaction,
+    candidateArtifact,
+    eligibilityReview: admissionEligibilityReview,
+    sourceReadiness,
+    existingEvidenceResult: report.evidenceResult || {},
+    existingIdentityResult,
     identityDiagnostics: report
   });
 
   return {
     candidateDiagnostics: candidateArtifact.diagnostics,
-    admissionEligibilityDiagnostics: admissionEligibilityReview.diagnostics
+    admissionEligibilityDiagnostics: admissionEligibilityReview.diagnostics,
+    shadowAdmissionDiagnostics: shadowAdmissionSimulation.diagnostics
   };
 }
 
 function mergeCandidateDiagnosticsIntoReport(report = {}, transaction = {}) {
   const {
     candidateDiagnostics,
-    admissionEligibilityDiagnostics
+    admissionEligibilityDiagnostics,
+    shadowAdmissionDiagnostics
   } = buildCandidateDiagnosticsForTransaction(transaction, report);
   return deepFreeze({
     ...report,
@@ -490,7 +512,29 @@ function mergeCandidateDiagnosticsIntoReport(report = {}, transaction = {}) {
     eligibilityAggregateConsistencyStatus: admissionEligibilityDiagnostics.eligibilityAggregateConsistencyStatus,
     eligibilityAggregateConsistencyReasonCodes: admissionEligibilityDiagnostics.eligibilityAggregateConsistencyReasonCodes,
     transactionsWithFutureAdmissionEligibleCandidates: admissionEligibilityDiagnostics.transactionsWithFutureAdmissionEligibleCandidates,
-    futureDeterministicAdmissionCouldMateriallyHelp: admissionEligibilityDiagnostics.futureDeterministicAdmissionCouldMateriallyHelp
+    futureDeterministicAdmissionCouldMateriallyHelp: admissionEligibilityDiagnostics.futureDeterministicAdmissionCouldMateriallyHelp,
+    shadowSimulationTransactionCount: shadowAdmissionDiagnostics.shadowSimulationTransactionCount,
+    shadowCandidatesConsidered: shadowAdmissionDiagnostics.shadowCandidatesConsidered,
+    shadowCandidatesApplied: shadowAdmissionDiagnostics.shadowCandidatesApplied,
+    shadowCandidatesExcluded: shadowAdmissionDiagnostics.shadowCandidatesExcluded,
+    shadowCandidateExclusionReasonCounts: shadowAdmissionDiagnostics.shadowCandidateExclusionReasonCounts,
+    shadowAppliedFields: shadowAdmissionDiagnostics.shadowAppliedFields,
+    shadowConflictFields: shadowAdmissionDiagnostics.shadowConflictFields,
+    shadowMissingFieldFrequencyBefore: shadowAdmissionDiagnostics.shadowMissingFieldFrequencyBefore,
+    shadowMissingFieldFrequencyAfter: shadowAdmissionDiagnostics.shadowMissingFieldFrequencyAfter,
+    shadowRecoveredFieldFrequency: shadowAdmissionDiagnostics.shadowRecoveredFieldFrequency,
+    shadowClassificationCountsBefore: shadowAdmissionDiagnostics.shadowClassificationCountsBefore,
+    shadowClassificationCountsAfter: shadowAdmissionDiagnostics.shadowClassificationCountsAfter,
+    shadowClassificationImprovementCount: shadowAdmissionDiagnostics.shadowClassificationImprovementCount,
+    shadowExactWouldBeReachedCount: shadowAdmissionDiagnostics.shadowExactWouldBeReachedCount,
+    shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount:
+      shadowAdmissionDiagnostics.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount,
+    shadowTransactionsStillRequiringAdditionalEvidence:
+      shadowAdmissionDiagnostics.shadowTransactionsStillRequiringAdditionalEvidence,
+    shadowSimulationConsistencyStatus: shadowAdmissionDiagnostics.shadowSimulationConsistencyStatus,
+    shadowSimulationConsistencyReasonCodes: shadowAdmissionDiagnostics.shadowSimulationConsistencyReasonCodes,
+    shadowOnly: shadowAdmissionDiagnostics.shadowOnly,
+    admittedToProduction: shadowAdmissionDiagnostics.admittedToProduction
   });
 }
 
@@ -626,6 +670,26 @@ function buildEmptyFeasibilitySampleReport(input = {}) {
     eligibilityReviewedCandidateCount: 0,
     eligibilityAggregateConsistencyStatus: 'consistent',
     eligibilityAggregateConsistencyReasonCodes: ['aggregate_consistency_ok'],
+    shadowSimulationTransactionCount: 0,
+    shadowCandidatesConsidered: 0,
+    shadowCandidatesApplied: 0,
+    shadowCandidatesExcluded: 0,
+    shadowCandidateExclusionReasonCounts: {},
+    shadowAppliedFields: [],
+    shadowConflictFields: [],
+    shadowMissingFieldFrequencyBefore: {},
+    shadowMissingFieldFrequencyAfter: {},
+    shadowRecoveredFieldFrequency: {},
+    shadowClassificationCountsBefore: {},
+    shadowClassificationCountsAfter: {},
+    shadowClassificationImprovementCount: 0,
+    shadowExactWouldBeReachedCount: 0,
+    shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount: 0,
+    shadowTransactionsStillRequiringAdditionalEvidence: 0,
+    shadowSimulationConsistencyStatus: SHADOW_SIMULATION_CONSISTENCY_STATUSES.CONSISTENT,
+    shadowSimulationConsistencyReasonCodes: ['shadow_consistency_ok'],
+    shadowOnly: true,
+    admittedToProduction: false,
     evidenceAcquisitionPlanByField: {},
     transactionsRequiringAdditionalEvidence: 0,
     averageMaterialFieldRecoveryRate: 0,
@@ -673,6 +737,15 @@ function buildFeasibilitySampleReport(input = {}) {
     manualReviewCandidateFields: {},
     manualReviewCandidateCountByField: {},
     manualReviewReasonCodesByField: {},
+    shadowCandidateExclusionReasonCounts: {},
+    shadowAppliedFields: {},
+    shadowConflictFields: {},
+    shadowMissingFieldFrequencyBefore: {},
+    shadowMissingFieldFrequencyAfter: {},
+    shadowRecoveredFieldFrequency: {},
+    shadowClassificationCountsBefore: {},
+    shadowClassificationCountsAfter: {},
+    shadowSimulationConsistencyReasonCodes: {},
     fieldsRequiringEvidenceSource: {},
     transactionCountsRequiringEvidenceSource: {},
     boundedTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, modelRequests: 0, inputImages: 0 }
@@ -691,6 +764,15 @@ function buildFeasibilitySampleReport(input = {}) {
   let rejectedObservationCount = 0;
   let transactionsRequiringAdditionalEvidence = 0;
   let transactionsWithFutureAdmissionEligibleCandidates = 0;
+  let shadowSimulationTransactionCount = 0;
+  let shadowCandidatesConsidered = 0;
+  let shadowCandidatesApplied = 0;
+  let shadowCandidatesExcluded = 0;
+  let shadowClassificationImprovementCount = 0;
+  let shadowExactWouldBeReachedCount = 0;
+  let shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount = 0;
+  let shadowTransactionsStillRequiringAdditionalEvidence = 0;
+  let shadowSimulationConsistencyStatus = SHADOW_SIMULATION_CONSISTENCY_STATUSES.CONSISTENT;
   let recoveryRateSum = 0;
 
   for (const report of reports) {
@@ -749,6 +831,43 @@ function buildFeasibilitySampleReport(input = {}) {
       ELIGIBILITY_REASON_CODES
     );
     transactionsWithFutureAdmissionEligibleCandidates += Math.max(0, Number(report.transactionsWithFutureAdmissionEligibleCandidates) || 0);
+    shadowSimulationTransactionCount += Math.max(0, Number(report.shadowSimulationTransactionCount) || 0);
+    shadowCandidatesConsidered += Math.max(0, Number(report.shadowCandidatesConsidered) || 0);
+    shadowCandidatesApplied += Math.max(0, Number(report.shadowCandidatesApplied) || 0);
+    shadowCandidatesExcluded += Math.max(0, Number(report.shadowCandidatesExcluded) || 0);
+    shadowClassificationImprovementCount += Math.max(0, Number(report.shadowClassificationImprovementCount) || 0);
+    shadowExactWouldBeReachedCount += Math.max(0, Number(report.shadowExactWouldBeReachedCount) || 0);
+    shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount += Math.max(
+      0,
+      Number(report.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount) || 0
+    );
+    shadowTransactionsStillRequiringAdditionalEvidence += Math.max(
+      0,
+      Number(report.shadowTransactionsStillRequiringAdditionalEvidence) || 0
+    );
+    addMapCounts(
+      totals.shadowCandidateExclusionReasonCounts,
+      report.shadowCandidateExclusionReasonCounts,
+      SHADOW_CANDIDATE_EXCLUSION_REASON_CODES
+    );
+    for (const field of asArray(report.shadowAppliedFields)) incrementCount(totals.shadowAppliedFields, field, 1, SUPPORTED_FIELDS);
+    for (const field of asArray(report.shadowConflictFields)) incrementCount(totals.shadowConflictFields, field, 1, SUPPORTED_FIELDS);
+    addMapCounts(totals.shadowMissingFieldFrequencyBefore, report.shadowMissingFieldFrequencyBefore, MATERIAL_FIELDS);
+    addMapCounts(totals.shadowMissingFieldFrequencyAfter, report.shadowMissingFieldFrequencyAfter, MATERIAL_FIELDS);
+    addMapCounts(totals.shadowRecoveredFieldFrequency, report.shadowRecoveredFieldFrequency, MATERIAL_FIELDS);
+    addMapCounts(totals.shadowClassificationCountsBefore, report.shadowClassificationCountsBefore);
+    addMapCounts(totals.shadowClassificationCountsAfter, report.shadowClassificationCountsAfter);
+    for (const reasonCode of asArray(report.shadowSimulationConsistencyReasonCodes)) {
+      incrementCount(
+        totals.shadowSimulationConsistencyReasonCodes,
+        reasonCode,
+        1,
+        SHADOW_SIMULATION_CONSISTENCY_REASON_CODES
+      );
+    }
+    if (report.shadowSimulationConsistencyStatus !== SHADOW_SIMULATION_CONSISTENCY_STATUSES.CONSISTENT) {
+      shadowSimulationConsistencyStatus = SHADOW_SIMULATION_CONSISTENCY_STATUSES.INVALID;
+    }
     for (const categories of Object.values(asObject(report.requiredEvidenceCategoriesByField))) {
       for (const category of asArray(categories)) incrementCount(totals.requiredEvidenceCategoryFrequency, category, 1, EVIDENCE_CATEGORY_CODES);
     }
@@ -760,6 +879,14 @@ function buildFeasibilitySampleReport(input = {}) {
 
   const evaluated = Math.max(0, Number(input.uniqueTransactionsEvaluated) || 0);
   const evidenceAcquisitionPlanByField = sortedFieldSourcePlanMap(evidencePlanTotals.evidenceAcquisitionPlanByField);
+  const shadowConsistencyReasonCodes = Object.keys(sortedCountMap(
+    totals.shadowSimulationConsistencyReasonCodes,
+    SHADOW_SIMULATION_CONSISTENCY_REASON_CODES
+  ))
+    .filter((reasonCode) => (
+      shadowSimulationConsistencyStatus === SHADOW_SIMULATION_CONSISTENCY_STATUSES.CONSISTENT ||
+      reasonCode !== 'shadow_consistency_ok'
+    ));
   const report = {
     phase: 'A5.10',
     source: SOURCE,
@@ -826,6 +953,31 @@ function buildFeasibilitySampleReport(input = {}) {
     ),
     transactionsWithFutureAdmissionEligibleCandidates,
     futureDeterministicAdmissionCouldMateriallyHelp: transactionsWithFutureAdmissionEligibleCandidates > 0,
+    shadowSimulationTransactionCount,
+    shadowCandidatesConsidered,
+    shadowCandidatesApplied,
+    shadowCandidatesExcluded,
+    shadowCandidateExclusionReasonCounts: sortedCountMap(
+      totals.shadowCandidateExclusionReasonCounts,
+      SHADOW_CANDIDATE_EXCLUSION_REASON_CODES
+    ),
+    shadowAppliedFields: Object.keys(sortedCountMap(totals.shadowAppliedFields, SUPPORTED_FIELDS)),
+    shadowConflictFields: Object.keys(sortedCountMap(totals.shadowConflictFields, SUPPORTED_FIELDS)),
+    shadowMissingFieldFrequencyBefore: sortedCountMap(totals.shadowMissingFieldFrequencyBefore, MATERIAL_FIELDS),
+    shadowMissingFieldFrequencyAfter: sortedCountMap(totals.shadowMissingFieldFrequencyAfter, MATERIAL_FIELDS),
+    shadowRecoveredFieldFrequency: sortedCountMap(totals.shadowRecoveredFieldFrequency, MATERIAL_FIELDS),
+    shadowClassificationCountsBefore: sortedCountMap(totals.shadowClassificationCountsBefore),
+    shadowClassificationCountsAfter: sortedCountMap(totals.shadowClassificationCountsAfter),
+    shadowClassificationImprovementCount,
+    shadowExactWouldBeReachedCount,
+    shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount,
+    shadowTransactionsStillRequiringAdditionalEvidence,
+    shadowSimulationConsistencyStatus,
+    shadowSimulationConsistencyReasonCodes: shadowConsistencyReasonCodes.length
+      ? shadowConsistencyReasonCodes
+      : ['shadow_consistency_ok'],
+    shadowOnly: true,
+    admittedToProduction: false,
     evidenceAcquisitionPlanByField,
     fieldsRequiringEvidenceSource: sortedSourceFieldMap(evidencePlanTotals.fieldsRequiringEvidenceSource),
     transactionCountsRequiringEvidenceSource: sortedSourceCountMap(evidencePlanTotals.transactionCountsRequiringEvidenceSource),
