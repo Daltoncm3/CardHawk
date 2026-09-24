@@ -234,8 +234,43 @@ test('A5.15 excludes manual-review, ineligible, absence-sensitive, and provision
   assert.equal(result.diagnostics.shadowCandidatesExcluded, 3);
   assert.equal(result.diagnostics.shadowCandidateExclusionReasonCounts.manual_review_candidate_excluded, 2);
   assert.equal(result.diagnostics.shadowCandidateExclusionReasonCounts.provisional_price_not_shadow_ready, 1);
+  assert.deepEqual(result.diagnostics.shadowMissingFieldFrequencyBefore, result.diagnostics.shadowMissingFieldFrequencyAfter);
+  assert.deepEqual(result.diagnostics.shadowRecoveredFieldFrequency, {});
+  assert.equal(result.diagnostics.shadowClassificationImprovementCount, 0);
   assert.equal(result.diagnostics.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount, 0);
   assert.deepEqual(result.diagnostics.shadowAppliedFields, []);
+});
+
+test('A5.15A preserves paired resolver parity when all candidates are excluded', () => {
+  const candidates = Array.from({ length: 16 }, (_, index) => candidate({
+    field: index % 2 === 0 ? 'cardNumber' : 'parallel',
+    normalizedCandidateValue: index % 2 === 0 ? '17' : 'gold',
+    provenanceCategory: 'explicit_title_evidence'
+  }));
+  const result = simulateTitleProviderShadowAdmission({
+    transaction: transaction({
+      title: '2024 Topps Chrome Shohei Ohtani Gold Auto Patch /99 PSA 10'
+    }),
+    candidateArtifact: candidateArtifact(candidates),
+    eligibilityReview: eligibilityReview(candidates),
+    sourceReadiness: readiness(),
+    identityDiagnostics: identityDiagnostics({
+      missingMaterialFieldsAfter: ['manufacturer', 'rawOrGraded', 'serialNumbered', 'subjectName']
+    })
+  });
+
+  assert.equal(result.diagnostics.shadowCandidatesConsidered, 16);
+  assert.equal(result.diagnostics.shadowCandidatesApplied, 0);
+  assert.equal(result.diagnostics.shadowCandidatesExcluded, 16);
+  assert.deepEqual(result.diagnostics.shadowMissingFieldFrequencyBefore, result.diagnostics.shadowMissingFieldFrequencyAfter);
+  assert.deepEqual(result.diagnostics.shadowClassificationCountsBefore, result.diagnostics.shadowClassificationCountsAfter);
+  assert.deepEqual(result.diagnostics.shadowRecoveredFieldFrequency, {});
+  assert.equal(result.diagnostics.shadowClassificationImprovementCount, 0);
+  assert.equal(result.diagnostics.shadowExactWouldBeReachedCount, 0);
+  assert.equal(result.diagnostics.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount, 0);
+  assert.deepEqual(result.diagnostics.shadowConflictFields, []);
+  assert.equal(result.diagnostics.shadowSimulationConsistencyStatus, SHADOW_SIMULATION_CONSISTENCY_STATUSES.CONSISTENT);
+  assert.deepEqual(result.diagnostics.shadowSimulationConsistencyReasonCodes, ['shadow_consistency_ok']);
 });
 
 test('A5.15 treats multiple eligible values for the same field as a shadow conflict', () => {
@@ -428,13 +463,10 @@ test('A5.15 invokes the existing resolver with inserted provider metadata and pr
   delete require.cache[shadowPath];
   const identityModule = require(identityPath);
   const original = identityModule.resolveCardApiTransactionIdentity;
-  let calls = 0;
-  let capturedInput = null;
+  const capturedInputs = [];
   identityModule.resolveCardApiTransactionIdentity = (input, options = {}) => {
-    calls += 1;
-    capturedInput = input;
+    capturedInputs.push(input);
     assert.equal(options.shadowOnly, true);
-    assert.equal(input.parsedIdentity.cardNumber, '17');
     assert.equal(Object.hasOwn(input, 'observations'), false);
     return original(input, options);
   };
@@ -459,8 +491,13 @@ test('A5.15 invokes the existing resolver with inserted provider metadata and pr
     delete require.cache[shadowPath];
   }
 
-  assert.equal(calls, 1);
-  assert.equal(capturedInput.parsedIdentity.cardNumber, '17');
+  assert.equal(capturedInputs.length, 2);
+  assert.equal(capturedInputs[0].parsedIdentity, undefined);
+  assert.equal(capturedInputs[1].parsedIdentity.cardNumber, '17');
+  assert.equal(
+    Object.keys(capturedInputs[1].parsedIdentity).length - Object.keys(capturedInputs[0].parsedIdentity || {}).length,
+    1
+  );
   assert.equal(result.diagnostics.shadowCandidatesApplied, 1);
   assert.deepEqual(result.diagnostics.shadowRecoveredFieldFrequency, { cardNumber: 1 });
   assert.equal(result.diagnostics.shadowClassificationImprovementCount, 1);

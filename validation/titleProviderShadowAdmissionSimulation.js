@@ -44,6 +44,8 @@ const SHADOW_SIMULATION_CONSISTENCY_REASON_CODES = Object.freeze([
   'shadow_consistency_ok',
   'shadow_considered_count_mismatch',
   'shadow_manual_or_ineligible_applied',
+  'shadow_recovery_attribution_mismatch',
+  'shadow_zero_applied_baseline_mismatch',
   'shadow_provisional_candidate_applied'
 ]);
 
@@ -394,6 +396,10 @@ function buildShadowTransaction(input = {}, appliedCandidates = []) {
   return transaction;
 }
 
+function buildShadowResolverInput(input = {}, appliedCandidates = []) {
+  return buildShadowTransaction(input, appliedCandidates);
+}
+
 function resolveShadowIdentity(input = {}, appliedCandidates = []) {
   const shadowTransaction = buildShadowTransaction(input, appliedCandidates);
   return resolveCardApiTransactionIdentity(shadowTransaction, {
@@ -402,19 +408,25 @@ function resolveShadowIdentity(input = {}, appliedCandidates = []) {
   });
 }
 
-function buildDiagnostics(input = {}, state = {}, finalized = {}, shadowIdentityResult = {}) {
-  const identityDiagnostics = asObject(input.identityDiagnostics);
+function buildDiagnostics(input = {}, state = {}, finalized = {}, resolverPair = {}) {
   const sourceReady = confirmedTrueSoldPriceReady(asObject(input.sourceReadiness));
   const aggregateConsistent = input.aggregateConsistent === true;
-  const beforeMissing = getBeforeMissingFields(identityDiagnostics);
-  const afterMissing = sortedFieldArray(shadowIdentityResult.missingMaterialFields, MATERIAL_FIELDS);
+  const baselineIdentityResult = asObject(resolverPair.baselineIdentityResult);
+  const candidateIdentityResult = asObject(resolverPair.candidateIdentityResult);
+  const beforeMissing = sortedFieldArray(baselineIdentityResult.missingMaterialFields, MATERIAL_FIELDS);
+  const afterMissing = sortedFieldArray(candidateIdentityResult.missingMaterialFields, MATERIAL_FIELDS);
   const afterMissingSet = new Set(afterMissing);
   const appliedFieldSet = new Set(finalized.appliedFields);
   const recovered = beforeMissing.filter((field) => appliedFieldSet.has(field) && !afterMissingSet.has(field));
-  const beforeClassification = String(input.existingIdentityResult?.classification || 'UNRESOLVED');
-  const afterClassification = String(shadowIdentityResult.classification || beforeClassification);
+  const beforeClassification = String(baselineIdentityResult.classification || 'UNRESOLVED');
+  const afterClassification = String(candidateIdentityResult.classification || beforeClassification);
   const insertedCandidateCount = asArray(state.appliedCandidates).length;
-  const exactWouldBeReached = insertedCandidateCount > 0 && afterClassification === RESOLUTION_CLASSIFICATIONS.EXACT;
+  const exactWouldBeReached = insertedCandidateCount > 0 &&
+    beforeClassification !== RESOLUTION_CLASSIFICATIONS.EXACT &&
+    afterClassification === RESOLUTION_CLASSIFICATIONS.EXACT;
+  const canonicalReadinessWouldBeReached = insertedCandidateCount > 0 &&
+    baselineIdentityResult.canonicalSoldEvidenceStructurallyReady !== true &&
+    candidateIdentityResult.canonicalSoldEvidenceStructurallyReady === true;
   const stillRequiresEvidence = afterMissing.length > 0 || finalized.shadowConflictFields.length > 0;
 
   return {
@@ -434,8 +446,7 @@ function buildDiagnostics(input = {}, state = {}, finalized = {}, shadowIdentity
     shadowExactWouldBeReachedCount: exactWouldBeReached ? 1 : 0,
     shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount: sourceReady &&
       aggregateConsistent &&
-      exactWouldBeReached &&
-      shadowIdentityResult.canonicalSoldEvidenceStructurallyReady === true
+      canonicalReadinessWouldBeReached
       ? 1
       : 0,
     shadowTransactionsStillRequiringAdditionalEvidence: stillRequiresEvidence ? 1 : 0,
@@ -444,7 +455,7 @@ function buildDiagnostics(input = {}, state = {}, finalized = {}, shadowIdentity
   };
 }
 
-function validateInvariants(input = {}, state = {}, diagnostics = {}, fingerprintsBefore = {}) {
+function validateInvariants(input = {}, state = {}, diagnostics = {}, fingerprintsBefore = {}, resolverPair = {}, finalized = {}) {
   const reasonCodes = [];
   const candidateArtifact = asObject(input.candidateArtifact);
   const eligibilityReview = asObject(input.eligibilityReview);
@@ -470,6 +481,30 @@ function validateInvariants(input = {}, state = {}, diagnostics = {}, fingerprin
   }
   if (!confirmedTrueSoldPriceReady(asObject(input.sourceReadiness)) && state.appliedCandidates.length > 0) {
     reasonCodes.push('shadow_provisional_candidate_applied');
+  }
+  if (state.appliedCandidates.length === 0) {
+    const baselineFingerprint = resolverPair.baselineIdentityResult?.resolutionFingerprint ||
+      fingerprint(resolverPair.baselineIdentityResult);
+    const candidateFingerprint = resolverPair.candidateIdentityResult?.resolutionFingerprint ||
+      fingerprint(resolverPair.candidateIdentityResult);
+    if (
+      baselineFingerprint !== candidateFingerprint ||
+      fingerprint(diagnostics.shadowMissingFieldFrequencyBefore) !== fingerprint(diagnostics.shadowMissingFieldFrequencyAfter) ||
+      fingerprint(diagnostics.shadowClassificationCountsBefore) !== fingerprint(diagnostics.shadowClassificationCountsAfter) ||
+      Object.keys(asObject(diagnostics.shadowRecoveredFieldFrequency)).length > 0 ||
+      diagnostics.shadowClassificationImprovementCount !== 0 ||
+      diagnostics.shadowExactWouldBeReachedCount !== 0 ||
+      diagnostics.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount !== 0 ||
+      asArray(finalized.shadowConflictFields).length > 0
+    ) {
+      reasonCodes.push('shadow_zero_applied_baseline_mismatch');
+    }
+  }
+  for (const field of Object.keys(asObject(diagnostics.shadowRecoveredFieldFrequency))) {
+    if (!asArray(finalized.appliedFields).includes(field)) {
+      reasonCodes.push('shadow_recovery_attribution_mismatch');
+      break;
+    }
   }
   for (const [field, count] of Object.entries(appliedByField)) {
     if (count > Math.max(0, Math.floor(Number(state.eligibleCountByField[field]) || 0))) {
@@ -527,13 +562,15 @@ function simulateTitleProviderShadowAdmission(input = {}) {
   const sourceReadiness = asObject(input.sourceReadiness);
   const transaction = asObject(input.transaction);
   const existingEvidenceResult = asObject(input.existingEvidenceResult);
-  const existingIdentityResult = asObject(input.existingIdentityResult);
+  const suppliedExistingIdentityResult = asObject(input.existingIdentityResult);
+  const baselineIdentityResult = resolveShadowIdentity({ transaction }, []);
+  const existingIdentityResult = baselineIdentityResult;
   const fingerprintsBefore = {
     transaction: fingerprint(transaction),
     candidateArtifact: fingerprint(candidateArtifact),
     eligibilityReview: fingerprint(eligibilityReview),
     existingEvidenceResult: fingerprint(existingEvidenceResult),
-    existingIdentityResult: fingerprint(existingIdentityResult),
+    existingIdentityResult: fingerprint(suppliedExistingIdentityResult),
     identityDiagnostics: fingerprint(identityDiagnostics)
   };
   const state = buildInitialSimulationState();
@@ -557,25 +594,24 @@ function simulateTitleProviderShadowAdmission(input = {}) {
     });
 
   const finalized = finalizeCandidateApplications(state);
-  const shadowIdentityResult = resolveShadowIdentity({
-    transaction,
-    existingIdentityResult
-  }, state.appliedCandidates);
+  const candidateIdentityResult = resolveShadowIdentity({ transaction }, state.appliedCandidates);
+  const resolverPair = {
+    baselineIdentityResult,
+    candidateIdentityResult
+  };
   let diagnostics = buildDiagnostics({
-    identityDiagnostics,
     sourceReadiness,
-    aggregateConsistent,
-    existingIdentityResult
-  }, state, finalized, shadowIdentityResult);
+    aggregateConsistent
+  }, state, finalized, resolverPair);
   const reasonCodes = validateInvariants({
     transaction,
     candidateArtifact,
     eligibilityReview,
     existingEvidenceResult,
-    existingIdentityResult,
+    existingIdentityResult: suppliedExistingIdentityResult,
     identityDiagnostics,
     sourceReadiness
-  }, state, diagnostics, fingerprintsBefore);
+  }, state, diagnostics, fingerprintsBefore, resolverPair, finalized);
   const consistent = reasonCodes.length === 1 && reasonCodes[0] === 'shadow_consistency_ok';
   diagnostics = consistent
     ? deepFreeze({
@@ -594,7 +630,8 @@ function simulateTitleProviderShadowAdmission(input = {}) {
     existingEvidenceResultFingerprint: fingerprintsBefore.existingEvidenceResult,
     existingIdentityResultFingerprint: fingerprintsBefore.existingIdentityResult,
     identityDiagnosticsFingerprint: fingerprintsBefore.identityDiagnostics,
-    shadowIdentityResultFingerprint: shadowIdentityResult.resolutionFingerprint || fingerprint(shadowIdentityResult),
+    baselineShadowIdentityResultFingerprint: baselineIdentityResult.resolutionFingerprint || fingerprint(baselineIdentityResult),
+    shadowIdentityResultFingerprint: candidateIdentityResult.resolutionFingerprint || fingerprint(candidateIdentityResult),
     diagnostics,
     nonPersistent: true,
     writesProductionStore: false,

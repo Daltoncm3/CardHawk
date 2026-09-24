@@ -203,6 +203,22 @@ async function withMockedAdmissionEligibilityReview(mockReview, fn) {
   }
 }
 
+async function withMockedShadowAdmissionSimulation(mockSimulation, fn) {
+  const samplePath = require.resolve('../validation/multimodalFeasibilitySample');
+  const shadowPath = require.resolve('../validation/titleProviderShadowAdmissionSimulation');
+  const shadowModule = require(shadowPath);
+  const original = shadowModule.simulateTitleProviderShadowAdmission;
+  shadowModule.simulateTitleProviderShadowAdmission = mockSimulation;
+  delete require.cache[samplePath];
+
+  try {
+    return await fn(require(samplePath));
+  } finally {
+    shadowModule.simulateTitleProviderShadowAdmission = original;
+    delete require.cache[samplePath];
+  }
+}
+
 test('A5.10 feasibility sample is disabled by default and requires every live gate', async () => {
   let calls = 0;
   const disabled = await runOpenAIMultimodalFeasibilitySample({
@@ -648,8 +664,8 @@ test('A5.15 shadow admission simulates eligible candidate impact without changin
   assert.equal(report.shadowCandidatesApplied, 0);
   assert.equal(report.shadowCandidatesExcluded >= 0, true);
   assert.equal(report.shadowAppliedFields.includes('cardNumber'), false);
-  assert.deepEqual(report.shadowMissingFieldFrequencyBefore, { cardNumber: 1 });
-  assert.deepEqual(report.shadowMissingFieldFrequencyAfter, {});
+  assert.deepEqual(report.shadowMissingFieldFrequencyBefore, {});
+  assert.deepEqual(report.shadowMissingFieldFrequencyAfter, report.shadowMissingFieldFrequencyBefore);
   assert.deepEqual(report.shadowRecoveredFieldFrequency, {});
   assert.equal(report.shadowClassificationImprovementCount >= 0, true);
   assert.equal(report.shadowExactWouldBeReachedCount, 0);
@@ -667,6 +683,79 @@ test('A5.15 shadow admission simulates eligible candidate impact without changin
   assert.equal(report.decisionImpact, 'none');
   assert.equal(report.executionAuthority, 'none');
   assert.equal(JSON.stringify(rawSale), rawSaleBefore);
+});
+
+test('A5.15A aggregate report preserves zero-applied baseline parity for the live 36-candidate shape', async () => {
+  const reports = [
+    aggregateOnlyReport(),
+    aggregateOnlyReport(),
+    aggregateOnlyReport()
+  ];
+  const baselineFrequency = {
+    manufacturer: 1,
+    rawOrGraded: 2,
+    serialNumbered: 2,
+    subjectName: 3
+  };
+  const shadowDiagnostics = {
+    shadowSimulationTransactionCount: 1,
+    shadowCandidatesConsidered: 12,
+    shadowCandidatesApplied: 0,
+    shadowCandidatesExcluded: 12,
+    shadowCandidateExclusionReasonCounts: { title_candidate_channel_unavailable: 12 },
+    shadowAppliedFields: [],
+    shadowConflictFields: [],
+    shadowMissingFieldFrequencyBefore: baselineFrequency,
+    shadowMissingFieldFrequencyAfter: baselineFrequency,
+    shadowRecoveredFieldFrequency: {},
+    shadowClassificationCountsBefore: { AMBIGUOUS: 1 },
+    shadowClassificationCountsAfter: { AMBIGUOUS: 1 },
+    shadowClassificationImprovementCount: 0,
+    shadowExactWouldBeReachedCount: 0,
+    shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount: 0,
+    shadowTransactionsStillRequiringAdditionalEvidence: 1,
+    shadowSimulationConsistencyStatus: 'consistent',
+    shadowSimulationConsistencyReasonCodes: ['shadow_consistency_ok'],
+    shadowOnly: true,
+    admittedToProduction: false
+  };
+  const result = await withMockedShadowAdmissionSimulation(() => ({
+    diagnostics: shadowDiagnostics
+  }), async () => withMockedSampleAnalysis(reports, async (sample) => sample.runOpenAIMultimodalFeasibilitySample({
+    env: sampleEnv(),
+    fetchImpl: async (url) => {
+      if (String(url).includes('thecardapi.com')) {
+        return jsonResponse({
+          sales: [
+            sampleSale(1),
+            sampleSale(2),
+            sampleSale(3)
+          ]
+        });
+      }
+      throw new Error('unexpected_openai_request');
+    }
+  })));
+  const report = result.report;
+
+  assert.equal(report.shadowCandidatesConsidered, 36);
+  assert.equal(report.shadowCandidatesApplied, 0);
+  assert.equal(report.shadowCandidatesExcluded, 36);
+  assert.deepEqual(report.shadowMissingFieldFrequencyBefore, {
+    manufacturer: 3,
+    rawOrGraded: 6,
+    serialNumbered: 6,
+    subjectName: 9
+  });
+  assert.deepEqual(report.shadowMissingFieldFrequencyAfter, report.shadowMissingFieldFrequencyBefore);
+  assert.deepEqual(report.shadowClassificationCountsBefore, report.shadowClassificationCountsAfter);
+  assert.deepEqual(report.shadowRecoveredFieldFrequency, {});
+  assert.equal(report.shadowClassificationImprovementCount, 0);
+  assert.equal(report.shadowExactWouldBeReachedCount, 0);
+  assert.equal(report.shadowCanonicalSoldEvidenceWouldBeStructurallyReadyCount, 0);
+  assert.deepEqual(report.shadowConflictFields, []);
+  assert.equal(report.shadowSimulationConsistencyStatus, 'consistent');
+  assert.deepEqual(report.shadowSimulationConsistencyReasonCodes, ['shadow_consistency_ok']);
 });
 
 test('A5.10 feasibility sample deduplicates and never retries failed model requests', async () => {
