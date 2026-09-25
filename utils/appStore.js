@@ -11,6 +11,7 @@ const {
 const {
   normalizeTargetedDiscoveryObservations
 } = require('./targetedDiscoveryObservationStore');
+const ownerCompDraftStore = require('./ownerCompDraftStore');
 const { loadJsonState, saveJsonState } = require('./stateStore');
 const serializationInstrumentation = require('./serializationInstrumentation');
 
@@ -38,6 +39,7 @@ function createDefaultStore() {
     scans: [],
     rejections: [],
     targetedDiscoveryObservations: [],
+    ownerCompDrafts: [],
     settings: {
       minDealScore: 85,
       minProfit: 20,
@@ -64,6 +66,7 @@ function normalizeStore(loaded = {}, options = {}) {
       loaded.targetedDiscoveryObservations,
       options.targetedDiscoveryObservationRetention || options
     ),
+    ownerCompDrafts: ownerCompDraftStore.normalizeStore(loaded.ownerCompDrafts),
     settings: {
       minDealScore: loaded.settings?.minDealScore || 85,
       minProfit: loaded.settings?.minProfit || 20,
@@ -88,6 +91,7 @@ function getCollectionCounts(store = {}) {
     targetedDiscoveryObservations: Array.isArray(store.targetedDiscoveryObservations)
       ? store.targetedDiscoveryObservations.length
       : 0,
+    ownerCompDrafts: Array.isArray(store.ownerCompDrafts) ? store.ownerCompDrafts.length : 0,
     settings: store.settings && typeof store.settings === 'object'
       ? Object.keys(store.settings).length
       : 0
@@ -116,6 +120,9 @@ function recordStoreSaveDiagnostic(input = {}) {
       scans: Array.isArray(storeSnapshot.scans) ? storeSnapshot.scans.length : 0,
       targetedDiscoveryObservations: Array.isArray(storeSnapshot.targetedDiscoveryObservations)
         ? storeSnapshot.targetedDiscoveryObservations.length
+        : 0,
+      ownerCompDrafts: Array.isArray(storeSnapshot.ownerCompDrafts)
+        ? storeSnapshot.ownerCompDrafts.length
         : 0
     }
   };

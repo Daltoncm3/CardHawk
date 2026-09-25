@@ -44,7 +44,7 @@ test('stateStore handles missing, saved, and corrupt JSON state safely', () => {
 
 test('appStore preserves CardHawk store shape and lookup compatibility', () => {
   const defaultStore = appStore.createDefaultStore();
-  assert.deepEqual(Object.keys(defaultStore), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'settings']);
+  assert.deepEqual(Object.keys(defaultStore), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'ownerCompDrafts', 'settings']);
   assert.deepEqual(defaultStore.settings, {
     minDealScore: 85,
     minProfit: 20,
@@ -62,6 +62,7 @@ test('appStore preserves CardHawk store shape and lookup compatibility', () => {
     alerts: [{ id: 'alert-1' }],
     scans: [{ id: 'scan-1' }],
     rejections: [{ id: 'reject-1' }],
+    ownerCompDrafts: [{ draftId: 'draft-1', listingId: 'legacy123', productionAuthority: 'trusted' }],
     settings: {
       minDealScore: 91,
       minProfit: 25,
@@ -70,6 +71,7 @@ test('appStore preserves CardHawk store shape and lookup compatibility', () => {
   });
 
   assert.equal(normalized.settings.minDealScore, 91);
+  assert.equal(normalized.ownerCompDrafts.length, 0);
   assert.equal(appStore.getStoredListingById(normalized, 'legacy123').title, 'Smoke Test Card');
   assert.equal(appStore.getStoredListingById(normalized, 'canonical123').title, 'Smoke Test Card');
   assert.equal(appStore.getStoredListingById(normalized, 'missing'), null);

@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 const historyEngine = require("./engines/historyEngine");
 const compEngine = require("./engines/compEngine");
 const marketValueEngine = require("./engines/marketValueEngine");
@@ -36,6 +37,7 @@ const { addOrCoalesceRejection } = require("./utils/rejectionStore");
 const {
   recordTargetedDiscoveryObservation
 } = require("./utils/targetedDiscoveryObservationStore");
+const ownerCompDraftStore = require("./utils/ownerCompDraftStore");
 const serializationInstrumentation = require("./utils/serializationInstrumentation");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
@@ -56,6 +58,8 @@ const activeMarketplace = marketplaceRegistry.getActiveMarketplace();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const OWNER_COMP_CSRF_SECRET = crypto.randomBytes(32);
+let ownerCompDraftWriteQueue = Promise.resolve();
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -936,6 +940,71 @@ function saveStore(options = {}) {
     reason: options.reason || 'store_save',
     context: options.context || null
   });
+}
+
+function persistOwnerCompDraftStore(nextOwnerCompDrafts, metadata = {}) {
+  const proposedStore = {
+    ...store,
+    ownerCompDrafts: nextOwnerCompDrafts
+  };
+  const result = appStore.saveStore(DATA_FILE, proposedStore, {
+    reason: metadata.reason || "owner_comp_draft_store_save",
+    context: metadata.context || null
+  });
+  store.ownerCompDrafts = appStore.normalizeStore(proposedStore).ownerCompDrafts;
+  return result;
+}
+
+function enqueueOwnerCompDraftMutation(work) {
+  const run = ownerCompDraftWriteQueue.then(work, work);
+  ownerCompDraftWriteQueue = run.catch(() => null);
+  return run;
+}
+
+function getAuthenticatedActor(req) {
+  try {
+    const auth = req.headers.authorization || "";
+    const encoded = auth.startsWith("Basic ") ? auth.split(" ")[1] : "";
+    return encoded ? Buffer.from(encoded, "base64").toString().split(":")[0] || "owner" : "owner";
+  } catch (_) {
+    return "owner";
+  }
+}
+
+function createOwnerCompCsrfToken(req) {
+  return crypto
+    .createHmac("sha256", OWNER_COMP_CSRF_SECRET)
+    .update(`owner-comp:${getAuthenticatedActor(req)}`)
+    .digest("hex");
+}
+
+function validateOwnerCompCsrfToken(req) {
+  const supplied = String(req.body?.csrfToken || "");
+  if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
+  const expected = createOwnerCompCsrfToken(req);
+  return crypto.timingSafeEqual(Buffer.from(supplied, "hex"), Buffer.from(expected, "hex"));
+}
+
+function stripOwnerCompRouteFields(body = {}) {
+  const { csrfToken, ...input } = body || {};
+  return input;
+}
+
+function sanitizeOwnerCompError(error) {
+  if (!error) return "owner_comp_draft_error";
+  if (typeof error === "string") return error.replace(/[^\w-]+/g, "_").slice(0, 80) || "owner_comp_draft_error";
+  return "owner_comp_draft_persistence_failed";
+}
+
+function ownerCompDraftPersistenceDiagnostic() {
+  return {
+    source: "owner_comp_draft_persistence",
+    persistenceBackend: "cardhawk_app_store",
+    sharesAppStorePersistence: true,
+    railwayDurabilityDependsOnConfiguredPersistentVolume: true,
+    filesystemPathExposed: false,
+    productionAuthority: "none"
+  };
 }
 
 function enforceResidentListingRetention() {
@@ -3203,8 +3272,220 @@ function researchOpportunityCard(opportunity = {}) {
       ${opportunity.missingMaterialFields?.length ? `<div class="meta">Needs identity review: ${escapeHtml(opportunity.missingMaterialFields.join(", "))}</div>` : ""}
       <a href="${escapeHtml(opportunity.soldItemsResearchUrl || "#")}" target="_blank" rel="noopener noreferrer">Research eBay Sold Items</a>
       ${opportunity.listingUrl ? ` &nbsp; <a href="${escapeHtml(opportunity.listingUrl)}" target="_blank" rel="noopener noreferrer">View Active Listing</a>` : ""}
+      ${opportunity.listingId ? ` &nbsp; <a href="/research/${encodeURIComponent(opportunity.listingId)}/comp-drafts">Review/Add Sold Comps</a>` : ""}
     </div>
   `;
+}
+
+function getResearchIdentitySnapshotForListing(listing) {
+  const identity = researchOpportunityService.buildResearchIdentity(listing);
+  identity.missingMaterialFields = researchOpportunityService.getMissingMaterialFields(identity);
+  return ownerCompDraftStore.buildIdentitySnapshot(listingIdentity.getListingId(listing), identity);
+}
+
+function ownerCompDraftFormFields(draft = {}, options = {}) {
+  const field = (name, label, value = "", type = "text") => `
+    <label>${escapeHtml(label)}
+      <input name="${escapeHtml(name)}" type="${escapeHtml(type)}" value="${escapeHtml(value)}" />
+    </label>
+  `;
+  const select = (name, label, values, selected = "") => `
+    <label>${escapeHtml(label)}
+      <select name="${escapeHtml(name)}">
+        ${values.map(value => `<option value="${escapeHtml(value)}" ${selected === value ? "selected" : ""}>${escapeHtml(value.replaceAll("_", " "))}</option>`).join("")}
+      </select>
+    </label>
+  `;
+
+  return `
+    <input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken || "")}" />
+    ${select("sourceMarketplace", "Source marketplace", ownerCompDraftStore.SOURCE_MARKETPLACES, draft.sourceMarketplace || "ebay")}
+    ${field("sourceSoldListingUrl", "Source sold-listing URL", draft.sourceSoldListingUrl || "", "url")}
+    ${field("displayedSoldPrice", "Displayed sold price", draft.displayedSoldPrice ?? "", "number")}
+    ${field("shippingAmount", "Shipping amount if known", draft.shippingAmount ?? "", "number")}
+    ${select("currency", "Currency", ["USD", "CAD", "EUR", "GBP", "AUD", "UNKNOWN"], draft.currency || "USD")}
+    ${field("saleDate", "Sale date", draft.saleDate || "", "date")}
+    ${select("listingType", "Listing type", ownerCompDraftStore.LISTING_TYPES, draft.listingType || "unknown")}
+    ${select("rawOrGraded", "Raw / graded state", ownerCompDraftStore.RAW_OR_GRADED, draft.rawOrGraded || "unknown")}
+    ${field("gradeCompany", "Grading company", draft.gradeCompany || "")}
+    ${field("grade", "Grade", draft.grade || "")}
+    ${select("identityMatchDecision", "Identity match decision", ownerCompDraftStore.IDENTITY_MATCH_DECISIONS, draft.identityMatchDecision || "unsure")}
+    ${select("finalPriceCertainty", "Final-price certainty", ownerCompDraftStore.FINAL_PRICE_CERTAINTIES, draft.finalPriceCertainty || "estimated_or_unknown")}
+    ${select("ownerReasonCode", "Owner reason code", ownerCompDraftStore.OWNER_REASON_CODES, draft.ownerReasonCode || "needs_more_evidence")}
+    ${field("ownerNotesCategory", "Bounded notes category", draft.ownerNotesCategory || "")}
+    ${select("reviewStatus", "Owner-review status", ownerCompDraftStore.REVIEW_STATUSES, draft.reviewStatus || "needs_more_evidence")}
+  `;
+}
+
+function identitySnapshotTable(snapshot = {}) {
+  const fields = snapshot.fields || {};
+  const rows = [
+    ["player/subject", fields.subjectName],
+    ["year", fields.year],
+    ["manufacturer", fields.manufacturer],
+    ["product/set", fields.product || fields.setName],
+    ["card number", fields.cardNumber],
+    ["parallel", fields.parallel],
+    ["serial numbering/print run", [fields.serialNumbered, fields.printRun].filter(Boolean).join(" / ")],
+    ["autograph state", fields.autographState],
+    ["memorabilia state", fields.memorabiliaState],
+    ["raw/graded state", fields.rawOrGraded],
+    ["grading company", fields.gradeCompany],
+    ["grade", fields.grade]
+  ];
+
+  return `
+    <table>
+      <tr><th>Identity field</th><th>CardHawk normalized value</th></tr>
+      ${rows.map(([label, value]) => `
+        <tr>
+          <td>${escapeHtml(label)}</td>
+          <td>${value ? escapeHtml(value) : "<span class=\"bad\">missing / ambiguous</span>"}</td>
+        </tr>
+      `).join("")}
+    </table>
+    ${snapshot.missingMaterialFields?.length ? `<div class="guardrail"><strong>Identity match requires review:</strong> ${escapeHtml(snapshot.missingMaterialFields.join(", "))}</div>` : ""}
+  `;
+}
+
+function ownerCompDraftRow(listingId, draft = {}) {
+  const csrfToken = draft.csrfToken || "";
+  return `
+    <tr>
+      <td>${escapeHtml(draft.sourceMarketplace)}</td>
+      <td>$${money(draft.displayedSoldPrice)}</td>
+      <td>${escapeHtml(draft.currency)}</td>
+      <td>${escapeHtml(draft.saleDate)}</td>
+      <td>${escapeHtml(draft.listingType)}</td>
+      <td>${escapeHtml(draft.identityMatchDecision)}</td>
+      <td>${escapeHtml(draft.priceEvidenceStatus)}</td>
+      <td>${escapeHtml(draft.reviewStatus)}</td>
+      <td>
+        <a href="${escapeHtml(draft.sourceSoldListingUrl)}" target="_blank" rel="noopener noreferrer">Source</a>
+        &nbsp; <a href="/research/${encodeURIComponent(listingId)}/comp-drafts/${encodeURIComponent(draft.draftId)}/edit">Edit</a>
+        <form method="POST" action="/research/${encodeURIComponent(listingId)}/comp-drafts/${encodeURIComponent(draft.draftId)}/status" style="display:inline;">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}" />
+          <input type="hidden" name="reviewStatus" value="reviewed" />
+          <button type="submit">Mark Reviewed</button>
+        </form>
+        <form method="POST" action="/research/${encodeURIComponent(listingId)}/comp-drafts/${encodeURIComponent(draft.draftId)}/delete" style="display:inline;">
+          <input type="hidden" name="csrfToken" value="${escapeHtml(csrfToken)}" />
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  `;
+}
+
+function renderOwnerCompDraftPage(context, options = {}) {
+  const listing = Object.prototype.hasOwnProperty.call(context || {}, "listing") ? context.listing : context;
+  const listingId = context?.listingId || listingIdentity.getListingId(listing);
+  const identitySnapshot = context?.identitySnapshot || getResearchIdentitySnapshotForListing(listing);
+  const drafts = ownerCompDraftStore.listDrafts(store.ownerCompDrafts, { listingId });
+  const editingDraft = options.editingDraft || null;
+  const action = editingDraft
+    ? `/research/${encodeURIComponent(listingId)}/comp-drafts/${encodeURIComponent(editingDraft.draftId)}`
+    : `/research/${encodeURIComponent(listingId)}/comp-drafts`;
+  const csrfToken = options.csrfToken || "";
+  const listingAvailable = Boolean(listing);
+  const allowAdd = options.allowAdd !== false && listingAvailable;
+  const draftsWithCsrf = drafts.map((draft) => ({ ...draft, csrfToken }));
+
+  return layout("Owner Comp Draft Review", `
+    <h2>Owner-reviewed comp drafts</h2>
+    <div class="guardrail">
+      <strong>Not Canonical Sold Evidence:</strong> CardHawk generated the Sold Items search. The owner selects genuinely matching sold cards. Chrome/Platinum, parallel, numbering, autograph, memorabilia, raw/graded state, grading company, and grade differences matter. Best Offer displayed prices may not be final prices.
+    </div>
+    <div class="card">
+      <div class="title">${escapeHtml(listing?.title || "Stored listing unavailable")}</div>
+      <div class="meta">Originating listing ID: ${escapeHtml(listingId)}</div>
+      <div class="meta">Owner comp drafts are bound to this listing and its ${listingAvailable ? "current CardHawk identity snapshot" : "stored immutable CardHawk identity snapshot"}.</div>
+    </div>
+    ${listingAvailable ? `<p><a href="${escapeHtml(researchOpportunityService.buildSoldItemsResearchUrl(researchOpportunityService.buildResearchIdentity(listing)))}" target="_blank" rel="noopener noreferrer">Open eBay Sold Items</a></p>` : `<div class="guardrail">The originating active listing is no longer available. Existing owner comp drafts remain manageable, but new drafts cannot be added until a current stored listing is available.</div>`}
+    <div class="small">Draft persistence uses CardHawk's configured app-store persistence backend. Deployment durability depends on the configured Railway persistent volume/backend.</div>
+    <h3>CardHawk normalized identity</h3>
+    ${identitySnapshotTable(identitySnapshot)}
+    ${options.error ? `<div class="guardrail bad"><strong>Draft was not saved:</strong> ${escapeHtml(options.error)}</div>` : ""}
+    ${allowAdd || editingDraft ? `
+      <h3>${editingDraft ? "Edit owner-reviewed comp draft" : "Add owner-reviewed comp draft"}</h3>
+      <form method="POST" action="${escapeHtml(action)}">
+        ${ownerCompDraftFormFields(editingDraft || {}, { csrfToken })}
+        <button type="submit">${editingDraft ? "Save Draft" : "Add Draft"}</button>
+      </form>
+    ` : ""}
+    <h3>Saved comp drafts</h3>
+    ${drafts.length ? `
+      <table>
+        <tr><th>Source</th><th>Displayed Price</th><th>Currency</th><th>Sale Date</th><th>Type</th><th>Identity Match</th><th>Price Status</th><th>Review</th><th>Actions</th></tr>
+        ${draftsWithCsrf.map(draft => ownerCompDraftRow(listingId, draft)).join("")}
+      </table>
+    ` : `<div class="empty">No owner-reviewed comp drafts yet. Open eBay Sold Items, choose genuinely matching completed sales, then enter bounded facts here.</div>`}
+  `);
+}
+
+function buildStaleOwnerCompContext(listingId) {
+  const drafts = ownerCompDraftStore.listDrafts(store.ownerCompDrafts, { listingId });
+  if (!drafts.length) return null;
+  return {
+    listing: null,
+    listingId,
+    identitySnapshot: drafts[0].identitySnapshot
+  };
+}
+
+function getOwnerCompContext(listingId) {
+  const listing = getStoredListingById(listingId);
+  if (listing) {
+    return {
+      listing,
+      listingId: listingIdentity.getListingId(listing),
+      identitySnapshot: getResearchIdentitySnapshotForListing(listing),
+      canCreate: isListingEligibleForOwnerCompDraft(listing)
+    };
+  }
+  const stale = buildStaleOwnerCompContext(String(listingId));
+  if (!stale) return null;
+  return { ...stale, canCreate: false };
+}
+
+function isListingEligibleForOwnerCompDraft(listing = {}) {
+  const listingId = listingIdentity.getListingId(listing);
+  if (!listingId) return false;
+  const status = String(listing.status || listing.listingStatus || "").toLowerCase();
+  if (["sold", "ended", "completed", "inactive"].includes(status)) return false;
+  const endTime = listing.itemEndDate || listing.endTime || listing.listingEndDate;
+  if (endTime) {
+    const parsed = new Date(endTime).getTime();
+    if (Number.isFinite(parsed) && parsed < Date.now()) return false;
+  }
+  return true;
+}
+
+function renderOwnerCompDraftIndex(req) {
+  const csrfToken = createOwnerCompCsrfToken(req);
+  const drafts = ownerCompDraftStore.listDrafts(store.ownerCompDrafts)
+    .map((draft) => ({ ...draft, csrfToken }));
+  const diagnostic = ownerCompDraftPersistenceDiagnostic();
+  return layout("Owner Comp Drafts", `
+    <h2>Owner comp drafts</h2>
+    <div class="guardrail">Owner comp drafts are review artifacts only. They are not Canonical Sold Evidence, valuation inputs, Deal Gate approvals, alerts, BUY_NOW decisions, bids, offers, or purchases.</div>
+    <div class="small">Persistence: ${escapeHtml(diagnostic.persistenceBackend)}; Railway durability depends on the configured persistent volume/backend.</div>
+    ${drafts.length ? `
+      <table>
+        <tr><th>Listing ID</th><th>Source</th><th>Displayed Price</th><th>Sale Date</th><th>Status</th><th>Actions</th></tr>
+        ${drafts.map((draft) => `
+          <tr>
+            <td>${escapeHtml(draft.listingId)}</td>
+            <td>${escapeHtml(draft.sourceMarketplace)}</td>
+            <td>$${money(draft.displayedSoldPrice)}</td>
+            <td>${escapeHtml(draft.saleDate)}</td>
+            <td>${escapeHtml(draft.reviewStatus)}</td>
+            <td><a href="/research/${encodeURIComponent(draft.listingId)}/comp-drafts/${encodeURIComponent(draft.draftId)}/edit">Edit</a></td>
+          </tr>
+        `).join("")}
+      </table>
+    ` : `<div class="empty">No owner comp drafts saved.</div>`}
+  `);
 }
 
 
@@ -3312,6 +3593,187 @@ app.get("/research", (req, res) => {
     </div>
     ${report.opportunities.length ? `<div class="grid">${report.opportunities.map(researchOpportunityCard).join("")}</div>` : `<div class="empty">No research opportunities found from stored active listings right now.</div>`}
   `));
+});
+
+app.get("/owner-comp-drafts", (req, res) => {
+  res.send(renderOwnerCompDraftIndex(req));
+});
+
+app.get("/research/:listingId/comp-drafts", (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  res.send(renderOwnerCompDraftPage(context, {
+    csrfToken: createOwnerCompCsrfToken(req),
+    allowAdd: context.canCreate
+  }));
+});
+
+app.post("/research/:listingId/comp-drafts", async (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  if (!context.canCreate) {
+    return res.status(400).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      allowAdd: false,
+      error: "listing_not_eligible_for_new_comp_draft"
+    }));
+  }
+  if (!validateOwnerCompCsrfToken(req)) {
+    return res.status(403).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: "invalid_csrf_token"
+    }));
+  }
+  try {
+    const result = await enqueueOwnerCompDraftMutation(async () => {
+      const addResult = ownerCompDraftStore.addDraft(store.ownerCompDrafts, {
+        listingId: context.listingId,
+        identitySnapshot: context.identitySnapshot,
+        input: stripOwnerCompRouteFields(req.body)
+      });
+      if (!addResult.ok) return addResult;
+      persistOwnerCompDraftStore(addResult.store, {
+        reason: "owner_comp_draft_added",
+        context: { listingId: context.listingId, draftId: addResult.draft.draftId }
+      });
+      return addResult;
+    });
+    if (!result.ok) {
+      return res.status(400).send(renderOwnerCompDraftPage(context, {
+        csrfToken: createOwnerCompCsrfToken(req),
+        error: [result.reason].concat(result.failures || []).filter(Boolean).join(", ")
+      }));
+    }
+    return res.redirect(`/research/${encodeURIComponent(context.listingId)}/comp-drafts`);
+  } catch (error) {
+    return res.status(500).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: sanitizeOwnerCompError(error)
+    }));
+  }
+});
+
+app.get("/research/:listingId/comp-drafts/:draftId", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send(layout("Method Not Allowed", `<p>Use POST to update an owner comp draft.</p>`));
+});
+
+app.get("/research/:listingId/comp-drafts/:draftId/edit", (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  const draft = ownerCompDraftStore.getDraft(store.ownerCompDrafts, context.listingId, req.params.draftId);
+  if (!draft) return res.status(404).send(layout("Draft Not Found", `<p>Comp draft not found for this listing.</p>`));
+  res.send(renderOwnerCompDraftPage(context, {
+    csrfToken: createOwnerCompCsrfToken(req),
+    editingDraft: draft
+  }));
+});
+
+app.post("/research/:listingId/comp-drafts/:draftId", async (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  if (!validateOwnerCompCsrfToken(req)) {
+    return res.status(403).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: "invalid_csrf_token"
+    }));
+  }
+  try {
+    const result = await enqueueOwnerCompDraftMutation(async () => {
+      const updateResult = ownerCompDraftStore.updateDraft(store.ownerCompDrafts, context.listingId, req.params.draftId, stripOwnerCompRouteFields(req.body));
+      if (!updateResult.ok) return updateResult;
+      persistOwnerCompDraftStore(updateResult.store, {
+        reason: "owner_comp_draft_updated",
+        context: { listingId: context.listingId, draftId: updateResult.draft.draftId }
+      });
+      return updateResult;
+    });
+    if (!result.ok) {
+      const editingDraft = ownerCompDraftStore.getDraft(store.ownerCompDrafts, context.listingId, req.params.draftId);
+      if (!editingDraft) return res.status(404).send(layout("Draft Not Found", `<p>Comp draft not found for this listing.</p>`));
+      return res.status(400).send(renderOwnerCompDraftPage(context, {
+        csrfToken: createOwnerCompCsrfToken(req),
+        editingDraft,
+        error: [result.reason].concat(result.failures || []).filter(Boolean).join(", ")
+      }));
+    }
+    return res.redirect(`/research/${encodeURIComponent(context.listingId)}/comp-drafts`);
+  } catch (error) {
+    const editingDraft = ownerCompDraftStore.getDraft(store.ownerCompDrafts, context.listingId, req.params.draftId);
+    return res.status(500).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      editingDraft,
+      error: sanitizeOwnerCompError(error)
+    }));
+  }
+});
+
+app.get("/research/:listingId/comp-drafts/:draftId/status", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send(layout("Method Not Allowed", `<p>Use POST to change owner-review status.</p>`));
+});
+
+app.post("/research/:listingId/comp-drafts/:draftId/status", async (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  if (!validateOwnerCompCsrfToken(req)) {
+    return res.status(403).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: "invalid_csrf_token"
+    }));
+  }
+  try {
+    const result = await enqueueOwnerCompDraftMutation(async () => {
+      const statusResult = ownerCompDraftStore.updateStatus(store.ownerCompDrafts, context.listingId, req.params.draftId, req.body?.reviewStatus);
+      if (!statusResult.ok) return statusResult;
+      persistOwnerCompDraftStore(statusResult.store, {
+        reason: "owner_comp_draft_status_updated",
+        context: { listingId: context.listingId, draftId: statusResult.draft.draftId, reviewStatus: statusResult.draft.reviewStatus }
+      });
+      return statusResult;
+    });
+    if (!result.ok) return res.status(400).send(renderOwnerCompDraftPage(context, { csrfToken: createOwnerCompCsrfToken(req), error: result.reason }));
+    return res.redirect(`/research/${encodeURIComponent(context.listingId)}/comp-drafts`);
+  } catch (error) {
+    return res.status(500).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: sanitizeOwnerCompError(error)
+    }));
+  }
+});
+
+app.get("/research/:listingId/comp-drafts/:draftId/delete", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send(layout("Method Not Allowed", `<p>Use POST to delete an owner comp draft.</p>`));
+});
+
+app.post("/research/:listingId/comp-drafts/:draftId/delete", async (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  if (!validateOwnerCompCsrfToken(req)) {
+    return res.status(403).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: "invalid_csrf_token"
+    }));
+  }
+  try {
+    const result = await enqueueOwnerCompDraftMutation(async () => {
+      const deleteResult = ownerCompDraftStore.deleteDraft(store.ownerCompDrafts, context.listingId, req.params.draftId);
+      if (!deleteResult.ok) return deleteResult;
+      persistOwnerCompDraftStore(deleteResult.store, {
+        reason: "owner_comp_draft_deleted",
+        context: { listingId: context.listingId, draftId: req.params.draftId }
+      });
+      return deleteResult;
+    });
+    if (!result.ok) return res.status(404).send(layout("Draft Not Found", `<p>Comp draft not found for this listing.</p>`));
+    return res.redirect(`/research/${encodeURIComponent(context.listingId)}/comp-drafts`);
+  } catch (error) {
+    return res.status(500).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      error: sanitizeOwnerCompError(error)
+    }));
+  }
 });
 
 app.get("/alerts", (req, res) => {
