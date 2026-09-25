@@ -45,6 +45,7 @@ const signalSemantics = require("./utils/signalSemantics");
 const soldEvidenceStore = require("./utils/soldEvidenceStore");
 const reviewWorkspaceBatchExporter = require("./validation/exportReviewWorkspaceBatch");
 const { createScoutScanner } = require("./services/scoutScannerService");
+const researchOpportunityService = require("./services/researchOpportunityService");
 const {
   createMultiTargetedDiscoveryLaneService,
   createTargetedDiscoveryLaneConfig,
@@ -3118,6 +3119,7 @@ function layout(title, content) {
 
           <nav>
             <a href="/">Dashboard</a>
+            <a href="/research">Research Opportunities</a>
             <a href="/alerts">Deal Alerts</a>
             <a href="/rejections">Rejected</a>
             <a href="/history">History</a>
@@ -3145,6 +3147,64 @@ function getLane(req) {
 function filterByLane(items, lane) {
   if (lane === "all") return items;
   return items.filter(item => item.lane === lane);
+}
+
+function getResearchOpportunityInput(lane = "all") {
+  const listingsById = new Map();
+  const addListing = (item) => {
+    if (!item || typeof item !== "object") return;
+    const id = listingIdentity.getListingId(item) || item.ebayItemId || item.marketplaceListingId;
+    if (!id) return;
+    listingsById.set(String(id), item);
+  };
+
+  Object.values(store.listings || {}).forEach(addListing);
+  try {
+    historyEngine.getActiveListings(250).forEach(addListing);
+  } catch (_) {
+    // Research Opportunities are advisory; dashboard rendering should not fail if history is unavailable.
+  }
+
+  const allListings = Array.from(listingsById.values());
+  const listings = filterByLane(allListings, lane);
+  const priceDrops = (() => {
+    try {
+      return historyEngine.getPriceDrops({ lane: lane === "all" ? null : lane }, 250);
+    } catch (_) {
+      return [];
+    }
+  })();
+
+  return { listings, priceDrops };
+}
+
+function buildResearchOpportunityReport(lane = "all", options = {}) {
+  const input = getResearchOpportunityInput(lane);
+  return researchOpportunityService.buildResearchOpportunities(input.listings, {
+    lane,
+    priceDrops: input.priceDrops,
+    limit: options.limit || 25,
+    now: options.now,
+    generatedAt: options.generatedAt
+  });
+}
+
+function researchOpportunityCard(opportunity = {}) {
+  return `
+    <div class="card">
+      <div class="title">${escapeHtml(opportunity.title || "Research Opportunity")}</div>
+      <div class="score">Research Score: ${Math.round(opportunity.researchScore || 0)}/100</div>
+      <div class="price">$${money(opportunity.totalCost)}</div>
+      <div class="meta">Status: Research Opportunity — sold-comp verification required</div>
+      <div class="meta">Context: active-market asking prices only, not market value</div>
+      <div class="meta">Identity: ${escapeHtml(opportunity.identitySearchConfidence || "unknown")}</div>
+      ${opportunity.activeMarketContext ? `<div class="meta">Active peers: ${opportunity.activeMarketContext.peerCount || 0}${opportunity.activeMarketContext.peerMedian ? `, median asking $${money(opportunity.activeMarketContext.peerMedian)}` : ""}</div>` : ""}
+      ${opportunity.explanations?.length ? `<ul class="meta">${opportunity.explanations.slice(0, 4).map(reason => `<li>${escapeHtml(reason.message)}</li>`).join("")}</ul>` : ""}
+      ${opportunity.missingMaterialFields?.length ? `<div class="meta">Needs identity review: ${escapeHtml(opportunity.missingMaterialFields.join(", "))}</div>` : ""}
+      <a href="${escapeHtml(opportunity.soldItemsResearchUrl || "#")}" target="_blank" rel="noopener noreferrer">Research eBay Sold Items</a>
+      ${opportunity.listingUrl ? ` &nbsp; <a href="${escapeHtml(opportunity.listingUrl)}" target="_blank" rel="noopener noreferrer">View Active Listing</a>` : ""}
+    </div>
+  `;
 }
 
 
@@ -3210,6 +3270,7 @@ app.get("/", (req, res) => {
   const alerts = filterByLane(store.alerts, lane);
   const latestListings = listings.sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt)).slice(0, 12);
   const historySummary = historyEngine.summarizeHistory();
+  const researchReport = buildResearchOpportunityReport(lane, { limit: 6 });
 
   res.send(layout("CardHawk Dashboard", `
     ${laneTabs(lane, "")}
@@ -3223,8 +3284,33 @@ app.get("/", (req, res) => {
       <div class="stat"><div class="number">${historySummary.stats.disappearedListings || 0}</div><div>Disappeared Listings</div></div>
     </div>
 
+    <h2>Research Opportunities</h2>
+    <div class="small">Active-market context only. These are owner research candidates, not confirmed sales, valuations, Deal Gate approvals, alerts, or BUY_NOW decisions.</div><br>
+    ${researchReport.opportunities.length ? `<div class="grid">${researchReport.opportunities.map(researchOpportunityCard).join("")}</div>` : `<div class="empty">No research opportunities found from stored active listings right now.</div>`}
+    <br><a href="/research?lane=${escapeHtml(lane)}">View all Research Opportunities</a>
+
     <h2>Latest Scouted Listings</h2>
     ${latestListings.length ? `<div class="grid">${latestListings.map(listingCard).join("")}</div>` : `<div class="empty">No listings scouted in this lane yet.</div>`}
+  `));
+});
+
+app.get("/research", (req, res) => {
+  const lane = getLane(req);
+  const report = buildResearchOpportunityReport(lane, { limit: 25 });
+
+  res.send(layout("CardHawk Research Opportunities", `
+    ${laneTabs(lane, "research")}
+    <h2>Research Opportunities</h2>
+    <div class="guardrail">
+      <strong>Research-only boundary:</strong> These listings use active-market context, stored history, identity quality, and auction timing to help the owner decide what to research next. They are not confirmed sales, canonical sold evidence, production valuations, Deal Gate approvals, email alerts, BUY_NOW decisions, bids, offers, or purchases.
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="number">${report.opportunityCount}</div><div>Research Candidates</div></div>
+      <div class="stat"><div class="number">${report.diagnostics.scopedListingCount}</div><div>Stored Listings Reviewed</div></div>
+      <div class="stat"><div class="number">0</div><div>Sold Pages Visited</div></div>
+      <div class="stat"><div class="number">NONE</div><div>Production Authority</div></div>
+    </div>
+    ${report.opportunities.length ? `<div class="grid">${report.opportunities.map(researchOpportunityCard).join("")}</div>` : `<div class="empty">No research opportunities found from stored active listings right now.</div>`}
   `));
 });
 
@@ -3487,6 +3573,12 @@ app.get("/api/history/listing/:itemId", (req, res) => {
   const listing = historyEngine.getListing(req.params.itemId);
   if (!listing) return res.status(404).json({ error: "Listing not found" });
   res.json(listing);
+});
+
+app.get("/api/research-opportunities", (req, res) => {
+  const lane = getLane(req);
+  const limit = Math.max(1, Math.min(25, Number(req.query.limit || 25)));
+  res.json(buildResearchOpportunityReport(lane, { limit }));
 });
 
 app.get("/api/admin/review-workspaces/export", (req, res) => {
@@ -4142,5 +4234,7 @@ module.exports = {
   __getStoreForTest,
   buildRuntimeReviewWorkspaceExport,
   normalizeReviewWorkspaceExportQuery,
-  getCanonicalSoldEvidenceForListing
+  getCanonicalSoldEvidenceForListing,
+  buildResearchOpportunityReport,
+  researchOpportunityService
 };
