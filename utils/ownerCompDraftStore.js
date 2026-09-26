@@ -293,6 +293,14 @@ function isPersistedDraftSafe(draft = {}) {
   if (!draft.listingId || typeof draft.listingId !== 'string') return false;
   if (!isObject(draft.identitySnapshot) || typeof draft.identityFingerprint !== 'string') return false;
   if (draft.identityFingerprint !== draft.identitySnapshot.fingerprint) return false;
+  if (draft.ownerIdentityReviewSnapshot !== undefined && draft.ownerIdentityReviewSnapshot !== null) {
+    if (!isObject(draft.ownerIdentityReviewSnapshot) || typeof draft.ownerIdentityReviewFingerprint !== 'string') return false;
+    if (draft.ownerIdentityReviewFingerprint !== draft.ownerIdentityReviewSnapshot.fingerprint) return false;
+    if (draft.ownerIdentityReviewSnapshot.provenance !== 'owner_identity_review') return false;
+    if (draft.ownerIdentityReviewSnapshot.authority !== 'non_authoritative_owner_assertion') return false;
+    if (draft.ownerIdentityReviewSnapshot.canonicalIdentityStatus !== 'not_canonical_identity') return false;
+    if (draft.ownerIdentityReviewSnapshot.productionAuthority !== 'none') return false;
+  }
   if (draft.canonicalSoldEvidenceStatus !== 'not_canonical_sold_evidence') return false;
   if (draft.productionAuthority !== 'none') return false;
   if (draft.canonicalReady === true || draft.exactIdentityVerified === true || draft.trustedContext) return false;
@@ -335,7 +343,7 @@ function getDraft(store = [], listingId, draftId) {
   return normalizeStore(store).find((draft) => draft.listingId === String(listingId) && draft.draftId === String(draftId)) || null;
 }
 
-function buildDraft({ store = [], listingId, identitySnapshot, input, now }) {
+function buildDraft({ store = [], listingId, identitySnapshot, ownerIdentityReviewSnapshot = null, input, now }) {
   const normalizedResult = normalizeDraftInput(input);
   if (!normalizedResult.valid) return { ok: false, reason: 'invalid_draft_input', failures: normalizedResult.failures || [normalizedResult.reason] };
 
@@ -351,12 +359,15 @@ function buildDraft({ store = [], listingId, identitySnapshot, input, now }) {
   if (duplicate) return { ok: false, reason: 'duplicate_comp_draft', draft: clone(duplicate) };
 
   const identityFingerprint = identitySnapshot?.fingerprint || fingerprint(identitySnapshot || {});
+  const ownerIdentityReviewFingerprint = ownerIdentityReviewSnapshot?.fingerprint || null;
   const draft = {
     schemaVersion: STORE_VERSION,
     draftId: createDraftId(),
     listingId: String(listingId),
     identitySnapshot: clone(identitySnapshot),
     identityFingerprint,
+    ownerIdentityReviewSnapshot: ownerIdentityReviewSnapshot ? clone(ownerIdentityReviewSnapshot) : null,
+    ownerIdentityReviewFingerprint,
     ...normalized,
     priceEvidenceStatus: priceEvidenceStatus(normalized),
     canonicalSoldEvidenceStatus: 'not_canonical_sold_evidence',
@@ -400,6 +411,8 @@ function updateDraft(store = [], listingId, draftId, input = {}, options = {}) {
     listingId: current.listingId,
     identitySnapshot: current.identitySnapshot,
     identityFingerprint: current.identityFingerprint,
+    ownerIdentityReviewSnapshot: current.ownerIdentityReviewSnapshot || null,
+    ownerIdentityReviewFingerprint: current.ownerIdentityReviewFingerprint || null,
     createdAt: current.createdAt,
     updatedAt: options.now || new Date().toISOString(),
     priceEvidenceStatus: priceEvidenceStatus(normalizedResult.normalized),

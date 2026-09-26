@@ -38,6 +38,7 @@ const {
   recordTargetedDiscoveryObservation
 } = require("./utils/targetedDiscoveryObservationStore");
 const ownerCompDraftStore = require("./utils/ownerCompDraftStore");
+const ownerIdentityReviewStore = require("./utils/ownerIdentityReviewStore");
 const serializationInstrumentation = require("./utils/serializationInstrumentation");
 const configReadiness = require("./utils/configReadiness");
 const operatorAuditLog = require("./utils/operatorAuditLog");
@@ -942,17 +943,28 @@ function saveStore(options = {}) {
   });
 }
 
-function persistOwnerCompDraftStore(nextOwnerCompDrafts, metadata = {}) {
+function persistOwnerCompCollections(collections = {}, metadata = {}) {
   const proposedStore = {
     ...store,
-    ownerCompDrafts: nextOwnerCompDrafts
+    ownerCompDrafts: collections.ownerCompDrafts || store.ownerCompDrafts,
+    ownerIdentityReviews: collections.ownerIdentityReviews || store.ownerIdentityReviews
   };
   const result = appStore.saveStore(DATA_FILE, proposedStore, {
     reason: metadata.reason || "owner_comp_draft_store_save",
     context: metadata.context || null
   });
-  store.ownerCompDrafts = appStore.normalizeStore(proposedStore).ownerCompDrafts;
+  const normalized = appStore.normalizeStore(proposedStore);
+  store.ownerCompDrafts = normalized.ownerCompDrafts;
+  store.ownerIdentityReviews = normalized.ownerIdentityReviews;
   return result;
+}
+
+function persistOwnerCompDraftStore(nextOwnerCompDrafts, metadata = {}) {
+  return persistOwnerCompCollections({ ownerCompDrafts: nextOwnerCompDrafts }, metadata);
+}
+
+function persistOwnerIdentityReviewStore(nextOwnerIdentityReviews, metadata = {}) {
+  return persistOwnerCompCollections({ ownerIdentityReviews: nextOwnerIdentityReviews }, metadata);
 }
 
 function enqueueOwnerCompDraftMutation(work) {
@@ -3430,8 +3442,44 @@ function ownerCompDraftFormFields(draft = {}, options = {}) {
   `;
 }
 
-function identitySnapshotTable(snapshot = {}) {
+function ownerIdentityReviewFormFields(review = {}, options = {}) {
+  const fields = review.fields || review;
+  const field = (name, label, value = "") => `
+    <label>${escapeHtml(label)}
+      <input name="${escapeHtml(name)}" value="${escapeHtml(value || "")}" />
+    </label>
+  `;
+  const select = (name, label, values, selected = "") => `
+    <label>${escapeHtml(label)}
+      <select name="${escapeHtml(name)}">
+        ${values.map(value => `<option value="${escapeHtml(value)}" ${selected === value ? "selected" : ""}>${escapeHtml(value.replaceAll("_", " "))}</option>`).join("")}
+      </select>
+    </label>
+  `;
+
+  return `
+    <input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken || "")}" />
+    ${field("subjectName", "Player / subject", fields.subjectName)}
+    ${field("year", "Year", fields.year)}
+    ${field("manufacturer", "Manufacturer", fields.manufacturer)}
+    ${field("product", "Product", fields.product)}
+    ${field("setName", "Set name", fields.setName)}
+    ${field("cardNumber", "Card number", fields.cardNumber)}
+    ${field("parallel", "Parallel", fields.parallel)}
+    ${select("serialNumbered", "Serial-numbered state", ownerIdentityReviewStore.SERIAL_NUMBERED_STATES, fields.serialNumbered || "unknown")}
+    ${field("printRun", "Print run", fields.printRun)}
+    ${select("autographState", "Autograph state", ownerIdentityReviewStore.AUTOGRAPH_STATES, fields.autographState || "unknown")}
+    ${select("memorabiliaState", "Memorabilia state", ownerIdentityReviewStore.MEMORABILIA_STATES, fields.memorabiliaState || "unknown")}
+    ${select("rawOrGraded", "Raw / graded state", ownerIdentityReviewStore.RAW_OR_GRADED_STATES, fields.rawOrGraded || "unknown")}
+    ${field("gradeCompany", "Grading company", fields.gradeCompany)}
+    ${field("grade", "Grade", fields.grade)}
+    ${select("ownerReviewStatus", "Owner review status", ownerIdentityReviewStore.OWNER_REVIEW_STATUSES, review.ownerReviewStatus || "owner_reviewed")}
+  `;
+}
+
+function identitySnapshotTable(snapshot = {}, options = {}) {
   const fields = snapshot.fields || {};
+  const valueLabel = options.valueLabel || "CardHawk normalized value";
   const rows = [
     ["player/subject", fields.subjectName],
     ["year", fields.year],
@@ -3449,7 +3497,7 @@ function identitySnapshotTable(snapshot = {}) {
 
   return `
     <table>
-      <tr><th>Identity field</th><th>CardHawk normalized value</th></tr>
+      <tr><th>Identity field</th><th>${escapeHtml(valueLabel)}</th></tr>
       ${rows.map(([label, value]) => `
         <tr>
           <td>${escapeHtml(label)}</td>
@@ -3458,6 +3506,15 @@ function identitySnapshotTable(snapshot = {}) {
       `).join("")}
     </table>
     ${snapshot.missingMaterialFields?.length ? `<div class="guardrail"><strong>Identity match requires review:</strong> ${escapeHtml(snapshot.missingMaterialFields.join(", "))}</div>` : ""}
+  `;
+}
+
+function ownerIdentityReviewTable(review = {}) {
+  if (!review) return `<div class="empty">No owner identity review saved for this listing.</div>`;
+  const snapshot = ownerIdentityReviewStore.buildReviewSnapshot(review);
+  return `
+    ${identitySnapshotTable(snapshot, { valueLabel: "Owner-supplied review value" })}
+    <div class="small">Owner identity review status: ${escapeHtml(review.ownerReviewStatus || "owner_reviewed")}; provenance: owner_identity_review; authority: non_authoritative_owner_assertion.</div>
   `;
 }
 
@@ -3494,6 +3551,8 @@ function renderOwnerCompDraftPage(context, options = {}) {
   const listing = Object.prototype.hasOwnProperty.call(context || {}, "listing") ? context.listing : context;
   const listingId = context?.listingId || listingIdentity.getListingId(listing);
   const identitySnapshot = context?.identitySnapshot || getResearchIdentitySnapshotForListing(listing);
+  const ownerIdentityReview = context?.ownerIdentityReview || null;
+  const ownerIdentityReviewSnapshot = ownerIdentityReview ? ownerIdentityReviewStore.buildReviewSnapshot(ownerIdentityReview) : null;
   const drafts = ownerCompDraftStore.listDrafts(store.ownerCompDrafts, { listingId });
   const editingDraft = options.editingDraft || null;
   const action = editingDraft
@@ -3501,7 +3560,9 @@ function renderOwnerCompDraftPage(context, options = {}) {
     : `/research/${encodeURIComponent(listingId)}/comp-drafts`;
   const csrfToken = options.csrfToken || "";
   const listingAvailable = Boolean(listing);
-  const allowAdd = options.allowAdd !== false && listingAvailable;
+  const allowAdd = options.allowAdd === true && listingAvailable;
+  const systemIdentityUsable = hasOwnerCompUsableIdentitySnapshot(identitySnapshot);
+  const ownerReviewUsable = ownerIdentityReviewSnapshot && ownerIdentityReviewStore.hasUsableOwnerIdentityReview(ownerIdentityReviewSnapshot);
   const draftsWithCsrf = drafts.map((draft) => ({ ...draft, csrfToken }));
 
   return layout("Owner Comp Draft Review", `
@@ -3518,7 +3579,18 @@ function renderOwnerCompDraftPage(context, options = {}) {
     <div class="small">Draft persistence uses CardHawk's configured app-store persistence backend. Deployment durability depends on the configured Railway persistent volume/backend.</div>
     <h3>CardHawk normalized identity</h3>
     ${identitySnapshotTable(identitySnapshot)}
-    ${listingAvailable && !hasOwnerCompUsableIdentitySnapshot(identitySnapshot) ? `<div class="guardrail bad"><strong>New draft creation blocked:</strong> owner_comp_identity_snapshot_unusable</div>` : ""}
+    ${listingAvailable && !systemIdentityUsable ? `<div class="guardrail bad"><strong>CardHawk system identity incomplete:</strong> owner_comp_identity_snapshot_unusable</div>` : ""}
+    <h3>Owner identity review — non-authoritative</h3>
+    <div class="guardrail">Owner identity review can unlock draft capture only. It is not EXACT identity, Canonical Sold Evidence, valuation authority, Deal Gate authority, BUY_NOW, bidding, offers, purchasing, or trusted identity.</div>
+    ${ownerIdentityReviewTable(ownerIdentityReview)}
+    ${listingAvailable ? `
+      <form class="owner-comp-draft-form owner-identity-review-form" method="POST" action="/research/${encodeURIComponent(listingId)}/identity-review">
+        ${ownerIdentityReviewFormFields(ownerIdentityReview || {}, { csrfToken })}
+        <button type="submit">${ownerIdentityReview ? "Update Owner Identity Review" : "Save Owner Identity Review"}</button>
+      </form>
+    ` : ""}
+    ${listingAvailable && !systemIdentityUsable && !ownerReviewUsable ? `<div class="guardrail bad"><strong>New draft creation blocked:</strong> owner_comp_identity_snapshot_unusable</div>` : ""}
+    ${listingAvailable && !systemIdentityUsable && ownerReviewUsable ? `<div class="guardrail"><strong>Draft capture unlocked by owner identity review:</strong> non-authoritative owner assertion snapshot will be captured separately from CardHawk system identity.</div>` : ""}
     ${options.error ? `<div class="guardrail bad"><strong>Draft was not saved:</strong> ${escapeHtml(options.error)}</div>` : ""}
     ${allowAdd || editingDraft ? `
       <h3>${editingDraft ? "Edit owner-reviewed comp draft" : "Add owner-reviewed comp draft"}</h3>
@@ -3551,11 +3623,20 @@ function getOwnerCompContext(listingId) {
   const listing = getStoredListingById(listingId);
   if (listing) {
     const identitySnapshot = getResearchIdentitySnapshotForListing(listing);
+    const normalizedListingId = listingIdentity.getListingId(listing);
+    const ownerIdentityReview = ownerIdentityReviewStore.getReview(store.ownerIdentityReviews, normalizedListingId);
+    const ownerIdentityReviewSnapshot = ownerIdentityReview ? ownerIdentityReviewStore.buildReviewSnapshot(ownerIdentityReview) : null;
+    const canCreate = Boolean(isListingEligibleForOwnerCompDraft(listing) && (
+      hasOwnerCompUsableIdentitySnapshot(identitySnapshot) ||
+      (ownerIdentityReviewSnapshot && ownerIdentityReviewStore.hasUsableOwnerIdentityReview(ownerIdentityReviewSnapshot))
+    ));
     return {
       listing,
-      listingId: listingIdentity.getListingId(listing),
+      listingId: normalizedListingId,
       identitySnapshot,
-      canCreate: isListingEligibleForOwnerCompDraft(listing) && hasOwnerCompUsableIdentitySnapshot(identitySnapshot)
+      ownerIdentityReview,
+      ownerIdentityReviewSnapshot,
+      canCreate
     };
   }
   const stale = buildStaleOwnerCompContext(String(listingId));
@@ -3729,11 +3810,59 @@ app.get("/research/:listingId/comp-drafts", (req, res) => {
   }));
 });
 
+app.get("/research/:listingId/identity-review", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send(layout("Method Not Allowed", `<p>Use POST to save an owner identity review.</p>`));
+});
+
+app.post("/research/:listingId/identity-review", async (req, res) => {
+  const context = getOwnerCompContext(req.params.listingId);
+  if (!context || !context.listing) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
+  if (!validateOwnerCompCsrfToken(req)) {
+    return res.status(403).send(renderOwnerCompDraftPage(context, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      allowAdd: context.canCreate,
+      error: "invalid_csrf_token"
+    }));
+  }
+  try {
+    const result = await enqueueOwnerCompDraftMutation(async () => {
+      const reviewResult = ownerIdentityReviewStore.upsertReview(store.ownerIdentityReviews, {
+        listingId: context.listingId,
+        input: stripOwnerCompRouteFields(req.body)
+      });
+      if (!reviewResult.ok) return reviewResult;
+      persistOwnerIdentityReviewStore(reviewResult.store, {
+        reason: "owner_identity_review_saved",
+        context: { listingId: context.listingId, reviewId: reviewResult.review.reviewId }
+      });
+      return reviewResult;
+    });
+    if (!result.ok) {
+      const nextContext = getOwnerCompContext(req.params.listingId) || context;
+      return res.status(400).send(renderOwnerCompDraftPage(nextContext, {
+        csrfToken: createOwnerCompCsrfToken(req),
+        allowAdd: nextContext.canCreate,
+        error: [result.reason].concat(result.failures || []).filter(Boolean).join(", ")
+      }));
+    }
+    return res.redirect(`/research/${encodeURIComponent(context.listingId)}/comp-drafts`);
+  } catch (error) {
+    const nextContext = getOwnerCompContext(req.params.listingId) || context;
+    return res.status(500).send(renderOwnerCompDraftPage(nextContext, {
+      csrfToken: createOwnerCompCsrfToken(req),
+      allowAdd: nextContext.canCreate,
+      error: sanitizeOwnerCompError(error)
+    }));
+  }
+});
+
 app.post("/research/:listingId/comp-drafts", async (req, res) => {
   const context = getOwnerCompContext(req.params.listingId);
   if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
   if (!context.canCreate) {
-    const error = context.listing && !hasOwnerCompUsableIdentitySnapshot(context.identitySnapshot)
+    const ownerReviewUsable = context.ownerIdentityReviewSnapshot && ownerIdentityReviewStore.hasUsableOwnerIdentityReview(context.ownerIdentityReviewSnapshot);
+    const error = context.listing && !hasOwnerCompUsableIdentitySnapshot(context.identitySnapshot) && !ownerReviewUsable
       ? "owner_comp_identity_snapshot_unusable"
       : "listing_not_eligible_for_new_comp_draft";
     return res.status(400).send(renderOwnerCompDraftPage(context, {
@@ -3753,6 +3882,7 @@ app.post("/research/:listingId/comp-drafts", async (req, res) => {
       const addResult = ownerCompDraftStore.addDraft(store.ownerCompDrafts, {
         listingId: context.listingId,
         identitySnapshot: context.identitySnapshot,
+        ownerIdentityReviewSnapshot: context.ownerIdentityReviewSnapshot || null,
         input: stripOwnerCompRouteFields(req.body)
       });
       if (!addResult.ok) return addResult;

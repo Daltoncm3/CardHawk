@@ -255,5 +255,5 @@ test('existing appStore persistence return shape remains backwards compatible', 
   assert.equal(result.filePath, filePath);
   assert.ok(result.diagnostics);
   assert.ok(result.diagnostics.serializedByteSize > 0);
-  assert.deepEqual(Object.keys(loaded), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'ownerCompDrafts', 'settings']);
+  assert.deepEqual(Object.keys(loaded), ['listings', 'alerts', 'scans', 'rejections', 'targetedDiscoveryObservations', 'ownerIdentityReviews', 'ownerCompDrafts', 'settings']);
 });

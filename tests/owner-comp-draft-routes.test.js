@@ -149,6 +149,27 @@ function validDraft(overrides = {}) {
   };
 }
 
+function validOwnerIdentityReview(overrides = {}) {
+  return {
+    subjectName: 'Warming Bernabel',
+    year: '2026',
+    manufacturer: 'Topps',
+    product: 'Topps Chrome',
+    setName: 'Topps Chrome',
+    cardNumber: 'RA-WBE',
+    parallel: 'Orange Raywave',
+    serialNumbered: 'serial_numbered',
+    printRun: '25',
+    autographState: 'autograph',
+    memorabiliaState: 'unknown',
+    rawOrGraded: 'raw',
+    gradeCompany: '',
+    grade: '',
+    ownerReviewStatus: 'owner_reviewed',
+    ...overrides
+  };
+}
+
 function extractCsrf(body) {
   const match = String(body || '').match(/name="csrfToken" value="([a-f0-9]{64})"/i);
   assert.ok(match, 'expected CSRF token in authenticated owner comp page');
@@ -182,6 +203,21 @@ async function tryAddDraft(listingId, overrides = {}) {
       csrfToken: csrfMatch ? csrfMatch[1] : undefined,
       sourceSoldListingUrl: `https://www.ebay.com/itm/${itemId || '123456789012'}`,
       ...draftOverrides
+    })
+  });
+}
+
+async function saveOwnerIdentityReview(listingId, overrides = {}) {
+  const page = await request(`/research/${encodeURIComponent(listingId)}/comp-drafts`, {
+    headers: { Authorization: authHeader() }
+  });
+  const csrfToken = extractCsrf(page.body);
+  return request(`/research/${encodeURIComponent(listingId)}/identity-review`, {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validOwnerIdentityReview({
+      csrfToken,
+      ...overrides
     })
   });
 }
@@ -440,10 +476,135 @@ test('empty owner comp identity blocks new drafts while title-only Sold Items fa
   assert.doesNotMatch(page.body, /<script>alert/);
   assert.match(page.body, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
   assert.match(page.body, /owner_comp_identity_snapshot_unusable/);
-  assert.doesNotMatch(page.body, /<form class="owner-comp-draft-form"/);
+  assert.equal(page.body.includes('action="/research/active-empty-identity/comp-drafts"'), false);
   assert.equal(blocked.statusCode, 400);
   assert.match(blocked.body, /owner_comp_identity_snapshot_unusable/);
   assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 0);
+});
+
+test('valid owner identity review is stored separately and unlocks draft capture without changing system identity', async () => {
+  setStoreWithListings([
+    listing('owner-review-unlocks', {
+      title: 'Incomplete stored listing identity owner-review-unlocks',
+      lane: 'all',
+      parsed: {}
+    })
+  ]);
+
+  const firstPage = await request('/research/owner-review-unlocks/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  assert.equal(firstPage.statusCode, 200);
+  assert.match(firstPage.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(firstPage.body.includes('action="/research/owner-review-unlocks/comp-drafts"'), false);
+
+  const saved = await saveOwnerIdentityReview('owner-review-unlocks', {
+    subjectName: 'Warming Bernabel',
+    year: '2026',
+    product: 'Topps Chrome',
+    setName: 'Topps Chrome',
+    cardNumber: 'RA-WBE'
+  });
+  assert.equal(saved.statusCode, 302);
+
+  const page = await request('/research/owner-review-unlocks/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  const added = await tryAddDraft('owner-review-unlocks', { itemId: '293456789012' });
+  const currentStore = server.__getStoreForTest();
+  const draft = currentStore.ownerCompDrafts[0];
+
+  assert.equal(page.statusCode, 200);
+  assert.match(page.body, /Owner identity review — non-authoritative/);
+  assert.match(page.body, /Draft capture unlocked by owner identity review/);
+  assert.match(page.body, /non_authoritative_owner_assertion/);
+  assert.match(page.body, /Warming Bernabel/);
+  assert.doesNotMatch(page.body, /ownerIdentityReviewFingerprint|identityFingerprint|fingerprint/);
+  assert.equal(added.statusCode, 302);
+  assert.equal(currentStore.ownerIdentityReviews.length, 1);
+  assert.equal(currentStore.ownerCompDrafts.length, 1);
+  assert.equal(draft.identitySnapshot.fields.subjectName, '');
+  assert.equal(draft.identitySnapshot.fields.year, '');
+  assert.equal(draft.ownerIdentityReviewSnapshot.fields.subjectName, 'Warming Bernabel');
+  assert.equal(draft.ownerIdentityReviewSnapshot.fields.cardNumber, 'RA-WBE');
+  assert.equal(draft.ownerIdentityReviewSnapshot.authority, 'non_authoritative_owner_assertion');
+  assert.equal(draft.ownerIdentityReviewSnapshot.canonicalIdentityStatus, 'not_canonical_identity');
+  assert.equal(draft.ownerIdentityReviewSnapshot.productionAuthority, 'none');
+  assert.equal(draft.canonicalSoldEvidenceStatus, 'not_canonical_sold_evidence');
+  assert.equal(draft.productionAuthority, 'none');
+  assert.equal(currentStore.listings['owner-review-unlocks'].parsed.subjectName, undefined);
+});
+
+test('invalid or broad owner identity review cannot unlock draft creation', async () => {
+  setStoreWithListings([
+    listing('owner-review-broad', {
+      title: 'Unknown broad baseball card',
+      lane: 'all',
+      parsed: {}
+    })
+  ]);
+
+  const broad = await saveOwnerIdentityReview('owner-review-broad', {
+    subjectName: '',
+    year: '2026',
+    product: 'Topps Chrome',
+    setName: 'Topps Chrome',
+    cardNumber: ''
+  });
+  const subjectOnly = await saveOwnerIdentityReview('owner-review-broad', {
+    subjectName: 'Warming Bernabel',
+    year: '',
+    product: '',
+    setName: '',
+    cardNumber: '',
+    parallel: '',
+    printRun: '',
+    gradeCompany: '',
+    grade: '',
+    serialNumbered: 'serial_numbered',
+    autographState: 'not_autograph',
+    rawOrGraded: 'raw'
+  });
+  const blocked = await tryAddDraft('owner-review-broad', { itemId: '303456789012' });
+
+  assert.equal(broad.statusCode, 400);
+  assert.match(broad.body, /invalid_owner_identity_review/);
+  assert.match(broad.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(subjectOnly.statusCode, 400);
+  assert.match(subjectOnly.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(blocked.statusCode, 400);
+  assert.match(blocked.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(server.__getStoreForTest().ownerIdentityReviews.length, 0);
+  assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 0);
+});
+
+test('owner identity review rejects hidden binding and trust injection fields safely', async () => {
+  setStoreWithListings([
+    listing('owner-review-injection', {
+      parsed: {}
+    })
+  ]);
+  const page = await request('/research/owner-review-injection/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  const csrfToken = extractCsrf(page.body);
+  const injected = await request('/research/owner-review-injection/identity-review', {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validOwnerIdentityReview({
+      csrfToken,
+      listingId: 'different-listing',
+      reviewId: 'fake-review',
+      fingerprint: 'trusted',
+      canonicalReady: 'true',
+      productionAuthority: 'trusted'
+    })
+  });
+
+  assert.equal(injected.statusCode, 400);
+  assert.match(injected.body, /dangerous_object_key|unsupported_field/);
+  assert.equal(server.__getStoreForTest().ownerIdentityReviews.length, 0);
+  assert.equal({}.trusted, undefined);
 });
 
 test('owner comp save gate requires subject plus one meaningful discriminator', async () => {
@@ -549,6 +710,95 @@ test('existing drafts remain manageable even when current stored identity is no 
   assert.deepEqual(updated.identitySnapshot, draft.identitySnapshot);
   assert.equal(updated.identityFingerprint, draft.identityFingerprint);
   assert.equal(updated.reviewStatus, 'reviewed');
+});
+
+test('existing drafts retain immutable owner review snapshots after review edits', async () => {
+  setStoreWithListings([
+    listing('owner-review-snapshot', {
+      title: 'Incomplete system identity',
+      parsed: {}
+    })
+  ]);
+
+  const saved = await saveOwnerIdentityReview('owner-review-snapshot', {
+    subjectName: 'Warming Bernabel',
+    year: '2026',
+    cardNumber: 'RA-WBE',
+    product: '',
+    setName: ''
+  });
+  assert.equal(saved.statusCode, 302);
+  const added = await tryAddDraft('owner-review-snapshot', { itemId: '313456789012' });
+  assert.equal(added.statusCode, 302);
+  const draftBefore = server.__getStoreForTest().ownerCompDrafts[0];
+  const reviewSnapshotBefore = draftBefore.ownerIdentityReviewSnapshot;
+
+  const editedReview = await saveOwnerIdentityReview('owner-review-snapshot', {
+    subjectName: 'Warming Bernabel',
+    year: '2026',
+    cardNumber: 'RA-WBE',
+    parallel: 'Blue Wave'
+  });
+  assert.equal(editedReview.statusCode, 302);
+
+  const draftAfter = server.__getStoreForTest().ownerCompDrafts[0];
+  const currentReview = server.__getStoreForTest().ownerIdentityReviews[0];
+  assert.deepEqual(draftAfter.ownerIdentityReviewSnapshot, reviewSnapshotBefore);
+  assert.equal(draftAfter.ownerIdentityReviewFingerprint, reviewSnapshotBefore.fingerprint);
+  assert.equal(currentReview.parallel, 'Blue Wave');
+  assert.equal(draftAfter.ownerIdentityReviewSnapshot.fields.parallel, 'Orange Raywave');
+});
+
+test('owner identity review persistence failure rolls back memory', async () => {
+  setStoreWithListings([
+    listing('owner-review-rollback', {
+      parsed: {}
+    })
+  ]);
+  appStore.saveStore = () => {
+    throw new Error('disk unavailable');
+  };
+
+  const failed = await saveOwnerIdentityReview('owner-review-rollback', {
+    subjectName: 'Warming Bernabel',
+    year: '2026'
+  });
+
+  assert.equal(failed.statusCode, 500);
+  assert.match(failed.body, /owner_comp_draft_persistence_failed/);
+  assert.equal(server.__getStoreForTest().ownerIdentityReviews.length, 0);
+  assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 0);
+});
+
+test('serialized owner review and draft writes preserve successful state without authority changes', async () => {
+  setStoreWithListings([
+    listing('owner-review-concurrent', {
+      parsed: {}
+    })
+  ]);
+
+  const saved = await saveOwnerIdentityReview('owner-review-concurrent', {
+    subjectName: 'Warming Bernabel',
+    year: '2026'
+  });
+  assert.equal(saved.statusCode, 302);
+
+  const [firstDraft, secondDraft] = await Promise.all([
+    tryAddDraft('owner-review-concurrent', { itemId: '323456789012' }),
+    tryAddDraft('owner-review-concurrent', { itemId: '333456789012' })
+  ]);
+
+  assert.equal(firstDraft.statusCode, 302);
+  assert.equal(secondDraft.statusCode, 302);
+  const currentStore = server.__getStoreForTest();
+  assert.equal(currentStore.ownerIdentityReviews.length, 1);
+  assert.equal(currentStore.ownerCompDrafts.length, 2);
+  assert.deepEqual(
+    currentStore.ownerCompDrafts.map((draft) => draft.productionAuthority),
+    ['none', 'none']
+  );
+  assert.equal(currentStore.alerts.length, 0);
+  assert.equal(currentStore.scans.length, 0);
 });
 
 test('owner comp draft form uses responsive grid layout without changing validation boundaries', async () => {
