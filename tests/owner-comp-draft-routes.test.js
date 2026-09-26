@@ -1,14 +1,21 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const appStore = require('../utils/appStore');
+const historyEngine = require('../engines/historyEngine');
 const server = require('../server');
 
 const originalSaveStore = appStore.saveStore;
 const originalFetch = global.fetch;
+const defaultHistoryFile = path.join(__dirname, '..', 'data', 'listingHistory.json');
+let tempHistoryDirectory = null;
+let defaultHistoryExistedBeforeTest = false;
 
 function authHeader(user = 'comp-user', pass = 'comp-pass') {
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
@@ -113,6 +120,14 @@ function setStoreWithListings(listings = []) {
   return nextStore;
 }
 
+function useIsolatedHistoryStorage() {
+  tempHistoryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'cardhawk-owner-comp-routes-'));
+  historyEngine.__setHistoryStorageForTests({
+    historyFile: path.join(tempHistoryDirectory, 'listingHistory.json'),
+    archiveDir: path.join(tempHistoryDirectory, 'history-archive')
+  });
+}
+
 function validDraft(overrides = {}) {
   return {
     sourceMarketplace: 'ebay',
@@ -149,6 +164,8 @@ async function csrfFor(listingId) {
 }
 
 test.beforeEach(() => {
+  defaultHistoryExistedBeforeTest = fs.existsSync(defaultHistoryFile);
+  useIsolatedHistoryStorage();
   process.env.CARDHAWK_USER = 'comp-user';
   process.env.CARDHAWK_PASS = 'comp-pass';
   server.__setStoreForTest(appStore.createDefaultStore());
@@ -162,6 +179,16 @@ test.afterEach(() => {
   appStore.saveStore = originalSaveStore;
   global.fetch = originalFetch;
   server.__setStoreForTest(appStore.createDefaultStore());
+  historyEngine.__resetHistoryStorageForTests();
+  if (tempHistoryDirectory) {
+    fs.rmSync(tempHistoryDirectory, { recursive: true, force: true });
+    tempHistoryDirectory = null;
+  }
+  assert.equal(
+    fs.existsSync(defaultHistoryFile),
+    defaultHistoryExistedBeforeTest,
+    'owner comp route tests must not create or remove the default repository history file'
+  );
 });
 
 test('owner comp draft routes require existing owner authentication and reject unsafe methods', async () => {
@@ -194,6 +221,116 @@ test('owner comp draft routes require existing owner authentication and reject u
   assert.equal(missingCsrf.statusCode, 403);
   assert.match(missingCsrf.body, /invalid_csrf_token/);
   assert.equal(invalidCsrf.statusCode, 403);
+});
+
+test('dashboard stored listings expose authenticated Review/Add Sold Comps links', async () => {
+  setStoreWithListings([
+    listing('active-dashboard', {
+      lastSeenAt: '2026-09-25T12:00:00.000Z'
+    })
+  ]);
+
+  const unauthenticated = await request('/');
+  const dashboard = await request('/', {
+    headers: { Authorization: authHeader() }
+  });
+
+  assert.equal(unauthenticated.statusCode, 401);
+  assert.equal(dashboard.statusCode, 200);
+  assert.match(dashboard.body, /Review\/Add Sold Comps/);
+  assert.match(dashboard.body, /\/research\/active-dashboard\/comp-drafts/);
+});
+
+test('dashboard comp-review links escape hostile titles and listing IDs', async () => {
+  const hostileId = 'active-<script>alert(1)</script>';
+  setStoreWithListings([
+    listing('active-xss-link', {
+      ebayItemId: 'active-xss-link',
+      listingId: hostileId,
+      title: `2024 Topps Chrome <script>alert("x")</script> Ohtani`,
+      lastSeenAt: '2026-09-25T12:00:00.000Z'
+    })
+  ]);
+
+  const dashboard = await request('/', {
+    headers: { Authorization: authHeader() }
+  });
+
+  assert.equal(dashboard.statusCode, 200);
+  assert.match(dashboard.body, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
+  assert.doesNotMatch(dashboard.body, /<script>alert/);
+  assert.match(dashboard.body, /\/research\/active-%3Cscript%3Ealert\(1\)%3C%2Fscript%3E\/comp-drafts/);
+});
+
+test('dashboard omits comp-review links for listings without a resolvable listing ID', async () => {
+  const nextStore = appStore.createDefaultStore();
+  nextStore.listings.missing_id = {
+    marketplace: 'ebay',
+    lane: 'baseball',
+    title: 'Stored listing without usable id',
+    price: 80,
+    shipping: 5,
+    totalCost: 85,
+    currency: 'USD',
+    url: 'https://www.ebay.com/itm/missing-id',
+    sellerUsername: 'CompSeller',
+    parsed: parsedIdentity()
+  };
+  server.__setStoreForTest(nextStore);
+
+  const dashboard = await request('/', {
+    headers: { Authorization: authHeader() }
+  });
+
+  assert.equal(dashboard.statusCode, 200);
+  assert.match(dashboard.body, /Stored listing without usable id/);
+  assert.doesNotMatch(dashboard.body, /\/research\/missing_id\/comp-drafts/);
+  assert.doesNotMatch(dashboard.body, /Review\/Add Sold Comps/);
+});
+
+test('History active rows expose authenticated safely encoded comp-review links', async () => {
+  const hostileId = 'history-<script>alert(1)</script>';
+  historyEngine.recordScan([
+    listing('history-active', {
+      ebayItemId: hostileId,
+      listingId: hostileId,
+      title: `2024 Topps Chrome <script>alert("history")</script> Ohtani`,
+      lastSeenAt: '2026-09-25T12:00:00.000Z'
+    })
+  ], {
+    lane: 'baseball',
+    query: 'history link test',
+    startedAt: '2026-09-25T12:00:00.000Z',
+    completedAt: '2026-09-25T12:00:01.000Z'
+  });
+
+  const unauthenticated = await request('/history/active');
+  const historyPage = await request('/history/active', {
+    headers: { Authorization: authHeader() }
+  });
+
+  assert.equal(unauthenticated.statusCode, 401);
+  assert.equal(historyPage.statusCode, 200);
+  assert.match(historyPage.body, /Review\/Add Sold Comps/);
+  assert.match(historyPage.body, /\/research\/history-%3Cscript%3Ealert\(1\)%3C%2Fscript%3E\/comp-drafts/);
+  assert.match(historyPage.body, /&lt;script&gt;alert\(&quot;history&quot;\)&lt;\/script&gt;/);
+  assert.doesNotMatch(historyPage.body, /<script>alert/);
+  assert.doesNotMatch(historyPage.body, /href="[^"]*<script/);
+});
+
+test('nonexistent listing comp-review route is rejected without authority side effects', async () => {
+  setStoreWithListings([listing('active-existing')]);
+
+  const response = await request('/research/not-a-real-listing/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+
+  const currentStore = server.__getStoreForTest();
+  assert.equal(response.statusCode, 404);
+  assert.equal(currentStore.ownerCompDrafts.length, 0);
+  assert.equal(currentStore.alerts.length, 0);
+  assert.equal(currentStore.scans.length, 0);
+  assert.equal(currentStore.rejections.length, 0);
 });
 
 test('owner can add, edit, status-update, and delete a comp draft without creating canonical evidence', async () => {

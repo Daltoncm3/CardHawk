@@ -3515,6 +3515,12 @@ function shortDate(value) {
   }
 }
 
+function ownerCompDraftReviewLink(item = {}) {
+  const listingId = listingIdentity.getListingId(item);
+  if (!listingId) return "";
+  return ` &nbsp; <a href="/research/${encodeURIComponent(listingId)}/comp-drafts">Review/Add Sold Comps</a>`;
+}
+
 function historyListingRow(item) {
   return `
     <tr>
@@ -3525,7 +3531,7 @@ function historyListingRow(item) {
       <td>${escapeHtml(item.status || "")}</td>
       <td>${escapeHtml(shortDate(item.firstSeenAt))}</td>
       <td>${escapeHtml(shortDate(item.lastSeenAt))}</td>
-      <td><a href="${escapeHtml(item.url || "#")}" target="_blank">eBay</a></td>
+      <td><a href="${escapeHtml(item.url || "#")}" target="_blank">eBay</a>${ownerCompDraftReviewLink(item)}</td>
     </tr>
   `;
 }
@@ -4653,6 +4659,7 @@ function listingCard(rawItem) {
       <div class="meta">Seller: ${escapeHtml(item.sellerUsername || "Unknown")}</div>
       ${item.dealGate && !item.dealGate.passed ? `<div class="meta">Rejected: ${escapeHtml(item.dealGate.reasons.join(", "))}</div>` : ""}
       <a href="${escapeHtml(item.url)}" target="_blank">View on eBay</a>
+      ${ownerCompDraftReviewLink(item)}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/history/listing/${escapeHtml(item.ebayItemId)}" target="_blank">History</a>` : ""}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/comps/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Comps</a>` : ""}
       ${item.ebayItemId ? ` &nbsp; <a href="/api/grades/listing/${escapeHtml(item.ebayItemId)}" target="_blank">Grade</a>` : ""}
