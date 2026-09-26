@@ -155,12 +155,35 @@ function extractCsrf(body) {
   return match[1];
 }
 
+function extractSoldItemsHref(body) {
+  const match = String(body || '').match(/<a href="([^"]+)"[^>]*>Open eBay Sold Items<\/a>/);
+  assert.ok(match, 'expected Sold Items research link');
+  return match[1].replaceAll('&amp;', '&');
+}
+
 async function csrfFor(listingId) {
   const page = await request(`/research/${encodeURIComponent(listingId)}/comp-drafts`, {
     headers: { Authorization: authHeader() }
   });
   assert.equal(page.statusCode, 200);
   return extractCsrf(page.body);
+}
+
+async function tryAddDraft(listingId, overrides = {}) {
+  const { itemId, ...draftOverrides } = overrides;
+  const page = await request(`/research/${encodeURIComponent(listingId)}/comp-drafts`, {
+    headers: { Authorization: authHeader() }
+  });
+  const csrfMatch = String(page.body || '').match(/name="csrfToken" value="([a-f0-9]{64})"/i);
+  return request(`/research/${encodeURIComponent(listingId)}/comp-drafts`, {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validDraft({
+      csrfToken: csrfMatch ? csrfMatch[1] : undefined,
+      sourceSoldListingUrl: `https://www.ebay.com/itm/${itemId || '123456789012'}`,
+      ...draftOverrides
+    })
+  });
 }
 
 test.beforeEach(() => {
@@ -331,6 +354,215 @@ test('nonexistent listing comp-review route is rejected without authority side e
   assert.equal(currentStore.alerts.length, 0);
   assert.equal(currentStore.scans.length, 0);
   assert.equal(currentStore.rejections.length, 0);
+});
+
+test('owner comp identity adaptation is isolated from Research Opportunities and does not upgrade to exact', async () => {
+  setStoreWithListings([
+    listing('active-bernabel', {
+      title: '2026 Topps Chrome Orange Raywave/25 Auto Warming Bernabel Rockies RA-WBE',
+      parsed: {
+        year: 2026,
+        setName: 'Topps Chrome',
+        numberedTo: 25,
+        qualityTier: 'strong',
+        flags: {
+          autograph: true,
+          numbered: true,
+          refractor: true
+        }
+      }
+    })
+  ]);
+
+  const page = await request('/research/active-bernabel/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  const globalResearchIdentity = server.researchOpportunityService.buildResearchIdentity(
+    server.__getStoreForTest().listings['active-bernabel']
+  );
+  const soldHref = extractSoldItemsHref(page.body);
+  const parsedUrl = new URL(soldHref);
+  const blocked = await tryAddDraft('active-bernabel', { itemId: '193456789012' });
+
+  assert.equal(page.statusCode, 200);
+  assert.equal(globalResearchIdentity.exactCompEligible, false);
+  assert.equal(globalResearchIdentity.year, '');
+  assert.equal(globalResearchIdentity.product, '');
+  assert.equal(globalResearchIdentity.subjectName, '');
+  assert.match(page.body, /<td>2026<\/td>/);
+  assert.match(page.body, /<td>topps chrome<\/td>/);
+  assert.match(page.body, /<td>serial_numbered \/ 25<\/td>/);
+  assert.match(page.body, /<td>autograph<\/td>/);
+  assert.match(page.body, /subjectName/);
+  assert.match(page.body, /cardNumber/);
+  assert.equal(parsedUrl.hostname, 'www.ebay.com');
+  assert.equal(parsedUrl.searchParams.get('LH_Sold'), '1');
+  assert.equal(parsedUrl.searchParams.get('LH_Complete'), '1');
+  assert.match(parsedUrl.searchParams.get('_nkw'), /Warming Bernabel/);
+  assert.match(parsedUrl.searchParams.get('_nkw'), /Orange Raywave\/25/);
+  assert.match(parsedUrl.searchParams.get('_nkw'), /RA-WBE/);
+  assert.doesNotMatch(page.body.match(/<h3>CardHawk normalized identity<\/h3>[\s\S]*?<div class="guardrail bad">/)?.[0] || '', /Warming Bernabel|Orange Raywave|RA-WBE/);
+  assert.equal(blocked.statusCode, 400);
+  assert.match(blocked.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 0);
+});
+
+test('empty owner comp identity blocks new drafts while title-only Sold Items fallback remains research navigation', async () => {
+  const hostileTitle = '???? <script>alert("x")</script> Warming Bernabel "Orange" Raywave/25 Auto';
+  setStoreWithListings([
+    listing('active-empty-identity', {
+      title: hostileTitle,
+      lane: 'all',
+      parsed: {},
+      lastSeenAt: '2026-09-25T12:00:00.000Z'
+    })
+  ]);
+
+  const page = await request('/research/active-empty-identity/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  const soldHref = extractSoldItemsHref(page.body);
+  const parsedUrl = new URL(soldHref);
+  const blocked = await request('/research/active-empty-identity/comp-drafts', {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validDraft({ sourceSoldListingUrl: 'https://www.ebay.com/itm/193456789012' })
+  });
+
+  assert.equal(page.statusCode, 200);
+  assert.equal(parsedUrl.protocol, 'https:');
+  assert.equal(parsedUrl.hostname, 'www.ebay.com');
+  assert.equal(parsedUrl.pathname, '/sch/i.html');
+  assert.equal(parsedUrl.searchParams.get('LH_Sold'), '1');
+  assert.equal(parsedUrl.searchParams.get('LH_Complete'), '1');
+  assert.match(parsedUrl.searchParams.get('_nkw'), /Warming Bernabel/);
+  assert.match(parsedUrl.searchParams.get('_nkw'), /Raywave\/25 Auto/);
+  assert.doesNotMatch(page.body, /<script>alert/);
+  assert.match(page.body, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
+  assert.match(page.body, /owner_comp_identity_snapshot_unusable/);
+  assert.doesNotMatch(page.body, /<form class="owner-comp-draft-form"/);
+  assert.equal(blocked.statusCode, 400);
+  assert.match(blocked.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 0);
+});
+
+test('owner comp save gate requires subject plus one meaningful discriminator', async () => {
+  setStoreWithListings([
+    listing('year-set', {
+      parsed: { year: 2026, product: 'Topps Chrome', setName: 'Topps Chrome' }
+    }),
+    listing('manufacturer-year', {
+      parsed: { year: 2026, manufacturer: 'Topps' }
+    }),
+    listing('state-only', {
+      parsed: {
+        player: 'Warming Bernabel',
+        autograph: false,
+        serialNumbered: false,
+        memorabilia: false,
+        rawOrGraded: 'unknown'
+      }
+    }),
+    listing('placeholder-subject', {
+      parsed: { player: 'unknown', year: 2026, cardNumber: 'not specified' }
+    }),
+    listing('subject-year', {
+      parsed: { player: 'Warming Bernabel', year: 2026 }
+    }),
+    listing('subject-set', {
+      parsed: { player: 'Warming Bernabel', product: 'Topps Chrome', setName: 'Topps Chrome' }
+    }),
+    listing('subject-card-number', {
+      parsed: { player: 'Warming Bernabel', cardNumber: 'RA-WBE' }
+    })
+  ]);
+
+  const blockedYearSet = await tryAddDraft('year-set', { itemId: '203456789012' });
+  const blockedManufacturerYear = await tryAddDraft('manufacturer-year', { itemId: '213456789012' });
+  const blockedStateOnly = await tryAddDraft('state-only', { itemId: '223456789012' });
+  const blockedPlaceholder = await tryAddDraft('placeholder-subject', { itemId: '233456789012' });
+  const subjectYear = await tryAddDraft('subject-year', { itemId: '243456789012' });
+  const subjectSet = await tryAddDraft('subject-set', { itemId: '253456789012' });
+  const subjectCardNumber = await tryAddDraft('subject-card-number', { itemId: '263456789012' });
+
+  assert.equal(blockedYearSet.statusCode, 400);
+  assert.match(blockedYearSet.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(blockedManufacturerYear.statusCode, 400);
+  assert.match(blockedManufacturerYear.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(blockedStateOnly.statusCode, 400);
+  assert.match(blockedStateOnly.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(blockedPlaceholder.statusCode, 400);
+  assert.match(blockedPlaceholder.body, /owner_comp_identity_snapshot_unusable/);
+  assert.equal(subjectYear.statusCode, 302);
+  assert.equal(subjectSet.statusCode, 302);
+  assert.equal(subjectCardNumber.statusCode, 302);
+  assert.equal(server.__getStoreForTest().ownerCompDrafts.length, 3);
+});
+
+test('existing drafts remain manageable even when current stored identity is no longer create-eligible', async () => {
+  setStoreWithListings([listing('existing-draft-manage', {
+    parsed: { player: 'Warming Bernabel', year: 2026 }
+  })]);
+  const csrfToken = await csrfFor('existing-draft-manage');
+  const added = await request('/research/existing-draft-manage/comp-drafts', {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validDraft({ csrfToken, sourceSoldListingUrl: 'https://www.ebay.com/itm/273456789012' })
+  });
+  assert.equal(added.statusCode, 302);
+  const draft = server.__getStoreForTest().ownerCompDrafts[0];
+
+  setStoreWithListings([listing('existing-draft-manage', {
+    parsed: {},
+    title: 'Unknown listing identity after relist'
+  })]);
+  server.__setStoreForTest({
+    ...server.__getStoreForTest(),
+    ownerCompDrafts: [draft]
+  });
+
+  const page = await request('/research/existing-draft-manage/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+  const staleCsrf = extractCsrf(page.body);
+  const edited = await request(`/research/existing-draft-manage/comp-drafts/${draft.draftId}`, {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: validDraft({
+      csrfToken: staleCsrf,
+      sourceSoldListingUrl: 'https://www.ebay.com/itm/283456789012',
+      displayedSoldPrice: '140.00'
+    })
+  });
+  const status = await request(`/research/existing-draft-manage/comp-drafts/${draft.draftId}/status`, {
+    method: 'POST',
+    headers: { Authorization: authHeader() },
+    body: { csrfToken: staleCsrf, reviewStatus: 'reviewed' }
+  });
+
+  assert.equal(page.statusCode, 200);
+  assert.match(page.body, /owner_comp_identity_snapshot_unusable/);
+  assert.match(page.body, /Edit/);
+  assert.equal(edited.statusCode, 302);
+  assert.equal(status.statusCode, 302);
+  const updated = server.__getStoreForTest().ownerCompDrafts[0];
+  assert.deepEqual(updated.identitySnapshot, draft.identitySnapshot);
+  assert.equal(updated.identityFingerprint, draft.identityFingerprint);
+  assert.equal(updated.reviewStatus, 'reviewed');
+});
+
+test('owner comp draft form uses responsive grid layout without changing validation boundaries', async () => {
+  setStoreWithListings([listing('active-layout')]);
+
+  const page = await request('/research/active-layout/comp-drafts', {
+    headers: { Authorization: authHeader() }
+  });
+
+  assert.equal(page.statusCode, 200);
+  assert.match(page.body, /form\.owner-comp-draft-form \{ display: grid; grid-template-columns: repeat\(auto-fit, minmax\(220px, 1fr\)\); align-items: end; \}/);
+  assert.match(page.body, /form\.owner-comp-draft-form label \{ display: flex; flex-direction: column; gap: 6px; min-width: 0; \}/);
+  assert.match(page.body, /<form class="owner-comp-draft-form" method="POST"/);
+  assert.match(page.body, /name="csrfToken"/);
 });
 
 test('owner can add, edit, status-update, and delete a comp draft without creating canonical evidence', async () => {

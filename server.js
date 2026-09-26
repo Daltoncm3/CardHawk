@@ -3142,6 +3142,10 @@ function layout(title, content) {
           .tabs a { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
           .tabs a.active { background: #22c55e; color: #052e16; }
           form { display: flex; gap: 10px; margin-bottom: 26px; }
+          form.owner-comp-draft-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: end; }
+          form.owner-comp-draft-form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+          form.owner-comp-draft-form input, form.owner-comp-draft-form select { width: 100%; min-width: 0; box-sizing: border-box; }
+          form.owner-comp-draft-form button { align-self: end; }
           input, select { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; }
           .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
           .stat { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 18px; }
@@ -3278,9 +3282,118 @@ function researchOpportunityCard(opportunity = {}) {
 }
 
 function getResearchIdentitySnapshotForListing(listing) {
-  const identity = researchOpportunityService.buildResearchIdentity(listing);
+  const identity = buildOwnerCompResearchIdentity(listing);
   identity.missingMaterialFields = researchOpportunityService.getMissingMaterialFields(identity);
   return ownerCompDraftStore.buildIdentitySnapshot(listingIdentity.getListingId(listing), identity);
+}
+
+function normalizeOwnerCompLaneSport(value) {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized && normalized !== "all" && normalized !== "unknown" ? normalized : "";
+}
+
+function buildOwnerCompIdentityInput(listing = {}) {
+  const parsed = listing.parsed && typeof listing.parsed === "object" ? listing.parsed : {};
+  const adaptedParsed = { ...parsed };
+  const laneSport = normalizeOwnerCompLaneSport(parsed.sport || listing.lane);
+
+  if (laneSport && !adaptedParsed.sport) adaptedParsed.sport = laneSport;
+  if (adaptedParsed.setName && !adaptedParsed.product) adaptedParsed.product = adaptedParsed.setName;
+  if (adaptedParsed.product && !adaptedParsed.setName) adaptedParsed.setName = adaptedParsed.product;
+
+  return {
+    ...listing,
+    parsed: adaptedParsed
+  };
+}
+
+function buildOwnerCompResearchIdentity(listing = {}) {
+  return researchOpportunityService.buildResearchIdentity(buildOwnerCompIdentityInput(listing));
+}
+
+function meaningfulOwnerCompIdentityValue(value) {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  if ([
+    "unknown",
+    "missing",
+    "ambiguous",
+    "not specified",
+    "unspecified",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "undefined"
+  ].includes(normalized)) {
+    return "";
+  }
+  return normalized;
+}
+
+function hasOwnerCompUsableIdentitySnapshot(snapshot = {}) {
+  const fields = snapshot.fields || {};
+  const subjectName = meaningfulOwnerCompIdentityValue(fields.subjectName);
+  if (!subjectName) return false;
+
+  const discriminators = new Set();
+  const add = (value) => {
+    const normalized = meaningfulOwnerCompIdentityValue(value);
+    if (normalized) discriminators.add(normalized);
+  };
+
+  add(fields.year);
+  add(fields.product || fields.setName);
+  add(fields.cardNumber);
+  add(fields.parallel);
+  add(fields.printRun);
+
+  const gradeCompany = meaningfulOwnerCompIdentityValue(fields.gradeCompany);
+  const grade = meaningfulOwnerCompIdentityValue(fields.grade);
+  if (gradeCompany && grade) discriminators.add(`${gradeCompany}:${grade}`);
+
+  return discriminators.size >= 1;
+}
+
+function boundedResearchTitleQuery(title = "") {
+  return String(title || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function buildOwnerCompSoldItemsResearchUrl(listing = {}) {
+  const identity = buildOwnerCompResearchIdentity(listing);
+  const identitySnapshot = ownerCompDraftStore.buildIdentitySnapshot(listingIdentity.getListingId(listing), {
+    ...identity,
+    missingMaterialFields: researchOpportunityService.getMissingMaterialFields(identity)
+  });
+
+  if (hasOwnerCompUsableIdentitySnapshot(identitySnapshot)) {
+    const identityUrl = researchOpportunityService.buildSoldItemsResearchUrl(identity);
+    try {
+      const parsed = new URL(identityUrl);
+      if (parsed.hostname === "www.ebay.com" && parsed.searchParams.get("_nkw")) {
+        return parsed.toString();
+      }
+    } catch (_) {
+      // Fall through to title-only research navigation.
+    }
+  }
+
+  const fallbackQuery = boundedResearchTitleQuery(listing.title || listing.rawTitle || "");
+  const fallbackUrl = new URL("https://www.ebay.com/sch/i.html");
+  fallbackUrl.searchParams.set("_nkw", fallbackQuery);
+  fallbackUrl.searchParams.set("LH_Sold", "1");
+  fallbackUrl.searchParams.set("LH_Complete", "1");
+  return fallbackUrl.toString();
 }
 
 function ownerCompDraftFormFields(draft = {}, options = {}) {
@@ -3401,14 +3514,15 @@ function renderOwnerCompDraftPage(context, options = {}) {
       <div class="meta">Originating listing ID: ${escapeHtml(listingId)}</div>
       <div class="meta">Owner comp drafts are bound to this listing and its ${listingAvailable ? "current CardHawk identity snapshot" : "stored immutable CardHawk identity snapshot"}.</div>
     </div>
-    ${listingAvailable ? `<p><a href="${escapeHtml(researchOpportunityService.buildSoldItemsResearchUrl(researchOpportunityService.buildResearchIdentity(listing)))}" target="_blank" rel="noopener noreferrer">Open eBay Sold Items</a></p>` : `<div class="guardrail">The originating active listing is no longer available. Existing owner comp drafts remain manageable, but new drafts cannot be added until a current stored listing is available.</div>`}
+    ${listingAvailable ? `<p><a href="${escapeHtml(buildOwnerCompSoldItemsResearchUrl(listing))}" target="_blank" rel="noopener noreferrer">Open eBay Sold Items</a></p>` : `<div class="guardrail">The originating active listing is no longer available. Existing owner comp drafts remain manageable, but new drafts cannot be added until a current stored listing is available.</div>`}
     <div class="small">Draft persistence uses CardHawk's configured app-store persistence backend. Deployment durability depends on the configured Railway persistent volume/backend.</div>
     <h3>CardHawk normalized identity</h3>
     ${identitySnapshotTable(identitySnapshot)}
+    ${listingAvailable && !hasOwnerCompUsableIdentitySnapshot(identitySnapshot) ? `<div class="guardrail bad"><strong>New draft creation blocked:</strong> owner_comp_identity_snapshot_unusable</div>` : ""}
     ${options.error ? `<div class="guardrail bad"><strong>Draft was not saved:</strong> ${escapeHtml(options.error)}</div>` : ""}
     ${allowAdd || editingDraft ? `
       <h3>${editingDraft ? "Edit owner-reviewed comp draft" : "Add owner-reviewed comp draft"}</h3>
-      <form method="POST" action="${escapeHtml(action)}">
+      <form class="owner-comp-draft-form" method="POST" action="${escapeHtml(action)}">
         ${ownerCompDraftFormFields(editingDraft || {}, { csrfToken })}
         <button type="submit">${editingDraft ? "Save Draft" : "Add Draft"}</button>
       </form>
@@ -3436,11 +3550,12 @@ function buildStaleOwnerCompContext(listingId) {
 function getOwnerCompContext(listingId) {
   const listing = getStoredListingById(listingId);
   if (listing) {
+    const identitySnapshot = getResearchIdentitySnapshotForListing(listing);
     return {
       listing,
       listingId: listingIdentity.getListingId(listing),
-      identitySnapshot: getResearchIdentitySnapshotForListing(listing),
-      canCreate: isListingEligibleForOwnerCompDraft(listing)
+      identitySnapshot,
+      canCreate: isListingEligibleForOwnerCompDraft(listing) && hasOwnerCompUsableIdentitySnapshot(identitySnapshot)
     };
   }
   const stale = buildStaleOwnerCompContext(String(listingId));
@@ -3618,10 +3733,13 @@ app.post("/research/:listingId/comp-drafts", async (req, res) => {
   const context = getOwnerCompContext(req.params.listingId);
   if (!context) return res.status(404).send(layout("Listing Not Found", `<p>Listing not found.</p>`));
   if (!context.canCreate) {
+    const error = context.listing && !hasOwnerCompUsableIdentitySnapshot(context.identitySnapshot)
+      ? "owner_comp_identity_snapshot_unusable"
+      : "listing_not_eligible_for_new_comp_draft";
     return res.status(400).send(renderOwnerCompDraftPage(context, {
       csrfToken: createOwnerCompCsrfToken(req),
       allowAdd: false,
-      error: "listing_not_eligible_for_new_comp_draft"
+      error
     }));
   }
   if (!validateOwnerCompCsrfToken(req)) {
